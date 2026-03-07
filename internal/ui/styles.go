@@ -62,6 +62,12 @@ var (
 	commentMarkerStyle = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
 	commentCursorStyle = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
 
+	// Inline comment input box
+	commentInputStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorYellow).
+				Padding(0, 1)
+
 	// Status bar style
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
 
@@ -96,6 +102,7 @@ func init() {
 		cursorStyle = lipgloss.NewStyle().Bold(true)
 		commentMarkerStyle = lipgloss.NewStyle().Bold(true)
 		commentCursorStyle = lipgloss.NewStyle().Bold(true)
+		commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 		statusBarStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()

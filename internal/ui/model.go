@@ -31,10 +31,9 @@ type Model struct {
 	height   int
 	ready    bool
 
-	comments           comments
+	comments          comments
 	commentInputActive bool
-	commentInput       string
-	commentTarget      commentKey
+	commentTarget     commentKey
 }
 
 func New(diff *git.Diff) Model {
@@ -163,7 +162,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateLayout() {
-	panelH := m.height - 3 // leave 1 row for status bar (borders account for 2)
+	panelH := m.height - 3 // leave 1 row for status bar
 
 	if m.fullscreen {
 		m.diffView.width = m.width - 2
@@ -226,26 +225,23 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		text := strings.TrimSpace(m.commentInput)
+		text := strings.TrimSpace(m.diffView.textInput.Value())
 		if text != "" {
 			m.comments[m.commentTarget] = text
 		} else {
 			delete(m.comments, m.commentTarget)
 		}
 		m.commentInputActive = false
-		m.commentInput = ""
+		m.diffView.commentInputActive = false
+		m.diffView.textInput.Blur()
 	case "esc":
 		m.commentInputActive = false
-		m.commentInput = ""
-	case "backspace", "ctrl+h":
-		if len(m.commentInput) > 0 {
-			runes := []rune(m.commentInput)
-			m.commentInput = string(runes[:len(runes)-1])
-		}
+		m.diffView.commentInputActive = false
+		m.diffView.textInput.Blur()
 	default:
-		if len(msg.Runes) > 0 {
-			m.commentInput += string(msg.Runes)
-		}
+		var cmd tea.Cmd
+		m.diffView.textInput, cmd = m.diffView.textInput.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }
@@ -257,8 +253,22 @@ func (m *Model) startCommentInput() {
 	}
 	key := commentKey{file: m.diffView.file.Path, lineNum: ref.commentLineNum()}
 	m.commentTarget = key
-	m.commentInput = m.comments[key] // pre-fill existing comment if any
+
+	m.diffView.textInput.SetValue(m.comments[key])
+	m.diffView.textInput.CursorEnd()
+	m.diffView.textInput.Focus()
+
+	// Scroll so there's room below the cursor for the input box
+	viewH := m.diffView.viewHeight()
+	if m.diffView.cursor >= m.diffView.offset+viewH-inputBoxHeight {
+		m.diffView.offset = m.diffView.cursor - viewH + inputBoxHeight + 1
+		if m.diffView.offset < 0 {
+			m.diffView.offset = 0
+		}
+	}
+
 	m.commentInputActive = true
+	m.diffView.commentInputActive = true
 }
 
 func (m *Model) deleteCommentAtCursor() {
@@ -286,7 +296,6 @@ func (m *Model) exportComments() {
 			return
 		}
 	}
-	// Fallback: write to file
 	_ = os.WriteFile(".revise-comments.md", []byte(text), 0644)
 }
 
@@ -316,8 +325,7 @@ func (m *Model) prevFile() {
 
 func (m Model) renderStatusBar() string {
 	if m.commentInputActive {
-		prompt := "Comment: " + m.commentInput + "▌"
-		return statusBarStyle.Width(m.width).Render(prompt)
+		return statusBarStyle.Width(m.width).Render("Enter: save  Esc: cancel")
 	}
 
 	// Show comment text when cursor is on a commented line

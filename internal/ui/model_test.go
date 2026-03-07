@@ -185,7 +185,6 @@ func TestModelComment_InputEsc_Cancels(t *testing.T) {
 	require.True(t, m.commentInputActive)
 	m = sendSpecialKey(m, tea.KeyEsc)
 	assert.False(t, m.commentInputActive)
-	assert.Empty(t, m.commentInput)
 }
 
 func TestModelComment_TypeAndSave(t *testing.T) {
@@ -196,6 +195,7 @@ func TestModelComment_TypeAndSave(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
+	assert.Equal(t, "hi", m.diffView.textInput.Value())
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.commentInputActive)
@@ -222,7 +222,7 @@ func TestModelComment_EditExistingComment_PreFills(t *testing.T) {
 	m = focusDiffAndMoveTo(m, 3)
 	m = sendKey(m, "c")
 	assert.True(t, m.commentInputActive)
-	assert.Equal(t, "existing", m.commentInput)
+	assert.Equal(t, "existing", m.diffView.textInput.Value())
 }
 
 func TestModelComment_Backspace(t *testing.T) {
@@ -235,7 +235,7 @@ func TestModelComment_Backspace(t *testing.T) {
 	m = sendKey(m, "b")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	m = updated.(Model)
-	assert.Equal(t, "a", m.commentInput)
+	assert.Equal(t, "a", m.diffView.textInput.Value())
 }
 
 func TestModelComment_ClearInputOnEnter_DeletesComment(t *testing.T) {
@@ -245,13 +245,13 @@ func TestModelComment_ClearInputOnEnter_DeletesComment(t *testing.T) {
 	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "hi"
 	m = focusDiffAndMoveTo(m, 3)
 	m = sendKey(m, "c")
-	require.Equal(t, "hi", m.commentInput) // pre-filled
+	require.Equal(t, "hi", m.diffView.textInput.Value()) // pre-filled
 	// Clear the input with backspace, then press enter
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	m = updated.(Model)
-	require.Empty(t, m.commentInput)
+	require.Empty(t, m.diffView.textInput.Value())
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 1}]
@@ -268,5 +268,5 @@ func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
 	// Pressing "q" should add to input, not quit
 	m = sendKey(m, "q")
 	assert.True(t, m.commentInputActive)
-	assert.Equal(t, "q", m.commentInput)
+	assert.Equal(t, "q", m.diffView.textInput.Value())
 }

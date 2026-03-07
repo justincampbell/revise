@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -34,11 +35,18 @@ type diffViewModel struct {
 	height   int
 	width    int
 	comments comments
+
+	commentInputActive bool
+	textInput          textinput.Model
 }
 
 func newDiffViewModel() diffViewModel {
+	ti := textinput.New()
+	ti.Placeholder = "Add a comment…"
+	ti.CharLimit = 500
 	return diffViewModel{
-		comments: make(comments),
+		comments:  make(comments),
+		textInput: ti,
 	}
 }
 
@@ -101,7 +109,6 @@ func (m *diffViewModel) moveCursorDown(n int) {
 	if m.cursor >= len(m.lines) {
 		m.cursor = len(m.lines) - 1
 	}
-	// Scroll to keep cursor visible
 	viewH := m.viewHeight()
 	if m.cursor >= m.offset+viewH {
 		m.offset = m.cursor - viewH + 1
@@ -113,7 +120,6 @@ func (m *diffViewModel) moveCursorUp(n int) {
 	if m.cursor < 0 {
 		m.cursor = 0
 	}
-	// Scroll to keep cursor visible
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
@@ -223,7 +229,6 @@ func formatGutter(l git.Line) string {
 }
 
 // linePrefix returns the 1-character prefix for a display line at the given absolute index.
-// It shows the cursor position and comment indicators.
 func (m diffViewModel) linePrefix(absIdx int) string {
 	isCursor := absIdx == m.cursor
 	isCode := absIdx < len(m.lineRefs) && m.lineRefs[absIdx] != nil
@@ -246,30 +251,78 @@ func (m diffViewModel) linePrefix(absIdx int) string {
 	}
 }
 
+// inputBoxHeight is the number of rows the inline comment input box occupies.
+const inputBoxHeight = 3 // border top + content + border bottom
+
 func (m diffViewModel) render(focused bool) string {
 	if len(m.lines) == 0 {
 		return panelBorder.Width(m.width).Height(m.height).Render("No changes to display")
 	}
 
 	viewH := m.viewHeight()
-	end := m.offset + viewH
-	if end > len(m.lines) {
-		end = len(m.lines)
-	}
-
-	// maxWidth: subtract border (2) and cursor prefix char (1)
+	// maxWidth: subtract panel border (2) and cursor prefix char (1)
 	maxWidth := m.width - 3
 	if maxWidth < 1 {
 		maxWidth = 1
 	}
 
-	var renderedLines []string
-	for absIdx := m.offset; absIdx < end; absIdx++ {
+	renderLine := func(absIdx int) string {
 		line := m.lines[absIdx]
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
 		}
-		renderedLines = append(renderedLines, m.linePrefix(absIdx)+line)
+		return m.linePrefix(absIdx) + line
+	}
+
+	var renderedLines []string
+
+	if m.commentInputActive {
+		// Rows above and including cursor line
+		codeAbove := m.cursor - m.offset + 1
+		if codeAbove < 0 {
+			codeAbove = 0
+		}
+		// Rows available for code below input box
+		codeBelow := viewH - inputBoxHeight - codeAbove
+		if codeBelow < 0 {
+			codeBelow = 0
+		}
+
+		// Code lines up to and including cursor
+		end := m.offset + codeAbove
+		if end > len(m.lines) {
+			end = len(m.lines)
+		}
+		for absIdx := m.offset; absIdx < end; absIdx++ {
+			renderedLines = append(renderedLines, renderLine(absIdx))
+		}
+
+		// Inline input box (width fits inside panel border)
+		inputWidth := m.width - 4
+		if inputWidth < 10 {
+			inputWidth = 10
+		}
+		m.textInput.Width = inputWidth - 4 // account for border + padding
+		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
+		renderedLines = append(renderedLines, inputBox)
+
+		// Code lines after cursor
+		startAfter := m.cursor + 1
+		endAfter := startAfter + codeBelow
+		if endAfter > len(m.lines) {
+			endAfter = len(m.lines)
+		}
+		for absIdx := startAfter; absIdx < endAfter; absIdx++ {
+			renderedLines = append(renderedLines, renderLine(absIdx))
+		}
+	} else {
+		end := m.offset + viewH
+		if end > len(m.lines) {
+			end = len(m.lines)
+		}
+		for absIdx := m.offset; absIdx < end; absIdx++ {
+			renderedLines = append(renderedLines, renderLine(absIdx))
+		}
 	}
 
 	content := strings.Join(renderedLines, "\n")
