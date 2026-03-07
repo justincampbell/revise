@@ -57,6 +57,14 @@ var (
 	// Gutter style
 	gutterStyle = lipgloss.NewStyle().Foreground(colorDim).Width(11)
 
+	// Cursor and comment marker styles (1-char prefix column)
+	cursorStyle        = lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
+	commentMarkerStyle = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
+	commentCursorStyle = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
+
+	// Status bar style
+	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
+
 	// Help styles
 	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
 	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim)
@@ -85,6 +93,10 @@ func init() {
 		addedGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
 		removedGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
 		contextGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
+		cursorStyle = lipgloss.NewStyle().Bold(true)
+		commentMarkerStyle = lipgloss.NewStyle().Bold(true)
+		commentCursorStyle = lipgloss.NewStyle().Bold(true)
+		statusBarStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
 		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)

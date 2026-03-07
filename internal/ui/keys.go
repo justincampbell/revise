@@ -29,9 +29,16 @@ var allBindings = []BindingGroup{
 		{"Enter", "Select file and focus diff"},
 	}},
 	{"Diff View", []Binding{
-		{"j/k, ↑/↓", "Scroll"},
+		{"j/k, ↑/↓", "Move cursor"},
 		{"g/G", "Top/bottom"},
 		{"Fn+↓/↑", "Page down/up"},
+		{"c", "Add/edit comment on line"},
+		{"d", "Delete comment on line"},
+		{"e", "Export comments"},
+	}},
+	{"Comment Input", []Binding{
+		{"Enter", "Save comment"},
+		{"Esc", "Cancel"},
 	}},
 }
 

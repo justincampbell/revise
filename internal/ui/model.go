@@ -1,6 +1,11 @@
 package ui
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/justincampbell/revise/internal/git"
@@ -25,11 +30,19 @@ type Model struct {
 	width    int
 	height   int
 	ready    bool
+
+	comments           comments
+	commentInputActive bool
+	commentInput       string
+	commentTarget      commentKey
 }
 
 func New(diff *git.Diff) Model {
 	fl := newFileListModel(diff.Files)
 	dv := newDiffViewModel()
+
+	c := make(comments)
+	dv.comments = c
 
 	if len(diff.Files) > 0 {
 		dv.setFile(&diff.Files[0])
@@ -40,6 +53,7 @@ func New(diff *git.Diff) Model {
 		fileList: fl,
 		diffView: dv,
 		focus:    focusFileList,
+		comments: c,
 	}
 }
 
@@ -50,6 +64,10 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.commentInputActive {
+			return m.updateCommentInput(msg)
+		}
+
 		if m.showHelp {
 			m.showHelp = false
 			return m, nil
@@ -145,7 +163,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateLayout() {
-	panelH := m.height - 2 // leave room for status
+	panelH := m.height - 3 // leave 1 row for status bar (borders account for 2)
 
 	if m.fullscreen {
 		m.diffView.width = m.width - 2
@@ -182,9 +200,9 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
-		m.diffView.scrollDown(1)
+		m.diffView.moveCursorDown(1)
 	case "k", "up":
-		m.diffView.scrollUp(1)
+		m.diffView.moveCursorUp(1)
 	case "g", "home":
 		m.diffView.goToTop()
 	case "G", "end":
@@ -193,8 +211,83 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.diffView.pageDown()
 	case "pgup":
 		m.diffView.pageUp()
+	case "c":
+		if m.diffView.cursorRef() != nil {
+			m.startCommentInput()
+		}
+	case "d":
+		m.deleteCommentAtCursor()
+	case "e":
+		m.exportComments()
 	}
 	return m, nil
+}
+
+func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		text := strings.TrimSpace(m.commentInput)
+		if text != "" {
+			m.comments[m.commentTarget] = text
+		} else {
+			delete(m.comments, m.commentTarget)
+		}
+		m.commentInputActive = false
+		m.commentInput = ""
+	case "esc":
+		m.commentInputActive = false
+		m.commentInput = ""
+	case "backspace", "ctrl+h":
+		if len(m.commentInput) > 0 {
+			runes := []rune(m.commentInput)
+			m.commentInput = string(runes[:len(runes)-1])
+		}
+	default:
+		if len(msg.Runes) > 0 {
+			m.commentInput += string(msg.Runes)
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) startCommentInput() {
+	ref := m.diffView.cursorRef()
+	if ref == nil || m.diffView.file == nil {
+		return
+	}
+	key := commentKey{file: m.diffView.file.Path, lineNum: ref.commentLineNum()}
+	m.commentTarget = key
+	m.commentInput = m.comments[key] // pre-fill existing comment if any
+	m.commentInputActive = true
+}
+
+func (m *Model) deleteCommentAtCursor() {
+	ref := m.diffView.cursorRef()
+	if ref == nil || m.diffView.file == nil {
+		return
+	}
+	key := commentKey{file: m.diffView.file.Path, lineNum: ref.commentLineNum()}
+	delete(m.comments, key)
+}
+
+func (m *Model) exportComments() {
+	text := formatExport(m.diff.Files, m.comments)
+	if text == "" {
+		return
+	}
+	// Try common clipboard tools, fall back to writing a file
+	for _, args := range [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}} {
+		if _, err := exec.LookPath(args[0]); err != nil {
+			continue
+		}
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		if cmd.Run() == nil {
+			return
+		}
+	}
+	// Fallback: write to file
+	_ = os.WriteFile(".revise-comments.md", []byte(text), 0644)
 }
 
 func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
@@ -221,6 +314,32 @@ func (m *Model) prevFile() {
 	m.syncSelectedFile()
 }
 
+func (m Model) renderStatusBar() string {
+	if m.commentInputActive {
+		prompt := "Comment: " + m.commentInput + "▌"
+		return statusBarStyle.Width(m.width).Render(prompt)
+	}
+
+	// Show comment text when cursor is on a commented line
+	if m.focus == focusDiffView {
+		ref := m.diffView.cursorRef()
+		if ref != nil && m.diffView.file != nil {
+			key := commentKey{file: m.diffView.file.Path, lineNum: ref.commentLineNum()}
+			if text, ok := m.comments[key]; ok {
+				return statusBarStyle.Width(m.width).Render("◆ " + text)
+			}
+		}
+	}
+
+	count := len(m.comments)
+	if count > 0 {
+		return statusBarStyle.Width(m.width).Render(
+			fmt.Sprintf("%d comment(s) — c: add/edit  d: delete  e: export", count),
+		)
+	}
+	return statusBarStyle.Width(m.width).Render("c: add comment  e: export  ?: help  q: quit")
+}
+
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
@@ -238,12 +357,15 @@ func (m Model) View() string {
 		)
 	}
 
+	statusBar := m.renderStatusBar()
+
 	if m.fullscreen {
-		return m.diffView.render(true)
+		panels := m.diffView.render(true)
+		return lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}
 
 	left := m.fileList.render(m.focus == focusFileList)
 	right := m.diffView.render(m.focus == focusDiffView)
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	return lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 }

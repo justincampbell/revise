@@ -19,6 +19,22 @@ func makeModel(paths ...string) Model {
 	return updated.(Model)
 }
 
+// makeModelWithDiff creates a model with a single file containing actual diff lines.
+func makeModelWithDiff(filePath string, lines []git.Line) Model {
+	hunk := git.Hunk{
+		Header: "@@ -1,1 +1,1 @@",
+		Lines:  lines,
+	}
+	files := []git.FileDiff{{
+		Path:   filePath,
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{hunk},
+	}}
+	m := New(&git.Diff{Files: files})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return updated.(Model)
+}
+
 func sendKey(m Model, key string) Model {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 	return updated.(Model)
@@ -27,6 +43,15 @@ func sendKey(m Model, key string) Model {
 func sendSpecialKey(m Model, keyType tea.KeyType) Model {
 	updated, _ := m.Update(tea.KeyMsg{Type: keyType})
 	return updated.(Model)
+}
+
+// focusDiffAndMoveToline focuses the diff view and moves the cursor n lines down.
+func focusDiffAndMoveTo(m Model, n int) Model {
+	m = sendKey(m, "l") // focus diff view
+	for i := 0; i < n; i++ {
+		m = sendSpecialKey(m, tea.KeyDown)
+	}
+	return m
 }
 
 func TestModelInitialFocus(t *testing.T) {
@@ -127,4 +152,121 @@ func TestModelHelpDismissedByAnyKey(t *testing.T) {
 	require.True(t, m.showHelp)
 	m = sendKey(m, "x")
 	assert.False(t, m.showHelp)
+}
+
+// --- Comment tests ---
+
+func TestModelComment_PressC_OnNonCodeLine_DoesNothing(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff view, cursor at line 0 (file header, non-code)
+	m = sendKey(m, "c")
+	assert.False(t, m.commentInputActive)
+}
+
+func TestModelComment_PressC_OnCodeLine_EntersCommentMode(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	// lines: [0: header, 1: blank, 2: hunk, 3: code, 4: blank]
+	m = focusDiffAndMoveTo(m, 3)
+	require.NotNil(t, m.diffView.cursorRef())
+	m = sendKey(m, "c")
+	assert.True(t, m.commentInputActive)
+}
+
+func TestModelComment_InputEsc_Cancels(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	require.True(t, m.commentInputActive)
+	m = sendSpecialKey(m, tea.KeyEsc)
+	assert.False(t, m.commentInputActive)
+	assert.Empty(t, m.commentInput)
+}
+
+func TestModelComment_TypeAndSave(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.commentInputActive)
+	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
+}
+
+func TestModelComment_DeleteComment(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	// Add a comment directly
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "to delete"
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "d")
+	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 1}]
+	assert.False(t, exists)
+}
+
+func TestModelComment_EditExistingComment_PreFills(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "existing"
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	assert.True(t, m.commentInputActive)
+	assert.Equal(t, "existing", m.commentInput)
+}
+
+func TestModelComment_Backspace(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	m = sendKey(m, "a")
+	m = sendKey(m, "b")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = updated.(Model)
+	assert.Equal(t, "a", m.commentInput)
+}
+
+func TestModelComment_ClearInputOnEnter_DeletesComment(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "hi"
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	require.Equal(t, "hi", m.commentInput) // pre-filled
+	// Clear the input with backspace, then press enter
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = updated.(Model)
+	require.Empty(t, m.commentInput)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 1}]
+	assert.False(t, exists)
+}
+
+func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 3)
+	m = sendKey(m, "c")
+	require.True(t, m.commentInputActive)
+	// Pressing "q" should add to input, not quit
+	m = sendKey(m, "q")
+	assert.True(t, m.commentInputActive)
+	assert.Equal(t, "q", m.commentInput)
 }
