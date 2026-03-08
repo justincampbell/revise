@@ -133,11 +133,14 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `Esc` | Back to file list (exits fullscreen if needed) |
 | `?` | Toggle help overlay |
 | `q` / `Ctrl+C` | Quit |
-| `j/k`, `↑/↓` | Navigate files (file list) / scroll (diff) |
-| `Enter` | Select file and focus diff |
+| `e` | Export comments (works from any panel) |
+| `j/k`, `↑/↓` | Navigate files (file list) / move cursor (diff) |
+| `Enter` | Select file and focus diff (file list) / open comment input (diff) |
 | `g` / `G` | Top / bottom of diff |
 | `Fn+↓` / `Space` | Page down |
 | `Fn+↑` | Page up |
+| `c` / `Enter` | Add/edit comment on current diff line |
+| `d` | Delete comment on current diff line |
 
 ### Mouse Support
 
