@@ -11,12 +11,23 @@ import (
 type commentKey struct {
 	file    string
 	lineNum int
+	isOld   bool // true for removed lines (keyed by old line number)
 }
 
 type comments map[commentKey]string
 
 func (c comments) isEmpty() bool {
 	return len(c) == 0
+}
+
+func (c comments) countForFile(path string) int {
+	n := 0
+	for k := range c {
+		if k.file == path {
+			n++
+		}
+	}
+	return n
 }
 
 // formatExport formats all comments for export in a readable format suitable for Claude Code.
@@ -32,12 +43,13 @@ func formatExport(files []git.FileDiff, c comments) string {
 	for _, f := range files {
 		type lineComment struct {
 			lineNum int
+			isOld   bool
 			text    string
 		}
 		var fileComments []lineComment
 		for key, text := range c {
 			if key.file == f.Path {
-				fileComments = append(fileComments, lineComment{key.lineNum, text})
+				fileComments = append(fileComments, lineComment{key.lineNum, key.isOld, text})
 			}
 		}
 		if len(fileComments) == 0 {
@@ -49,7 +61,11 @@ func formatExport(files []git.FileDiff, c comments) string {
 
 		sb.WriteString(fmt.Sprintf("\n## %s\n\n", f.Path))
 		for _, lc := range fileComments {
-			sb.WriteString(fmt.Sprintf("Line %d: %s\n", lc.lineNum, lc.text))
+			if lc.isOld {
+				sb.WriteString(fmt.Sprintf("Line %d (removed): %s\n", lc.lineNum, lc.text))
+			} else {
+				sb.WriteString(fmt.Sprintf("Line %d: %s\n", lc.lineNum, lc.text))
+			}
 		}
 	}
 

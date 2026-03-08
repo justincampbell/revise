@@ -10,26 +10,28 @@ import (
 )
 
 // lineRef tracks the source line metadata for a rendered display line.
-// It is nil for non-code lines (file header, hunk header, blank separators).
+// isCommentDisplay is true for comment annotation lines inserted below code lines.
+// nil is used for non-content lines (file header, hunk header, blank separators).
 type lineRef struct {
-	newNum   int
-	oldNum   int
-	lineType git.LineType
+	newNum           int
+	oldNum           int
+	lineType         git.LineType
+	isCommentDisplay bool
 }
 
-// commentLineNum returns the line number used as the comment key.
-// Removed lines use old line numbers; all others use new line numbers.
-func (r *lineRef) commentLineNum() int {
+// commentKey returns the storage key for a comment on this line.
+// Removed lines are keyed by old line number; all others by new line number.
+func (r *lineRef) commentKey(file string) commentKey {
 	if r.lineType == git.LineRemoved {
-		return r.oldNum
+		return commentKey{file: file, lineNum: r.oldNum, isOld: true}
 	}
-	return r.newNum
+	return commentKey{file: file, lineNum: r.newNum}
 }
 
 type diffViewModel struct {
 	file     *git.FileDiff
 	lines    []string   // pre-rendered display lines
-	lineRefs []*lineRef // parallel to lines; nil for non-code lines
+	lineRefs []*lineRef // parallel to lines
 	cursor   int        // absolute index into lines[]
 	offset   int        // scroll offset
 	height   int
@@ -55,6 +57,7 @@ func (m *diffViewModel) setFile(f *git.FileDiff) {
 	m.cursor = 0
 	m.offset = 0
 	m.buildLines()
+	m.goToFirstNavigable()
 }
 
 func (m *diffViewModel) buildLines() {
@@ -88,26 +91,106 @@ func (m *diffViewModel) buildLines() {
 				lineType: line.Type,
 			}
 			add(renderDiffLine(line), ref)
+
+			// If this code line has a saved comment, add a display line below it.
+			key := ref.commentKey(m.file.Path)
+			if text, ok := m.comments[key]; ok {
+				displayRef := &lineRef{isCommentDisplay: true}
+				add(commentDisplayStyle.Render("  ╰ "+text), displayRef)
+			}
 		}
 		add("", nil)
 	}
 }
 
+// rebuildLinesPreservingCursor rebuilds display lines and restores the cursor
+// to the same code line after the rebuild (handles index shifts from added/removed
+// comment display lines).
+func (m *diffViewModel) rebuildLinesPreservingCursor() {
+	var saved *lineRef
+	if m.cursor >= 0 && m.cursor < len(m.lineRefs) {
+		ref := m.lineRefs[m.cursor]
+		if ref != nil && !ref.isCommentDisplay {
+			saved = ref
+		}
+	}
+
+	m.buildLines()
+
+	if saved == nil {
+		return
+	}
+	for i, ref := range m.lineRefs {
+		if ref != nil && !ref.isCommentDisplay &&
+			ref.newNum == saved.newNum &&
+			ref.oldNum == saved.oldNum &&
+			ref.lineType == saved.lineType {
+			m.cursor = i
+			if m.cursor < m.offset {
+				m.offset = m.cursor
+			}
+			viewH := m.viewHeight()
+			if m.cursor >= m.offset+viewH {
+				m.offset = m.cursor - viewH + 1
+			}
+			return
+		}
+	}
+}
+
+// isNavigable reports whether the line at idx can receive the cursor.
+// Only code lines (non-nil, non-comment-display) are navigable.
+func (m *diffViewModel) isNavigable(idx int) bool {
+	if idx < 0 || idx >= len(m.lineRefs) {
+		return false
+	}
+	ref := m.lineRefs[idx]
+	return ref != nil && !ref.isCommentDisplay
+}
+
+func (m *diffViewModel) isCommentDisplayLine(idx int) bool {
+	if idx < 0 || idx >= len(m.lineRefs) {
+		return false
+	}
+	ref := m.lineRefs[idx]
+	return ref != nil && ref.isCommentDisplay
+}
+
 func (m *diffViewModel) cursorRef() *lineRef {
-	if m.cursor < 0 || m.cursor >= len(m.lineRefs) {
+	if !m.isNavigable(m.cursor) {
 		return nil
 	}
 	return m.lineRefs[m.cursor]
 }
 
-func (m *diffViewModel) moveCursorDown(n int) {
-	m.cursor += n
-	if len(m.lines) == 0 {
-		m.cursor = 0
-		return
+// goToFirstNavigable positions the cursor on the first navigable (code) line.
+func (m *diffViewModel) goToFirstNavigable() {
+	for m.cursor < len(m.lineRefs) && !m.isNavigable(m.cursor) {
+		m.cursor++
 	}
-	if m.cursor >= len(m.lines) {
-		m.cursor = len(m.lines) - 1
+	if m.cursor >= len(m.lineRefs) {
+		m.cursor = 0
+	}
+}
+
+// goToLastNavigable positions the cursor on the last navigable (code) line.
+func (m *diffViewModel) goToLastNavigable() {
+	m.cursor = len(m.lines) - 1
+	for m.cursor > 0 && !m.isNavigable(m.cursor) {
+		m.cursor--
+	}
+}
+
+func (m *diffViewModel) moveCursorDown(n int) {
+	for n > 0 && m.cursor < len(m.lines)-1 {
+		m.cursor++
+		if m.isNavigable(m.cursor) {
+			n--
+		}
+	}
+	// If loop ended on a non-navigable line, step back to the last navigable one.
+	for !m.isNavigable(m.cursor) && m.cursor > 0 {
+		m.cursor--
 	}
 	viewH := m.viewHeight()
 	if m.cursor >= m.offset+viewH {
@@ -116,9 +199,15 @@ func (m *diffViewModel) moveCursorDown(n int) {
 }
 
 func (m *diffViewModel) moveCursorUp(n int) {
-	m.cursor -= n
-	if m.cursor < 0 {
-		m.cursor = 0
+	for n > 0 && m.cursor > 0 {
+		m.cursor--
+		if m.isNavigable(m.cursor) {
+			n--
+		}
+	}
+	// If loop ended on a non-navigable line, step forward to the first navigable one.
+	for !m.isNavigable(m.cursor) && m.cursor < len(m.lineRefs)-1 {
+		m.cursor++
 	}
 	if m.cursor < m.offset {
 		m.offset = m.cursor
@@ -161,6 +250,7 @@ func (m *diffViewModel) scrollDown(n int) {
 func (m *diffViewModel) goToTop() {
 	m.offset = 0
 	m.cursor = 0
+	m.goToFirstNavigable()
 }
 
 func (m *diffViewModel) goToBottom() {
@@ -169,18 +259,7 @@ func (m *diffViewModel) goToBottom() {
 		max = 0
 	}
 	m.offset = max
-	m.cursor = len(m.lines) - 1
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
-}
-
-func (m *diffViewModel) halfPageDown() {
-	m.moveCursorDown(m.viewHeight() / 2)
-}
-
-func (m *diffViewModel) halfPageUp() {
-	m.moveCursorUp(m.viewHeight() / 2)
+	m.goToLastNavigable()
 }
 
 func (m *diffViewModel) pageDown() {
@@ -197,6 +276,28 @@ func (m *diffViewModel) viewHeight() int {
 		h = 1
 	}
 	return h
+}
+
+// clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
+// to an absolute index into lines[], accounting for any visible input box.
+// Returns -1 if the click lands inside the input box itself.
+func (m diffViewModel) clickToAbsIdx(clickY int) int {
+	if !m.commentInputActive {
+		return m.offset + clickY
+	}
+	codeAbove := m.cursor - m.offset + 1
+	if clickY < codeAbove {
+		return m.offset + clickY
+	}
+	if clickY < codeAbove+inputBoxHeight {
+		return -1 // inside the input box
+	}
+	// Below the input box — map back to lines[], skipping the box rows.
+	nextIdx := m.cursor + 1
+	if m.isCommentDisplayLine(nextIdx) {
+		nextIdx++ // this display line was skipped in the render
+	}
+	return nextIdx + (clickY - codeAbove - inputBoxHeight)
 }
 
 func (m diffViewModel) renderLines() []string {
@@ -228,27 +329,12 @@ func formatGutter(l git.Line) string {
 	return "          "
 }
 
-// linePrefix returns the 1-character prefix for a display line at the given absolute index.
+// linePrefix returns the 1-character cursor indicator for a display line.
 func (m diffViewModel) linePrefix(absIdx int) string {
-	isCursor := absIdx == m.cursor
-	isCode := absIdx < len(m.lineRefs) && m.lineRefs[absIdx] != nil
-	hasComment := false
-	if isCode && m.file != nil {
-		ref := m.lineRefs[absIdx]
-		key := commentKey{file: m.file.Path, lineNum: ref.commentLineNum()}
-		_, hasComment = m.comments[key]
-	}
-
-	switch {
-	case isCursor && hasComment:
-		return commentCursorStyle.Render("◆")
-	case isCursor:
+	if absIdx == m.cursor {
 		return cursorStyle.Render("▶")
-	case hasComment:
-		return commentMarkerStyle.Render("◆")
-	default:
-		return " "
 	}
+	return " "
 }
 
 // inputBoxHeight is the number of rows the inline comment input box occupies.
@@ -260,8 +346,7 @@ func (m diffViewModel) render(focused bool) string {
 	}
 
 	viewH := m.viewHeight()
-	// maxWidth: subtract panel border (2) and cursor prefix char (1)
-	maxWidth := m.width - 3
+	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
 	if maxWidth < 1 {
 		maxWidth = 1
 	}
@@ -277,18 +362,10 @@ func (m diffViewModel) render(focused bool) string {
 	var renderedLines []string
 
 	if m.commentInputActive {
-		// Rows above and including cursor line
 		codeAbove := m.cursor - m.offset + 1
 		if codeAbove < 0 {
 			codeAbove = 0
 		}
-		// Rows available for code below input box
-		codeBelow := viewH - inputBoxHeight - codeAbove
-		if codeBelow < 0 {
-			codeBelow = 0
-		}
-
-		// Code lines up to and including cursor
 		end := m.offset + codeAbove
 		if end > len(m.lines) {
 			end = len(m.lines)
@@ -297,22 +374,31 @@ func (m diffViewModel) render(focused bool) string {
 			renderedLines = append(renderedLines, renderLine(absIdx))
 		}
 
-		// Inline input box (width fits inside panel border)
+		// Skip any existing comment display line for this code line —
+		// the input box replaces it while editing.
+		nextIdx := m.cursor + 1
+		if m.isCommentDisplayLine(nextIdx) {
+			nextIdx++
+		}
+
+		// Inline input box.
 		inputWidth := m.width - 4
 		if inputWidth < 10 {
 			inputWidth = 10
 		}
-		m.textInput.Width = inputWidth - 4 // account for border + padding
+		m.textInput.Width = inputWidth - 4
 		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
 		renderedLines = append(renderedLines, inputBox)
 
-		// Code lines after cursor
-		startAfter := m.cursor + 1
-		endAfter := startAfter + codeBelow
+		codeBelow := viewH - inputBoxHeight - codeAbove
+		if codeBelow < 0 {
+			codeBelow = 0
+		}
+		endAfter := nextIdx + codeBelow
 		if endAfter > len(m.lines) {
 			endAfter = len(m.lines)
 		}
-		for absIdx := startAfter; absIdx < endAfter; absIdx++ {
+		for absIdx := nextIdx; absIdx < endAfter; absIdx++ {
 			renderedLines = append(renderedLines, renderLine(absIdx))
 		}
 	} else {

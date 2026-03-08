@@ -52,6 +52,17 @@ func TestFormatExport_LinesOrderedAscending(t *testing.T) {
 	assert.Less(t, earlierIdx, laterIdx)
 }
 
+func TestCountForFile(t *testing.T) {
+	c := comments{
+		{file: "a.go", lineNum: 1}: "one",
+		{file: "a.go", lineNum: 2}: "two",
+		{file: "b.go", lineNum: 1}: "other",
+	}
+	assert.Equal(t, 2, c.countForFile("a.go"))
+	assert.Equal(t, 1, c.countForFile("b.go"))
+	assert.Equal(t, 0, c.countForFile("c.go"))
+}
+
 func TestFormatExport_ExcludesFilesWithNoComments(t *testing.T) {
 	files := []git.FileDiff{
 		{Path: "a.go"},

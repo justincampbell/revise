@@ -32,9 +32,11 @@ var allBindings = []BindingGroup{
 		{"j/k, ↑/↓", "Move cursor"},
 		{"g/G", "Top/bottom"},
 		{"Fn+↓/↑", "Page down/up"},
-		{"c", "Add/edit comment on line"},
+		{"Enter/c", "Add/edit comment on line"},
 		{"d", "Delete comment on line"},
-		{"e", "Export comments"},
+	}},
+	{"Global", []Binding{
+		{"e", "Export comments to clipboard"},
 	}},
 	{"Comment Input", []Binding{
 		{"Enter", "Save comment"},
