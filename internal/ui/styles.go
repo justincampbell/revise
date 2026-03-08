@@ -10,14 +10,13 @@ var noColor = os.Getenv("NO_COLOR") != ""
 
 var (
 	// Colors
-	colorGreen   = lipgloss.Color("#22c55e")
-	colorRed     = lipgloss.Color("#ef4444")
-	colorCyan    = lipgloss.Color("#06b6d4")
-	colorYellow  = lipgloss.Color("#eab308")
-	colorDim     = lipgloss.Color("#6b7280")
-	colorWhite   = lipgloss.Color("#e5e7eb")
-	colorBorder  = lipgloss.Color("#374151")
-	colorHighlight = lipgloss.Color("#1e3a5f")
+	colorGreen  = lipgloss.Color("#22c55e")
+	colorRed    = lipgloss.Color("#ef4444")
+	colorCyan   = lipgloss.Color("#06b6d4")
+	colorYellow = lipgloss.Color("#eab308")
+	colorDim    = lipgloss.Color("#6b7280")
+	colorWhite  = lipgloss.Color("#e5e7eb")
+	colorBorder = lipgloss.Color("#374151")
 
 	// Colors - backgrounds
 	colorAddedBg   = lipgloss.Color("#0d2818")
@@ -54,8 +53,23 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorCyan)
 
-	// Gutter style
-	gutterStyle = lipgloss.NewStyle().Foreground(colorDim).Width(11)
+	// Cursor indicator (1-char prefix column)
+	cursorStyle = lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
+
+	// Comment count badge in file list
+	commentCountStyle = lipgloss.NewStyle().Foreground(colorYellow)
+
+	// Inline comment display (persisted annotation below a code line)
+	commentDisplayStyle = lipgloss.NewStyle().Foreground(colorYellow).Italic(true)
+
+	// Inline comment input box
+	commentInputStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorYellow).
+				Padding(0, 1)
+
+	// Status bar
+	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
 
 	// Help styles
 	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
@@ -81,10 +95,14 @@ func init() {
 		statusUntracked = lipgloss.NewStyle()
 		panelBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 		focusedBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
-		gutterStyle = lipgloss.NewStyle().Width(11)
 		addedGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
 		removedGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
 		contextGutterStyle = lipgloss.NewStyle().Bold(true).Width(11)
+		cursorStyle = lipgloss.NewStyle().Bold(true)
+		commentCountStyle = lipgloss.NewStyle()
+		commentDisplayStyle = lipgloss.NewStyle()
+		commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+		statusBarStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
 		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
