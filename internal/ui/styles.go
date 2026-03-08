@@ -19,15 +19,18 @@ var (
 	colorBorder = lipgloss.Color("#374151")
 
 	// Colors - backgrounds
-	colorAddedBg   = lipgloss.Color("#0d2818")
-	colorRemovedBg = lipgloss.Color("#2d0b0b")
+	colorAddedBg      = lipgloss.Color("#0d2818")
+	colorRemovedBg    = lipgloss.Color("#2d0b0b")
+	colorHunkHeaderBg = lipgloss.Color("#1e2d3d")
 
 	// Line styles
-	addedStyle   = lipgloss.NewStyle().Foreground(colorGreen).Background(colorAddedBg)
-	removedStyle = lipgloss.NewStyle().Foreground(colorRed).Background(colorRemovedBg)
-	contextStyle = lipgloss.NewStyle().Foreground(colorDim)
-	hunkStyle    = lipgloss.NewStyle().Foreground(colorCyan)
-	fileStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
+	addedStyle      = lipgloss.NewStyle().Foreground(colorGreen).Background(colorAddedBg)
+	removedStyle    = lipgloss.NewStyle().Foreground(colorRed).Background(colorRemovedBg)
+	contextStyle    = lipgloss.NewStyle().Foreground(colorDim)
+	hunkStyle       = lipgloss.NewStyle().Foreground(colorCyan)
+	fileStyle       = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
+	fileHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
+	hunkHeaderStyle = lipgloss.NewStyle().Background(colorHunkHeaderBg).Foreground(colorCyan).Bold(true)
 
 	// Gutter styles
 	addedGutterStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Width(11)
@@ -87,6 +90,8 @@ func init() {
 		contextStyle = lipgloss.NewStyle()
 		hunkStyle = lipgloss.NewStyle()
 		fileStyle = lipgloss.NewStyle().Bold(true)
+		fileHeaderStyle = lipgloss.NewStyle().Bold(true)
+		hunkHeaderStyle = lipgloss.NewStyle().Bold(true).Underline(true)
 		selectedStyle = lipgloss.NewStyle().Bold(true)
 		unselectedStyle = lipgloss.NewStyle()
 		statusModified = lipgloss.NewStyle()

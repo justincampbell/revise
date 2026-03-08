@@ -21,9 +21,9 @@ func makeDiffViewModel(lineCount, height int) diffViewModel {
 }
 
 func TestDiffViewScrollDown_Clamps(t *testing.T) {
-	m := makeDiffViewModel(10, 6) // viewHeight = 4, max offset = 6
+	m := makeDiffViewModel(10, 6) // viewHeight = 5, max offset = 5
 	m.scrollDown(100)
-	assert.Equal(t, 6, m.offset)
+	assert.Equal(t, 5, m.offset)
 }
 
 func TestDiffViewScrollUp_Clamps(t *testing.T) {
@@ -41,9 +41,9 @@ func TestDiffViewGoToTop(t *testing.T) {
 }
 
 func TestDiffViewGoToBottom(t *testing.T) {
-	m := makeDiffViewModel(10, 6) // viewHeight = 4, max = 6
+	m := makeDiffViewModel(10, 6) // viewHeight = 5, max = 5
 	m.goToBottom()
-	assert.Equal(t, 6, m.offset)
+	assert.Equal(t, 5, m.offset)
 }
 
 func TestDiffViewGoToBottom_ShortContent(t *testing.T) {
@@ -55,7 +55,7 @@ func TestDiffViewGoToBottom_ShortContent(t *testing.T) {
 func TestDiffViewViewHeight(t *testing.T) {
 	m := newDiffViewModel()
 	m.height = 20
-	assert.Equal(t, 18, m.viewHeight())
+	assert.Equal(t, 19, m.viewHeight())
 }
 
 func TestDiffViewViewHeight_MinimumOne(t *testing.T) {
@@ -87,10 +87,10 @@ func TestDiffViewCursorMovesDown(t *testing.T) {
 }
 
 func TestDiffViewCursorScrollsWhenNeeded(t *testing.T) {
-	m := makeDiffViewModel(10, 6) // viewHeight = 4
+	m := makeDiffViewModel(10, 6) // viewHeight = 5
 	m.moveCursorDown(5)
 	assert.Equal(t, 5, m.cursor)
-	assert.Equal(t, 2, m.offset)
+	assert.Equal(t, 1, m.offset)
 }
 
 func TestDiffViewCursorClampsAtBottom(t *testing.T) {
@@ -160,9 +160,15 @@ func TestDiffViewCursorSkipsNilRefLines(t *testing.T) {
 
 func TestCursorRef_OnHeaderLine(t *testing.T) {
 	m := newDiffViewModel()
-	m.file = &git.FileDiff{Path: "foo.go"}
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@", NewStart: 1,
+			Lines: []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
 	m.buildLines()
-	m.cursor = 0 // file header line (nil ref)
+	m.cursor = 0 // hunk header line (non-navigable)
 	assert.Nil(t, m.cursorRef())
 }
 
@@ -178,13 +184,28 @@ func TestCursorRef_OnCodeLine(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	// lines: [0: header, 1: blank, 2: hunk, 3: code, 4: blank]
-	m.cursor = 3
+	// lines: [0: hunk, 1: code, 2: blank]
+	m.cursor = 1
 	ref := m.cursorRef()
 	assert.NotNil(t, ref)
 	key := ref.commentKey("foo.go")
 	assert.Equal(t, 1, key.lineNum)
 	assert.False(t, key.isOld)
+}
+
+func TestFormatHunkHeader_WithContext(t *testing.T) {
+	h := git.Hunk{Header: "@@ -1,5 +7,7 @@ func foo() {", NewStart: 7}
+	assert.Equal(t, "func foo() {", formatHunkHeader(h))
+}
+
+func TestFormatHunkHeader_NoContext(t *testing.T) {
+	h := git.Hunk{Header: "@@ -1,5 +7,7 @@", NewStart: 7}
+	assert.Equal(t, "@@ line 7", formatHunkHeader(h))
+}
+
+func TestFormatHunkHeader_ContextWithTrailingSpace(t *testing.T) {
+	h := git.Hunk{Header: "@@ -1,5 +7,7 @@   func bar()  ", NewStart: 7}
+	assert.Equal(t, "func bar()", formatHunkHeader(h))
 }
 
 func TestLineRef_CommentKey_Added(t *testing.T) {

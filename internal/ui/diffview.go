@@ -5,18 +5,21 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
 
 // lineRef tracks the source line metadata for a rendered display line.
 // isCommentDisplay is true for comment annotation lines inserted below code lines.
-// nil is used for non-content lines (file header, hunk header, blank separators).
+// isHunkHeader is true for hunk header lines (non-navigable, styled in render).
+// nil is used for blank separators.
 type lineRef struct {
 	newNum           int
 	oldNum           int
 	lineType         git.LineType
 	isCommentDisplay bool
+	isHunkHeader     bool
 }
 
 // commentKey returns the storage key for a comment on this line.
@@ -65,8 +68,6 @@ func (m *diffViewModel) buildLines() {
 	m.lineRefs = nil
 
 	if m.file == nil {
-		m.lines = []string{"No file selected"}
-		m.lineRefs = []*lineRef{nil}
 		return
 	}
 
@@ -75,15 +76,8 @@ func (m *diffViewModel) buildLines() {
 		m.lineRefs = append(m.lineRefs, ref)
 	}
 
-	header := m.file.Path
-	if m.file.OldPath != "" {
-		header = m.file.OldPath + " → " + m.file.Path
-	}
-	add(fileStyle.Render(header), nil)
-	add("", nil)
-
 	for _, hunk := range m.file.Hunks {
-		add(hunkStyle.Render(hunk.Header), nil)
+		add(formatHunkHeader(hunk), &lineRef{isHunkHeader: true})
 		for _, line := range hunk.Lines {
 			ref := &lineRef{
 				newNum:   line.NewNum,
@@ -103,6 +97,31 @@ func (m *diffViewModel) buildLines() {
 	}
 }
 
+// formatHunkHeader extracts the function context from a raw "@@ ... @@ context" header.
+// Falls back to "@@ line N" when no context is present.
+func formatHunkHeader(h git.Hunk) string {
+	parts := strings.SplitN(h.Header, "@@", 3)
+	if len(parts) == 3 {
+		context := strings.TrimSpace(parts[2])
+		if context != "" {
+			return context
+		}
+	}
+	return fmt.Sprintf("@@ line %d", h.NewStart)
+}
+
+func (m diffViewModel) renderFileHeader() string {
+	var name string
+	if m.file == nil {
+		name = "No file selected"
+	} else if m.file.OldPath != "" {
+		name = m.file.OldPath + " → " + m.file.Path
+	} else {
+		name = m.file.Path
+	}
+	return fileHeaderStyle.Render(" " + name)
+}
+
 // rebuildLinesPreservingCursor rebuilds display lines and restores the cursor
 // to the same code line after the rebuild (handles index shifts from added/removed
 // comment display lines).
@@ -110,7 +129,7 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 	var saved *lineRef
 	if m.cursor >= 0 && m.cursor < len(m.lineRefs) {
 		ref := m.lineRefs[m.cursor]
-		if ref != nil && !ref.isCommentDisplay {
+		if ref != nil && !ref.isCommentDisplay && !ref.isHunkHeader {
 			saved = ref
 		}
 	}
@@ -121,7 +140,7 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 		return
 	}
 	for i, ref := range m.lineRefs {
-		if ref != nil && !ref.isCommentDisplay &&
+		if ref != nil && !ref.isCommentDisplay && !ref.isHunkHeader &&
 			ref.newNum == saved.newNum &&
 			ref.oldNum == saved.oldNum &&
 			ref.lineType == saved.lineType {
@@ -139,13 +158,13 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 }
 
 // isNavigable reports whether the line at idx can receive the cursor.
-// Only code lines (non-nil, non-comment-display) are navigable.
+// Only code lines (non-nil, non-comment-display, non-hunk-header) are navigable.
 func (m *diffViewModel) isNavigable(idx int) bool {
 	if idx < 0 || idx >= len(m.lineRefs) {
 		return false
 	}
 	ref := m.lineRefs[idx]
-	return ref != nil && !ref.isCommentDisplay
+	return ref != nil && !ref.isCommentDisplay && !ref.isHunkHeader
 }
 
 func (m *diffViewModel) isCommentDisplayLine(idx int) bool {
@@ -271,14 +290,14 @@ func (m *diffViewModel) pageUp() {
 }
 
 func (m *diffViewModel) viewHeight() int {
-	h := m.height - 2 // border
+	h := m.height - 1 // file header row
 	if h < 1 {
 		h = 1
 	}
 	return h
 }
 
-// clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
+// clickToAbsIdx converts a panel-relative click Y (0 = file header row + 1)
 // to an absolute index into lines[], accounting for any visible input box.
 // Returns -1 if the click lands inside the input box itself.
 func (m diffViewModel) clickToAbsIdx(clickY int) int {
@@ -298,10 +317,6 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 		nextIdx++ // this display line was skipped in the render
 	}
 	return nextIdx + (clickY - codeAbove - inputBoxHeight)
-}
-
-func (m diffViewModel) renderLines() []string {
-	return m.lines
 }
 
 func renderDiffLine(l git.Line) string {
@@ -341,17 +356,23 @@ func (m diffViewModel) linePrefix(absIdx int) string {
 const inputBoxHeight = 3 // border top + content + border bottom
 
 func (m diffViewModel) render(focused bool) string {
+	fileHeader := m.renderFileHeader()
+
 	if len(m.lines) == 0 {
-		return panelBorder.Width(m.width).Height(m.height).Render("No changes to display")
+		content := lipgloss.NewStyle().Width(m.width).Height(m.height - 1).Render("")
+		return fileHeader + "\n" + content
 	}
 
 	viewH := m.viewHeight()
-	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
+	maxWidth := m.width - 1 // cursor prefix (1)
 	if maxWidth < 1 {
 		maxWidth = 1
 	}
 
 	renderLine := func(absIdx int) string {
+		if ref := m.lineRefs[absIdx]; ref != nil && ref.isHunkHeader {
+			return hunkHeaderStyle.Width(m.width).Render(" " + m.lines[absIdx])
+		}
 		line := m.lines[absIdx]
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
@@ -412,10 +433,6 @@ func (m diffViewModel) render(focused bool) string {
 	}
 
 	content := strings.Join(renderedLines, "\n")
-
-	style := panelBorder
-	if focused {
-		style = focusedBorder
-	}
-	return style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+	panel := lipgloss.NewStyle().Width(m.width).Height(m.height - 1).Render(content)
+	return fileHeader + "\n" + panel
 }

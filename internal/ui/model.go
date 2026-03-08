@@ -208,7 +208,7 @@ func (m *Model) updateLayout() {
 	panelH := m.height - 3 // leave 1 row for status bar
 
 	if m.fullscreen {
-		m.diffView.width = m.width - 2
+		m.diffView.width = m.width
 		m.diffView.height = panelH
 		return
 	}
@@ -220,7 +220,7 @@ func (m *Model) updateLayout() {
 
 	m.fileList.width = listW
 	m.fileList.height = panelH
-	m.diffView.width = m.width - listW - 3 // gap
+	m.diffView.width = m.width - listW - 1 // gap (diff pane has no border)
 	m.diffView.height = panelH
 }
 
