@@ -198,7 +198,21 @@ func TestModelComment_TypeAndSave(t *testing.T) {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.commentInputActive)
-	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
+	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}].Body)
+}
+
+func TestModelComment_TypeAndSave_AssignsID(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	entry := m.comments[commentKey{file: "foo.go", lineNum: 1}]
+	assert.NotEmpty(t, entry.ID, "saved comment should have an ID")
 }
 
 func TestModelComment_DeleteComment(t *testing.T) {
@@ -206,7 +220,7 @@ func TestModelComment_DeleteComment(t *testing.T) {
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
 	})
 	// Add a comment directly
-	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "to delete"
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "del1", Body: "to delete"}
 	m = focusDiffAndMoveTo(m, 0)
 	m = sendKey(m, "d")
 	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 1}]
@@ -217,11 +231,26 @@ func TestModelComment_EditExistingComment_PreFills(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
 	})
-	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "existing"
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "edit1", Body: "existing"}
 	m = focusDiffAndMoveTo(m, 0)
 	m = sendKey(m, "c")
 	assert.True(t, m.commentInputActive)
 	assert.Equal(t, "existing", m.diffView.textInput.Value())
+}
+
+func TestModelComment_EditExistingComment_PreservesID(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "stable-id", Body: "existing"}
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "c")
+	// Save without modifying the pre-filled text — ID must be preserved.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	entry := m.comments[commentKey{file: "foo.go", lineNum: 1}]
+	assert.Equal(t, "stable-id", entry.ID)
+	assert.Equal(t, "existing", entry.Body)
 }
 
 func TestModelComment_Backspace(t *testing.T) {
@@ -241,7 +270,7 @@ func TestModelComment_ClearInputOnEnter_DeletesComment(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
 	})
-	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "hi"
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "del2", Body: "hi"}
 	m = focusDiffAndMoveTo(m, 0)
 	m = sendKey(m, "c")
 	require.Equal(t, "hi", m.diffView.textInput.Value()) // pre-filled
@@ -271,7 +300,7 @@ func TestModelExport_WorksFromFileListFocus(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
 	})
-	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "exp1", Body: "a comment"}
 	require.Equal(t, focusFileList, m.focus)
 	m = sendKey(m, "e")
 	// Should have set a status message (export happened)
@@ -282,7 +311,7 @@ func TestModelExport_SetsStatusMessage(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
 	})
-	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = commentEntry{ID: "exp2", Body: "a comment"}
 	m = sendKey(m, "e")
 	assert.NotEmpty(t, m.statusMsg)
 }
@@ -306,4 +335,29 @@ func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
 	m = sendKey(m, "q")
 	assert.True(t, m.commentInputActive)
 	assert.Equal(t, "q", m.diffView.textInput.Value())
+}
+
+// --- Submit tests ---
+
+func TestModelSubmit_NoComments_SetsNoStatusMsg(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	// No review file path set (git not available in unit tests), so submit
+	// with no comments should show "no comments" message.
+	m = sendKey(m, "s")
+	assert.Equal(t, "No comments to submit", m.statusMsg)
+}
+
+// --- Refresh test ---
+
+func TestModelRefresh_RKey(t *testing.T) {
+	m := makeModel("a.go")
+	// The 'r' key should return a cmd (refresh), not crash.
+	// We just verify the model state doesn't change unexpectedly.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updated.(Model)
+	// cmd may be non-nil (launches refresh goroutine)
+	_ = cmd
+	assert.Equal(t, focusFileList, m.focus)
 }

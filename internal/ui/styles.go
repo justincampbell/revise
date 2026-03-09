@@ -62,6 +62,12 @@ var (
 	// Inline comment display (persisted annotation below a code line)
 	commentDisplayStyle = lipgloss.NewStyle().Foreground(colorYellow).Italic(true)
 
+	// Agent reply line (shown below a comment when the agent has replied)
+	replyStyle = lipgloss.NewStyle().Foreground(colorDim).Italic(true)
+
+	// Closed/addressed indicator (shown when agent marks a comment closed)
+	closedStyle = lipgloss.NewStyle().Foreground(colorGreen).Italic(true)
+
 	// Inline comment input box
 	commentInputStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -69,7 +75,8 @@ var (
 				Padding(0, 1)
 
 	// Status bar
-	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
+	statusBarStyle    = lipgloss.NewStyle().Foreground(colorDim)
+	mcpConnectedStyle = lipgloss.NewStyle().Foreground(colorGreen)
 
 	// Help styles
 	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
@@ -101,8 +108,11 @@ func init() {
 		cursorStyle = lipgloss.NewStyle().Bold(true)
 		commentCountStyle = lipgloss.NewStyle()
 		commentDisplayStyle = lipgloss.NewStyle()
+		replyStyle = lipgloss.NewStyle()
+		closedStyle = lipgloss.NewStyle()
 		commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 		statusBarStyle = lipgloss.NewStyle()
+		mcpConnectedStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
 		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)

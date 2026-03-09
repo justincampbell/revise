@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/x/ansi"
+	revisecomments "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 )
 
@@ -37,6 +38,9 @@ type diffViewModel struct {
 	height   int
 	width    int
 	comments comments
+
+	// reviewFile holds agent replies and closed status (loaded from disk, may be nil).
+	reviewFile *revisecomments.ReviewFile
 
 	commentInputActive bool
 	textInput          textinput.Model
@@ -92,11 +96,26 @@ func (m *diffViewModel) buildLines() {
 			}
 			add(renderDiffLine(line), ref)
 
-			// If this code line has a saved comment, add a display line below it.
+			// If this code line has a saved comment, add annotation lines below it.
 			key := ref.commentKey(m.file.Path)
-			if text, ok := m.comments[key]; ok {
+			if entry, ok := m.comments[key]; ok {
 				displayRef := &lineRef{isCommentDisplay: true}
-				add(commentDisplayStyle.Render("  ╰ "+text), displayRef)
+				add(commentDisplayStyle.Render("  ╰ "+entry.Body), displayRef)
+
+				// Show agent replies and closed status from the review file.
+				if m.reviewFile != nil {
+					for _, c := range m.reviewFile.Comments {
+						if c.ID == entry.ID {
+							for _, reply := range c.Replies {
+								add(replyStyle.Render("    ↳ "+reply.Body), &lineRef{isCommentDisplay: true})
+							}
+							if c.Status == "closed" {
+								add(closedStyle.Render("    ✓ addressed"), &lineRef{isCommentDisplay: true})
+							}
+							break
+						}
+					}
+				}
 			}
 		}
 		add("", nil)

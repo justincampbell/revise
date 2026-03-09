@@ -36,7 +36,9 @@ var allBindings = []BindingGroup{
 		{"d", "Delete comment on line"},
 	}},
 	{"Global", []Binding{
+		{"s", "Submit comments to Claude Code"},
 		{"e", "Export comments to clipboard"},
+		{"r", "Refresh diff"},
 	}},
 	{"Comment Input", []Binding{
 		{"Enter", "Save comment"},
