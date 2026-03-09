@@ -158,11 +158,17 @@ func TestDiffViewCursorSkipsNilRefLines(t *testing.T) {
 	assert.Equal(t, 3, m.cursor)
 }
 
-func TestCursorRef_OnHeaderLine(t *testing.T) {
+func TestCursorRef_OnHunkHeaderLine(t *testing.T) {
 	m := newDiffViewModel()
-	m.file = &git.FileDiff{Path: "foo.go"}
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
 	m.buildLines()
-	m.cursor = 0 // file header line (nil ref)
+	m.cursor = 0 // hunk header line (nil ref)
 	assert.Nil(t, m.cursorRef())
 }
 
@@ -178,13 +184,63 @@ func TestCursorRef_OnCodeLine(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	// lines: [0: header, 1: blank, 2: hunk, 3: code, 4: blank]
-	m.cursor = 3
+	// lines: [0: hunk, 1: code, 2: blank]
+	m.cursor = 1
 	ref := m.cursorRef()
 	assert.NotNil(t, ref)
 	key := ref.commentKey("foo.go")
 	assert.Equal(t, 1, key.lineNum)
 	assert.False(t, key.isOld)
+}
+
+func TestBuildLines_NoFileHeader(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineContext, Content: "x", OldNum: 1, NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	// First line should be the hunk header, not a file path header.
+	assert.Contains(t, m.lines[0], "@@ -1,1 +1,1 @@")
+}
+
+func TestDiffView_TitleInBorder(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 40
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineContext, Content: "x", OldNum: 1, NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+	output := m.render(true)
+	// The filename should appear in the rendered output (in the border title).
+	assert.Contains(t, output, "foo.go")
+}
+
+func TestDiffView_RenamedTitleInBorder(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 60
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path:    "new.go",
+		OldPath: "old.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineContext, Content: "x", OldNum: 1, NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+	output := m.render(true)
+	assert.Contains(t, output, "old.go → new.go")
 }
 
 func TestLineRef_CommentKey_Added(t *testing.T) {

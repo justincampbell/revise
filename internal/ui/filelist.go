@@ -48,8 +48,7 @@ func (m *fileListModel) ensureVisible() {
 }
 
 func (m *fileListModel) viewHeight() int {
-	// Account for header line
-	h := m.height - 2
+	h := m.height - 2 // border
 	if h < 1 {
 		h = 1
 	}
@@ -69,11 +68,6 @@ func (m fileListModel) render(focused bool) string {
 	}
 
 	var b strings.Builder
-
-	// Header
-	header := fmt.Sprintf(" Files (%d/%d)", m.cursor+1, len(m.files))
-	b.WriteString(fileStyle.Render(header))
-	b.WriteString("\n")
 
 	viewHeight := m.viewHeight()
 	end := m.offset + viewHeight
@@ -108,7 +102,12 @@ func (m fileListModel) render(focused bool) string {
 	if focused {
 		style = focusedBorder
 	}
-	return style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
+	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
+
+	// Put the header in the border title.
+	title := fmt.Sprintf(" Files (%d/%d) ", m.cursor+1, len(m.files))
+	rendered = setBorderTitle(rendered, title, focused)
+	return rendered
 }
 
 func statusIndicator(s git.FileStatus) string {

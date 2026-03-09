@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	revisecomments "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
@@ -78,13 +79,6 @@ func (m *diffViewModel) buildLines() {
 		m.lines = append(m.lines, s)
 		m.lineRefs = append(m.lineRefs, ref)
 	}
-
-	header := m.file.Path
-	if m.file.OldPath != "" {
-		header = m.file.OldPath + " → " + m.file.Path
-	}
-	add(fileStyle.Render(header), nil)
-	add("", nil)
 
 	for _, hunk := range m.file.Hunks {
 		add(hunkStyle.Render(hunk.Header), nil)
@@ -323,6 +317,35 @@ func (m diffViewModel) renderLines() []string {
 	return m.lines
 }
 
+// setBorderTitle rebuilds the top border line of a rendered box to include
+// a title after the left corner. The title is styled with fileStyle; the
+// border characters use the given border color.
+func setBorderTitle(rendered, title string, focused bool) string {
+	lines := strings.SplitN(rendered, "\n", 2)
+	if len(lines) == 0 {
+		return rendered
+	}
+	topWidth := ansi.StringWidth(lines[0])
+	if topWidth < 3 {
+		return rendered
+	}
+
+	bc := colorBorder
+	if focused {
+		bc = colorCyan
+	}
+	bs := lipgloss.NewStyle().Foreground(bc)
+
+	titleVis := ansi.StringWidth(title)
+	dashCount := topWidth - 2 - titleVis // minus 2 corners
+	if dashCount < 0 {
+		dashCount = 0
+	}
+
+	lines[0] = bs.Render("╭") + fileStyle.Render(title) + bs.Render(strings.Repeat("─", dashCount)+"╮")
+	return strings.Join(lines, "\n")
+}
+
 func renderDiffLine(l git.Line) string {
 	gutter := formatGutter(l)
 	switch l.Type {
@@ -436,5 +459,16 @@ func (m diffViewModel) render(focused bool) string {
 	if focused {
 		style = focusedBorder
 	}
-	return style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+
+	// Overlay the filename as a title in the top border.
+	if m.file != nil {
+		title := m.file.Path
+		if m.file.OldPath != "" {
+			title = m.file.OldPath + " → " + m.file.Path
+		}
+		rendered = setBorderTitle(rendered, " "+title+" ", focused)
+	}
+
+	return rendered
 }

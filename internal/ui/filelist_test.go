@@ -67,6 +67,21 @@ func TestFileListEnsureVisible_ScrollsUp(t *testing.T) {
 	assert.Equal(t, 1, m.offset)
 }
 
+func TestFileList_TitleInBorder(t *testing.T) {
+	m := newFileListModel(makeFiles("a.go", "b.go", "c.go"))
+	m.width = 30
+	m.height = 10
+	output := m.render(true)
+	assert.Contains(t, output, "Files (1/3)")
+}
+
+func TestFileListViewHeight(t *testing.T) {
+	m := newFileListModel(makeFiles("a"))
+	m.height = 20
+	// viewHeight should be height - 2 (border only, no header inside)
+	assert.Equal(t, 18, m.viewHeight())
+}
+
 func TestTruncate_Short(t *testing.T) {
 	assert.Equal(t, "abc", truncate("abc", 10))
 }

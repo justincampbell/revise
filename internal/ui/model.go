@@ -206,9 +206,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseButtonLeft:
 			if !m.mouseFocusDiff(msg) {
-				// border (1) + header (1) = 2 lines before file entries
+				// border (1) = 1 line before file entries
 				if !m.commentInputActive {
-					idx := msg.Y - 2 + m.fileList.offset
+					idx := msg.Y - 1 + m.fileList.offset
 					if idx >= 0 && idx < len(m.fileList.files) {
 						m.fileList.cursor = idx
 						m.syncSelectedFile()
