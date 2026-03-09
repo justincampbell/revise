@@ -84,3 +84,11 @@ func TestTruncate_ZeroMax(t *testing.T) {
 func TestTruncate_VerySmallMax(t *testing.T) {
 	assert.Equal(t, "ab", truncate("abcdef", 2))
 }
+
+func TestFileList_TitleInBorder(t *testing.T) {
+	m := newFileListModel(makeFiles("a.go", "b.go", "c.go"))
+	m.width = 30
+	m.height = 10
+	rendered := m.render(true)
+	assert.Contains(t, rendered, "Files (1/3)")
+}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -74,13 +75,6 @@ func (m *diffViewModel) buildLines() {
 		m.lines = append(m.lines, s)
 		m.lineRefs = append(m.lineRefs, ref)
 	}
-
-	header := m.file.Path
-	if m.file.OldPath != "" {
-		header = m.file.OldPath + " → " + m.file.Path
-	}
-	add(fileStyle.Render(header), nil)
-	add("", nil)
 
 	for _, hunk := range m.file.Hunks {
 		add(hunkStyle.Render(hunk.Header), nil)
@@ -417,5 +411,52 @@ func (m diffViewModel) render(focused bool) string {
 	if focused {
 		style = focusedBorder
 	}
-	return style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+
+	title := ""
+	if m.file != nil {
+		title = " " + m.file.Path + " "
+		if m.file.OldPath != "" {
+			title = " " + m.file.OldPath + " → " + m.file.Path + " "
+		}
+	}
+	if title != "" {
+		rendered = setBorderTitle(rendered, title, focused)
+	}
+	return rendered
+}
+
+// setBorderTitle overlays a styled title onto the top border of a lipgloss-rendered box.
+// Lipgloss v1.1.0 doesn't support border titles natively, so we reconstruct
+// the top border line: ╭ + title + remaining ─ chars + ╮.
+func setBorderTitle(rendered, title string, focused bool) string {
+	nl := strings.IndexByte(rendered, '\n')
+	if nl < 0 {
+		return rendered
+	}
+	topLine := rendered[:nl]
+	rest := rendered[nl:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(topLine)
+	titleRendered := fileStyle.Render(title)
+	titleWidth := ansi.StringWidth(titleRendered)
+
+	// Need at least room for ╭ + title + ╮
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	fillWidth := totalWidth - 1 - titleWidth - 1 // minus ╭ and ╮
+	if fillWidth < 0 {
+		fillWidth = 0
+	}
+
+	newTop := bc.Render("╭") + titleRendered + bc.Render(strings.Repeat("─", fillWidth)) + bc.Render("╮")
+	return newTop + rest
 }
