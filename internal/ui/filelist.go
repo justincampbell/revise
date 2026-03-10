@@ -301,17 +301,19 @@ func (m fileListModel) renderTreeRows(b *strings.Builder) {
 
 	for i := m.offset; i < end; i++ {
 		row := m.rows[i]
-		displayName := treeDisplayName(row)
+		prefix := row.prefix
+		prefixWidth := len([]rune(prefix))
+		availWidth := m.width - 2 - prefixWidth // -2 for border padding
 
 		if row.node.isDir() {
-			// Directory row
+			label := treeLabel(row)
+			label = truncate(label, availWidth)
 			if i == m.cursor {
-				b.WriteString(selectedStyle.Render(truncate(displayName, m.width-2)))
+				b.WriteString(selectedStyle.Render(prefix + label))
 			} else {
-				b.WriteString(dirStyle.Render(truncate(displayName, m.width-2)))
+				b.WriteString(dirStyle.Render(prefix + label))
 			}
 		} else {
-			// File row
 			status := treeFileStatus(row, m.files)
 			statusStr := statusIndicator(status)
 			filePath := treeFilePath(row, m.files)
@@ -320,12 +322,13 @@ func (m fileListModel) renderTreeRows(b *strings.Builder) {
 			if count > 0 {
 				countSuffix = fmt.Sprintf(" (%d)", count)
 			}
-			name := truncate(displayName, m.width-4-len(countSuffix))
+			// prefix + status + " " + name + countSuffix must fit
+			name := truncate(row.node.name, availWidth-2-len(countSuffix))
 
 			if i == m.cursor {
-				b.WriteString(selectedStyle.Render(statusStr+" "+name) + commentCountStyle.Render(countSuffix))
+				b.WriteString(selectedStyle.Render(prefix+statusStr+" "+name) + commentCountStyle.Render(countSuffix))
 			} else {
-				b.WriteString(unselectedStyle.Render(statusStr+" "+name) + commentCountStyle.Render(countSuffix))
+				b.WriteString(unselectedStyle.Render(prefix+statusStr+" "+name) + commentCountStyle.Render(countSuffix))
 			}
 		}
 

@@ -179,6 +179,20 @@ func TestTreeDisplayName_NestedBranchChars(t *testing.T) {
 	assert.Equal(t, "    └── e.go", treeDisplayName(rows[4]))
 }
 
+func TestTreeLabel_Dir(t *testing.T) {
+	node := &treeNode{name: "ui", children: []*treeNode{}, expanded: true}
+	row := treeRow{node: node, depth: 1, prefix: "├── "}
+	assert.Equal(t, "▾ ui/", treeLabel(row))
+	assert.Equal(t, "├── ▾ ui/", treeDisplayName(row))
+}
+
+func TestTreeLabel_File(t *testing.T) {
+	node := &treeNode{name: "model.go", fileIdx: 0}
+	row := treeRow{node: node, depth: 1, prefix: "└── "}
+	assert.Equal(t, "model.go", treeLabel(row))
+	assert.Equal(t, "└── model.go", treeDisplayName(row))
+}
+
 func TestBuildTree_FileIndices(t *testing.T) {
 	files := makeFileDiffs("b.go", "a/c.go", "a/d.go")
 	tree := buildTree(files)

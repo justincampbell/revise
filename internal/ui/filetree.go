@@ -152,16 +152,21 @@ func buildPrefix(ancestors []bool, isLast bool, depth int) string {
 	return b.String()
 }
 
-// treeDisplayName returns the display name for a tree row.
+// treeDisplayName returns the full display string for a tree row (prefix + label).
 func treeDisplayName(row treeRow) string {
+	return row.prefix + treeLabel(row)
+}
+
+// treeLabel returns just the label portion (no branch prefix) for a tree row.
+func treeLabel(row treeRow) string {
 	if row.node.isDir() {
 		arrow := "▸"
 		if row.node.expanded {
 			arrow = "▾"
 		}
-		return row.prefix + arrow + " " + row.node.name + "/"
+		return arrow + " " + row.node.name + "/"
 	}
-	return row.prefix + row.node.name
+	return row.node.name
 }
 
 // treeFileStatus returns the status indicator for a tree row, or "" for directories.
