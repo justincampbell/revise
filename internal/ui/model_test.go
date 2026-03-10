@@ -146,6 +146,25 @@ func TestModelLeftKey_ExitsFullscreen(t *testing.T) {
 	assert.Equal(t, focusFileList, m.focus)
 }
 
+func TestModelRightKey_WhenAlreadyFocused_TogglesFullscreen(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "l") // focus diff
+	assert.Equal(t, focusDiffView, m.focus)
+	assert.False(t, m.fullscreen)
+	m = sendKey(m, "l") // right again → fullscreen
+	assert.True(t, m.fullscreen)
+	m = sendKey(m, "l") // right again → exit fullscreen
+	assert.False(t, m.fullscreen)
+}
+
+func TestModelRightKey_WhenFileListFocused_FocusesDiff(t *testing.T) {
+	m := makeModel("a.go")
+	assert.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "l")
+	assert.Equal(t, focusDiffView, m.focus)
+	assert.False(t, m.fullscreen)
+}
+
 func TestModelHelpDismissedByAnyKey(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "?")

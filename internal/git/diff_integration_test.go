@@ -324,6 +324,60 @@ func TestGetDiff_DefaultBranch_DeletedFile(t *testing.T) {
 }
 
 // ============================================================================
+// RemoteName
+// ============================================================================
+
+func TestRemoteName_NoRemote(t *testing.T) {
+	_ = baseRepo(t)
+	assert.Equal(t, "", RemoteName())
+}
+
+func TestRemoteName_Origin(t *testing.T) {
+	r := baseRepo(t)
+	bare := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bare)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	r.AddRemote(t, bare)
+	assert.Equal(t, "origin", RemoteName())
+}
+
+func TestRemoteName_NonOriginRemote(t *testing.T) {
+	r := baseRepo(t)
+	bare := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bare)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	exec.Command("git", "-C", bare, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	r.AddRemoteAs(t, bare, "upstream")
+	assert.Equal(t, "upstream", RemoteName())
+}
+
+func TestRemoteName_PrefersOriginOverOthers(t *testing.T) {
+	r := baseRepo(t)
+
+	bare1 := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bare1)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	exec.Command("git", "-C", bare1, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	r.AddRemoteAs(t, bare1, "upstream")
+
+	bare2 := t.TempDir()
+	cmd = exec.Command("git", "init", "--bare", bare2)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	exec.Command("git", "-C", bare2, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	r.mustGit("remote", "add", "origin", bare2)
+
+	assert.Equal(t, "origin", RemoteName())
+}
+
+// ============================================================================
 // IsOnDefaultBranch
 // ============================================================================
 

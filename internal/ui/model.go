@@ -113,7 +113,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "right", "l":
-			m.focus = focusDiffView
+			if m.focus == focusDiffView {
+				m.fullscreen = !m.fullscreen
+				m.updateLayout()
+			} else {
+				m.focus = focusDiffView
+			}
 			return m, nil
 
 		case "left", "h":
