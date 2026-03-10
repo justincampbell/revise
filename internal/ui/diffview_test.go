@@ -196,15 +196,23 @@ func TestCursorRef_OnCodeLine(t *testing.T) {
 func TestLinePrefix_NoFileSelected(t *testing.T) {
 	m := newDiffViewModel()
 	// m.file is nil — no file selected
-	assert.Equal(t, " ", m.linePrefix(0))
+	assert.Equal(t, " ", m.linePrefix(0, true))
 }
 
-func TestLinePrefix_WithFileSelected(t *testing.T) {
+func TestLinePrefix_WithFileSelected_Focused(t *testing.T) {
 	m := newDiffViewModel()
 	m.file = &git.FileDiff{Path: "foo.go"}
 	m.cursor = 2
-	assert.Equal(t, " ", m.linePrefix(0))
-	assert.Contains(t, m.linePrefix(2), "▶")
+	assert.Equal(t, " ", m.linePrefix(0, true))
+	assert.Contains(t, m.linePrefix(2, true), "▶")
+}
+
+func TestLinePrefix_WithFileSelected_NotFocused(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.cursor = 2
+	assert.Equal(t, " ", m.linePrefix(0, false))
+	assert.Equal(t, " ", m.linePrefix(2, false)) // cursor hidden when not focused
 }
 
 func TestLineRef_CommentKey_Added(t *testing.T) {
