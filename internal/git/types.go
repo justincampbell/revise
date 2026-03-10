@@ -24,6 +24,15 @@ type FileDiff struct {
 	Hunks   []Hunk
 }
 
+// HunkSource identifies where a hunk came from.
+type HunkSource string
+
+const (
+	SourceBranch   HunkSource = "Branch"
+	SourceStaged   HunkSource = "Staged"
+	SourceUnstaged HunkSource = "Unstaged"
+)
+
 // Hunk represents a single diff hunk.
 type Hunk struct {
 	OldStart int
@@ -31,6 +40,7 @@ type Hunk struct {
 	NewStart int
 	NewCount int
 	Header   string // the @@ line
+	Source   HunkSource
 	Lines    []Line
 }
 

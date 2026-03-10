@@ -77,7 +77,11 @@ func (m *diffViewModel) buildLines() {
 	}
 
 	for _, hunk := range m.file.Hunks {
-		add(hunkStyle.Render(hunk.Header), nil)
+		header := hunk.Header
+		if hunk.Source != "" {
+			header = header + "  " + string(hunk.Source)
+		}
+		add(hunkStyle.Render(header), nil)
 		for _, line := range hunk.Lines {
 			ref := &lineRef{
 				newNum:   line.NewNum,

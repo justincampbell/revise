@@ -149,11 +149,13 @@ func BranchDiff() (*Diff, error) {
 		return nil, err
 	}
 	diff := Parse(raw)
+	tagHunks(diff.Files, SourceBranch)
 
 	wtDiff, err := WorkingTreeDiff()
 	if err != nil {
 		return nil, err
 	}
+	// WorkingTreeDiff already tags its hunks as Staged/Unstaged
 	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
 	return diff, nil
 }
@@ -164,7 +166,9 @@ func StagedOnlyDiff() (*Diff, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Parse(raw), nil
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceStaged)
+	return diff, nil
 }
 
 // UnstagedOnlyDiff returns unstaged changes + untracked files.
@@ -175,6 +179,7 @@ func UnstagedOnlyDiff() (*Diff, error) {
 	}
 
 	diff := Parse(raw)
+	tagHunks(diff.Files, SourceUnstaged)
 
 	untracked, err := UntrackedFiles()
 	if err != nil {
@@ -216,43 +221,64 @@ func GetDiff() (*Diff, error) {
 
 // getWorkingTreeDiff returns staged + unstaged + untracked changes.
 func getWorkingTreeDiff() (*Diff, error) {
-	staged, err := StagedDiff()
+	stagedRaw, err := StagedDiff()
 	if err != nil {
 		return nil, err
 	}
-	unstaged, err := UnstagedDiff()
+	unstagedRaw, err := UnstagedDiff()
 	if err != nil {
 		return nil, err
 	}
 
-	diff := Parse(staged + unstaged)
+	staged := Parse(stagedRaw)
+	tagHunks(staged.Files, SourceStaged)
+	unstaged := Parse(unstagedRaw)
+	tagHunks(unstaged.Files, SourceUnstaged)
+	// Merge so same-path files appear once with hunks from both.
+	staged.Files = mergeFileDiffs(staged.Files, unstaged.Files)
 
 	untracked, err := UntrackedFiles()
 	if err != nil {
 		return nil, err
 	}
-	diff.Files = append(diff.Files, untracked...)
+	staged.Files = append(staged.Files, untracked...)
 
-	return diff, nil
+	return staged, nil
 }
 
-// mergeFileDiffs combines branch diffs with working tree diffs.
-// Working tree entries for the same path replace branch entries
-// (they represent the latest state). New paths are appended.
-func mergeFileDiffs(branch, wt []FileDiff) []FileDiff {
-	seen := make(map[string]int, len(branch))
-	for i, f := range branch {
+// tagHunks sets the Source field on all hunks in the given file diffs.
+func tagHunks(files []FileDiff, source HunkSource) {
+	for i := range files {
+		for j := range files[i].Hunks {
+			files[i].Hunks[j].Source = source
+		}
+	}
+}
+
+// mergeFileDiffs combines two sets of file diffs.
+// For the same path, hunks from both are combined (base first, then overlay).
+// New paths are appended. The inputs are not mutated.
+func mergeFileDiffs(base, overlay []FileDiff) []FileDiff {
+	result := make([]FileDiff, len(base))
+	copy(result, base)
+
+	seen := make(map[string]int, len(result))
+	for i, f := range result {
 		seen[f.Path] = i
 	}
 
-	for _, f := range wt {
+	for _, f := range overlay {
 		if idx, ok := seen[f.Path]; ok {
-			// Working tree has newer changes for this file — replace
-			branch[idx] = f
+			// Same file — combine hunks
+			combined := make([]Hunk, len(result[idx].Hunks), len(result[idx].Hunks)+len(f.Hunks))
+			copy(combined, result[idx].Hunks)
+			combined = append(combined, f.Hunks...)
+			result[idx].Hunks = combined
 		} else {
-			branch = append(branch, f)
+			result = append(result, f)
+			seen[f.Path] = len(result) - 1
 		}
 	}
 
-	return branch
+	return result
 }

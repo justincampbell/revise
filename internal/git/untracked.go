@@ -52,6 +52,7 @@ func UntrackedFiles() ([]FileDiff, error) {
 					NewStart: 1,
 					NewCount: len(hunkLines),
 					Header:   fmt.Sprintf("@@ -0,0 +1,%d @@", len(hunkLines)),
+					Source:   SourceUnstaged,
 					Lines:    hunkLines,
 				},
 			},

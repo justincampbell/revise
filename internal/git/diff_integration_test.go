@@ -196,8 +196,8 @@ func TestGetDiff_FeatureBranch_CommittedAndMixed(t *testing.T) {
 	assert.Contains(t, paths, "base.go")
 }
 
-// Working tree version of a committed file replaces the branch diff entry
-func TestGetDiff_FeatureBranch_WorkingTreeOverridesCommitted(t *testing.T) {
+// Working tree version of a committed file combines hunks from both sources
+func TestGetDiff_FeatureBranch_WorkingTreeCombinesWithCommitted(t *testing.T) {
 	r := featureBranchRepo(t)
 	r.WriteFile("feature.go", "package main\n\nfunc feature() { /* working tree */ }\n")
 	r.Add("feature.go")
@@ -212,7 +212,16 @@ func TestGetDiff_FeatureBranch_WorkingTreeOverridesCommitted(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, count, "feature.go should appear exactly once")
-	assertHasContent(t, *fileByPath(diff, "feature.go"), "working tree")
+
+	f := fileByPath(diff, "feature.go")
+	require.NotNil(t, f)
+	// Should have hunks from both branch and staged
+	var sources []HunkSource
+	for _, h := range f.Hunks {
+		sources = append(sources, h.Source)
+	}
+	assert.Contains(t, sources, SourceBranch)
+	assert.Contains(t, sources, SourceStaged)
 }
 
 // Starting ref: merge-base / Everything: multiple commits + working tree changes
@@ -390,6 +399,97 @@ func TestWorkingTreeDiff_ShowsStagedUnstagedUntracked(t *testing.T) {
 	assert.Contains(t, paths, "staged.go")
 	assert.Contains(t, paths, "base.go")
 	assert.Contains(t, paths, "untracked.go")
+}
+
+// Same file with both staged and unstaged changes should appear once with hunks from both.
+func TestWorkingTreeDiff_SameFileStagedAndUnstaged(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* staged edit */ }\n")
+	r.Add("base.go")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* staged edit */ }\n\n// unstaged addition\n")
+
+	diff, err := WorkingTreeDiff()
+	require.NoError(t, err)
+
+	count := 0
+	for _, f := range diff.Files {
+		if f.Path == "base.go" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "base.go should appear exactly once")
+
+	f := fileByPath(diff, "base.go")
+	require.NotNil(t, f)
+	// Should have hunks from both staged and unstaged
+	assertHasContent(t, *f, "staged edit")
+	assertHasContent(t, *f, "unstaged addition")
+
+	// Verify hunk sources are tagged
+	var sources []HunkSource
+	for _, h := range f.Hunks {
+		sources = append(sources, h.Source)
+	}
+	assert.Contains(t, sources, SourceStaged)
+	assert.Contains(t, sources, SourceUnstaged)
+}
+
+// Same file changed across all three sources (branch + staged + unstaged) should combine all hunks.
+func TestBranchDiff_ThreeSourceCombination(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("shared.go", "package main\n\nfunc shared() {}\n")
+	r.Add("shared.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	// Branch commit: modify the function
+	r.WriteFile("shared.go", "package main\n\nfunc shared() { /* branch */ }\n")
+	r.Add("shared.go")
+	r.Commit("branch change")
+
+	// Staged: add a new function
+	r.WriteFile("shared.go", "package main\n\nfunc shared() { /* branch */ }\n\nfunc staged() {}\n")
+	r.Add("shared.go")
+
+	// Unstaged: add another line
+	r.WriteFile("shared.go", "package main\n\nfunc shared() { /* branch */ }\n\nfunc staged() {}\n\n// unstaged\n")
+	r.Chdir()
+
+	diff, err := BranchDiff()
+	require.NoError(t, err)
+
+	f := fileByPath(diff, "shared.go")
+	require.NotNil(t, f)
+
+	count := 0
+	for _, fd := range diff.Files {
+		if fd.Path == "shared.go" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "shared.go should appear exactly once")
+
+	var sources []HunkSource
+	for _, h := range f.Hunks {
+		sources = append(sources, h.Source)
+	}
+	assert.Contains(t, sources, SourceBranch)
+	assert.Contains(t, sources, SourceStaged)
+	assert.Contains(t, sources, SourceUnstaged)
+}
+
+// Untracked file hunks should be tagged as SourceUnstaged.
+func TestUntrackedFiles_TaggedAsUnstaged(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("new.go", "package main\n\nfunc newFn() {}\n")
+
+	diff, err := WorkingTreeDiff()
+	require.NoError(t, err)
+
+	f := fileByPath(diff, "new.go")
+	require.NotNil(t, f)
+	require.Len(t, f.Hunks, 1)
+	assert.Equal(t, SourceUnstaged, f.Hunks[0].Source)
 }
 
 func TestGetDiff_FeatureBranch_RenamedFile(t *testing.T) {
