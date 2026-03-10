@@ -569,6 +569,84 @@ func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
 	assert.NotContains(t, status, "+2/-1")
 }
 
+// --- Tree view tests ---
+
+func TestModelT_TogglesTreeView(t *testing.T) {
+	m := makeModel("internal/ui/model.go", "internal/git/diff.go", "main.go")
+	assert.False(t, m.fileList.treeView)
+	m = sendKey(m, "t")
+	assert.True(t, m.fileList.treeView)
+	m = sendKey(m, "t")
+	assert.False(t, m.fileList.treeView)
+}
+
+func TestModelT_TreeViewNavigation(t *testing.T) {
+	m := makeModel("internal/ui/model.go", "internal/git/diff.go", "main.go")
+	m = sendKey(m, "t") // enable tree view
+	require.True(t, m.fileList.treeView)
+
+	// First row should be a directory (internal)
+	assert.True(t, m.fileList.rows[0].node.isDir())
+
+	// Navigate down to find a file
+	m = sendKey(m, "j") // move to first child
+	m = sendKey(m, "j") // move to next
+	// Should be able to navigate without crashing
+	assert.True(t, m.fileList.cursor >= 0)
+}
+
+func TestModelT_EnterOnDir_TogglesExpand(t *testing.T) {
+	m := makeModel("internal/ui/model.go", "main.go")
+	m = sendKey(m, "t") // enable tree view
+	require.True(t, m.fileList.treeView)
+
+	// Cursor should be on first row (directory)
+	assert.Equal(t, 0, m.fileList.cursor)
+	assert.True(t, m.fileList.rows[0].node.isDir())
+	initialRows := len(m.fileList.rows)
+
+	// Press Enter to collapse
+	m = sendSpecialKey(m, tea.KeyEnter)
+	assert.Less(t, len(m.fileList.rows), initialRows)
+
+	// Press Enter to expand again
+	m = sendSpecialKey(m, tea.KeyEnter)
+	assert.Equal(t, initialRows, len(m.fileList.rows))
+}
+
+func TestModelT_EnterOnFile_FocusesDiff(t *testing.T) {
+	m := makeModel("main.go")
+	m = sendKey(m, "t") // enable tree view
+	require.True(t, m.fileList.treeView)
+
+	// Only file, no directory — first row is the file
+	assert.False(t, m.fileList.rows[0].node.isDir())
+	m = sendSpecialKey(m, tea.KeyEnter)
+	assert.Equal(t, focusDiffView, m.focus)
+}
+
+func TestModelT_PreservesSelectionOnToggle(t *testing.T) {
+	m := makeModel("a.go", "b.go", "c.go")
+	m = sendKey(m, "j") // select b.go
+	require.Equal(t, "b.go", m.fileList.selectedFile().Path)
+
+	m = sendKey(m, "t") // enable tree
+	f := m.fileList.selectedFile()
+	require.NotNil(t, f)
+	assert.Equal(t, "b.go", f.Path)
+
+	m = sendKey(m, "t") // back to flat
+	assert.Equal(t, "b.go", m.fileList.selectedFile().Path)
+}
+
+func TestModelT_SelectedFileOnDir_ReturnsNil(t *testing.T) {
+	m := makeModel("internal/ui/model.go", "main.go")
+	m = sendKey(m, "t")
+	// Cursor on directory row
+	assert.True(t, m.fileList.rows[0].node.isDir())
+	assert.Nil(t, m.fileList.selectedFile())
+}
+
 func TestRenderStatusBar_DiffNoPaneTotals(t *testing.T) {
 	files := []git.FileDiff{
 		{

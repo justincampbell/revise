@@ -86,11 +86,13 @@ internal/
   ui/
     model.go                   # root Bubbletea model, layout, input routing
     filelist.go                # left panel: file list
+    filetree.go                # tree view: build, collapse, flatten file trees
     diffview.go                # right panel: diff renderer + scroll
     keys.go                    # keyboard binding definitions (single source of truth)
     styles.go                  # all Lipgloss styles, NO_COLOR support
     help.go                    # help overlay
     model_test.go              # model key routing tests
+    filetree_test.go           # tree building, collapsing, flattening tests
     filelist_test.go           # navigation and truncate tests
     diffview_test.go           # scroll logic and gutter format tests
     help_test.go               # padRight unicode tests
@@ -147,7 +149,8 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `q` / `Ctrl+C` | Quit |
 | `e` | Export comments (works from any panel) |
 | `j/k`, `↑/↓` | Navigate files (file list) / move cursor (diff) |
-| `Enter` | Select file and focus diff (file list) / open comment input (diff) |
+| `Enter` | Select file and focus diff (file list) / toggle expand dir (tree) / open comment input (diff) |
+| `t` | Toggle tree view (file list) |
 | `}` / `{` (`]`/`[`) | Next / prev hunk |
 | `g` / `G` | Top / bottom of diff |
 | `Fn+↓` / `Space` | Page down |

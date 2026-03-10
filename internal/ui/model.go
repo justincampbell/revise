@@ -217,7 +217,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// border (1) = 1 line before file entries
 				if !m.commentInputActive {
 					idx := msg.Y - 1 + m.fileList.offset
-					if idx >= 0 && idx < len(m.fileList.files) {
+					if idx >= 0 && idx < m.fileList.rowCount() {
 						m.fileList.cursor = idx
 						m.syncSelectedFile()
 					}
@@ -266,8 +266,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if f := m.fileList.selectedFile(); f != nil {
 			selectedPath = f.Path
 		}
+		wasTreeView := m.fileList.treeView
 		m.fileList = newFileListModel(m.diff.Files)
 		m.fileList.comments = m.comments
+		if wasTreeView {
+			m.fileList.treeView = true
+			m.fileList.rebuildTree()
+		}
 		m.updateLayout()
 		// Re-select the same file if it still exists
 		if selectedPath != "" {
@@ -320,8 +325,14 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.fileList.moveUp()
 		m.syncSelectedFile()
 	case "enter":
+		// In tree view, Enter on a directory toggles expand/collapse
+		if !m.fileList.toggleExpand() {
+			m.syncSelectedFile()
+			m.focus = focusDiffView
+		}
+	case "t":
+		m.fileList.toggleTreeView()
 		m.syncSelectedFile()
-		m.focus = focusDiffView
 	}
 	return m, nil
 }

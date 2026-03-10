@@ -14,6 +14,10 @@ type fileListModel struct {
 	width    int
 	offset   int // scroll offset
 	comments comments
+
+	treeView bool
+	tree     []*treeNode
+	rows     []treeRow // flattened visible rows
 }
 
 func newFileListModel(files []git.FileDiff) fileListModel {
@@ -21,6 +25,48 @@ func newFileListModel(files []git.FileDiff) fileListModel {
 		files:    files,
 		comments: make(comments),
 	}
+}
+
+func (m *fileListModel) toggleTreeView() {
+	m.treeView = !m.treeView
+	if m.treeView {
+		m.rebuildTree()
+	}
+	// Preserve file selection when switching views
+	selectedPath := ""
+	if f := m.selectedFile(); f != nil {
+		selectedPath = f.Path
+	}
+	if m.treeView && selectedPath != "" {
+		for i, row := range m.rows {
+			if !row.node.isDir() && row.node.fileIdx >= 0 && row.node.fileIdx < len(m.files) {
+				if m.files[row.node.fileIdx].Path == selectedPath {
+					m.cursor = i
+					break
+				}
+			}
+		}
+	} else if !m.treeView && selectedPath != "" {
+		for i, f := range m.files {
+			if f.Path == selectedPath {
+				m.cursor = i
+				break
+			}
+		}
+	}
+	m.ensureVisible()
+}
+
+func (m *fileListModel) rebuildTree() {
+	m.tree = buildTree(m.files)
+	m.rows = flattenTree(m.tree)
+}
+
+func (m *fileListModel) rowCount() int {
+	if m.treeView {
+		return len(m.rows)
+	}
+	return len(m.files)
 }
 
 func (m *fileListModel) moveUp() {
@@ -31,7 +77,7 @@ func (m *fileListModel) moveUp() {
 }
 
 func (m *fileListModel) moveDown() {
-	if m.cursor < len(m.files)-1 {
+	if m.cursor < m.rowCount()-1 {
 		m.cursor++
 		m.ensureVisible()
 	}
@@ -56,10 +102,43 @@ func (m *fileListModel) viewHeight() int {
 }
 
 func (m fileListModel) selectedFile() *git.FileDiff {
+	if m.treeView {
+		if m.cursor < 0 || m.cursor >= len(m.rows) {
+			return nil
+		}
+		row := m.rows[m.cursor]
+		if row.node.isDir() {
+			return nil
+		}
+		if row.node.fileIdx >= 0 && row.node.fileIdx < len(m.files) {
+			return &m.files[row.node.fileIdx]
+		}
+		return nil
+	}
 	if len(m.files) == 0 {
 		return nil
 	}
 	return &m.files[m.cursor]
+}
+
+// toggleExpand toggles expand/collapse on a directory node in tree view.
+// Returns true if the current row is a directory.
+func (m *fileListModel) toggleExpand() bool {
+	if !m.treeView || m.cursor < 0 || m.cursor >= len(m.rows) {
+		return false
+	}
+	row := m.rows[m.cursor]
+	if !row.node.isDir() {
+		return false
+	}
+	row.node.expanded = !row.node.expanded
+	m.rows = flattenTree(m.tree)
+	// Clamp cursor if rows shrunk
+	if m.cursor >= len(m.rows) {
+		m.cursor = len(m.rows) - 1
+	}
+	m.ensureVisible()
+	return true
 }
 
 func (m fileListModel) totals() (added, removed int) {
@@ -99,6 +178,37 @@ func (m fileListModel) render(focused bool) string {
 
 	var b strings.Builder
 
+	if m.treeView {
+		m.renderTreeRows(&b)
+	} else {
+		m.renderFlatRows(&b)
+	}
+
+	added, removed := m.totals()
+	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
+
+	fileNum := m.selectedFileNum()
+	title := fmt.Sprintf(" Files (%d/%d) ", fileNum, len(m.files))
+	rendered = setBorderTitle(rendered, title, focused)
+	rendered = setBorderBottomCounts(rendered, added, removed, focused)
+	return rendered
+}
+
+func (m fileListModel) selectedFileNum() int {
+	if m.treeView {
+		if m.cursor >= 0 && m.cursor < len(m.rows) {
+			row := m.rows[m.cursor]
+			if !row.node.isDir() && row.node.fileIdx >= 0 {
+				return row.node.fileIdx + 1
+			}
+		}
+		// On a directory, show 0
+		return 0
+	}
+	return m.cursor + 1
+}
+
+func (m fileListModel) renderFlatRows(b *strings.Builder) {
 	viewHeight := m.viewHeight()
 	end := m.offset + viewHeight
 	if end > len(m.files) {
@@ -127,14 +237,49 @@ func (m fileListModel) render(focused bool) string {
 			b.WriteString("\n")
 		}
 	}
+}
 
-	added, removed := m.totals()
-	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
+func (m fileListModel) renderTreeRows(b *strings.Builder) {
+	viewHeight := m.viewHeight()
+	end := m.offset + viewHeight
+	if end > len(m.rows) {
+		end = len(m.rows)
+	}
 
-	title := fmt.Sprintf(" Files (%d/%d) ", m.cursor+1, len(m.files))
-	rendered = setBorderTitle(rendered, title, focused)
-	rendered = setBorderBottomCounts(rendered, added, removed, focused)
-	return rendered
+	for i := m.offset; i < end; i++ {
+		row := m.rows[i]
+		displayName := treeDisplayName(row)
+
+		if row.node.isDir() {
+			// Directory row
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(truncate(displayName, m.width-2)))
+			} else {
+				b.WriteString(dirStyle.Render(truncate(displayName, m.width-2)))
+			}
+		} else {
+			// File row
+			status := treeFileStatus(row, m.files)
+			statusStr := statusIndicator(status)
+			filePath := treeFilePath(row, m.files)
+			count := m.comments.countForFile(filePath)
+			countSuffix := ""
+			if count > 0 {
+				countSuffix = fmt.Sprintf(" (%d)", count)
+			}
+			name := truncate(displayName, m.width-4-len(countSuffix))
+
+			if i == m.cursor {
+				b.WriteString(selectedStyle.Render(statusStr+" "+name) + commentCountStyle.Render(countSuffix))
+			} else {
+				b.WriteString(unselectedStyle.Render(statusStr+" "+name) + commentCountStyle.Render(countSuffix))
+			}
+		}
+
+		if i < end-1 {
+			b.WriteString("\n")
+		}
+	}
 }
 
 func statusIndicator(s git.FileStatus) string {

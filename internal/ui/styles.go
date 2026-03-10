@@ -41,6 +41,9 @@ var (
 	selectedStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
 	unselectedStyle = lipgloss.NewStyle().Foreground(colorDim)
 
+	// Directory name style in tree view
+	dirStyle = lipgloss.NewStyle().Foreground(colorCyan)
+
 	// Status indicators
 	statusModified  = lipgloss.NewStyle().Foreground(colorYellow)
 	statusAdded     = lipgloss.NewStyle().Foreground(colorGreen)
@@ -103,6 +106,7 @@ func init() {
 		statusAdded = lipgloss.NewStyle()
 		statusDeleted = lipgloss.NewStyle()
 		statusUntracked = lipgloss.NewStyle()
+		dirStyle = lipgloss.NewStyle()
 		panelBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 		focusedBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 		addedGutterStyle = lipgloss.NewStyle().Bold(true).Width(6)
