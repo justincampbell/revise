@@ -399,8 +399,9 @@ func hunkContext(header string) string {
 }
 
 // linePrefix returns the 1-character cursor indicator for a display line.
-func (m diffViewModel) linePrefix(absIdx int) string {
-	if m.file != nil && absIdx == m.cursor {
+// The cursor is only shown when the diff pane is focused.
+func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
+	if focused && m.file != nil && absIdx == m.cursor {
 		return cursorStyle.Render("▶")
 	}
 	return " "
@@ -421,7 +422,7 @@ func (m diffViewModel) render(focused bool) string {
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
 		}
-		return m.linePrefix(absIdx) + line
+		return m.linePrefix(absIdx, focused) + line
 	}
 
 	var renderedLines []string
