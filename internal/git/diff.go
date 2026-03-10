@@ -70,7 +70,12 @@ const DefaultContextLines = 3
 
 // RawDiff returns the raw unified diff from the merge-base to HEAD.
 func RawDiff(mergeBase string, contextLines int) (string, error) {
-	args := []string{"diff", fmt.Sprintf("-U%d", contextLines), mergeBase, "HEAD"}
+	return RawDiffBetween(mergeBase, "HEAD", contextLines)
+}
+
+// RawDiffBetween returns the raw unified diff between two refs.
+func RawDiffBetween(from, to string, contextLines int) (string, error) {
+	args := []string{"diff", fmt.Sprintf("-U%d", contextLines), from, to}
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -122,16 +127,30 @@ func CurrentRef() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// resolveRef returns the commit hash for the given ref, or "" if it doesn't exist.
+func resolveRef(ref string) string {
+	out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", ref).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // IsOnDefaultBranch returns true if the current HEAD is at the merge-base
-// with the default branch (i.e. no feature-branch commits).
+// with the default branch AND up to date with the remote tracking branch.
+// Returns false when on a feature branch (merge-base != HEAD) or when on
+// the default branch but the remote has diverged (useful for reviewing
+// incoming/outgoing changes via branch mode).
 func IsOnDefaultBranch() (bool, error) {
 	branch, err := DefaultBranch()
 	if err != nil {
 		return false, err
 	}
 
+	remote := RemoteName()
+
 	var mergeBase string
-	if remote := RemoteName(); remote != "" {
+	if remote != "" {
 		mergeBase, err = MergeBase(remote + "/" + branch)
 	}
 	if err != nil || mergeBase == "" {
@@ -147,7 +166,20 @@ func IsOnDefaultBranch() (bool, error) {
 		return false, err
 	}
 
-	return mergeBase == head, nil
+	if mergeBase != head {
+		return false, nil // feature branch
+	}
+
+	// merge-base == HEAD: we're on or at the default branch.
+	// Check if the remote tracking branch has different commits.
+	if remote != "" {
+		remoteRef := resolveRef(remote + "/" + branch)
+		if remoteRef != "" && remoteRef != head {
+			return false, nil // default branch but not up to date with remote
+		}
+	}
+
+	return true, nil
 }
 
 // resolveMergeBase finds the merge-base for the current branch.
@@ -172,15 +204,41 @@ func resolveMergeBase() (string, error) {
 
 // BranchDiff returns the merge-base diff merged with all working tree changes.
 // This is the broadest view — committed + staged + unstaged + untracked.
+// On the default branch behind the remote, it shows the remote's changes.
 func BranchDiff(contextLines int) (*Diff, error) {
 	mergeBase, err := resolveMergeBase()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := RawDiff(mergeBase, contextLines)
+
+	head, err := CurrentRef()
 	if err != nil {
 		return nil, err
 	}
+
+	var raw string
+	if mergeBase == head {
+		// merge-base == HEAD: we're on the default branch but the remote
+		// has different commits. Diff HEAD against the remote ref.
+		branch, err := DefaultBranch()
+		if err != nil {
+			return nil, err
+		}
+		remote := RemoteName()
+		if remote == "" {
+			return nil, fmt.Errorf("no remote configured")
+		}
+		raw, err = RawDiffBetween(head, remote+"/"+branch, contextLines)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		raw, err = RawDiff(mergeBase, contextLines)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	diff := Parse(raw)
 	tagHunks(diff.Files, SourceBranch)
 

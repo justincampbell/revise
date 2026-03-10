@@ -205,6 +205,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncSelectedFile()
 			}
 		case tea.MouseButtonLeft:
+			// Check for status bar slider click
+			if msg.Y == m.height-1 {
+				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode {
+					m.mode = mode
+					return m, m.loadDiff()
+				}
+				return m, nil
+			}
 			if !m.mouseFocusDiff(msg) {
 				// border (1) = 1 line before file entries
 				if !m.commentInputActive {
@@ -434,6 +442,37 @@ func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
 		return true
 	}
 	return msg.X > m.fileList.width+2
+}
+
+// sliderModeAt returns the DiffMode at the given X position in the slider,
+// or -1 if the click is outside the slider labels.
+func (m Model) sliderModeAt(x int) DiffMode {
+	type region struct {
+		start, end int
+		mode       DiffMode
+	}
+	var regions []region
+	pos := 0
+
+	if !m.onDefaultBranch {
+		label := "Branch"
+		regions = append(regions, region{pos, pos + len(label) - 1, ModeBranch})
+		pos += len(label) + 1 // +1 for "·" separator
+	}
+
+	label := "Staged"
+	regions = append(regions, region{pos, pos + len(label) - 1, ModeStaged})
+	pos += len(label) + 1
+
+	label = "Unstaged"
+	regions = append(regions, region{pos, pos + len(label) - 1, ModeUnstaged})
+
+	for _, r := range regions {
+		if x >= r.start && x <= r.end {
+			return r.mode
+		}
+	}
+	return -1
 }
 
 // availableModes returns the modes available for the current branch state.
