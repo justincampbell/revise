@@ -1,6 +1,7 @@
 package git
 
 import (
+	"os/exec"
 	"os"
 	"testing"
 
@@ -241,6 +242,58 @@ func TestGetDiff_FeatureBranch_MultipleCommitsAndWorkingTree(t *testing.T) {
 	assert.Contains(t, paths, "wip.go")
 }
 
+// GetDiff uses origin/main (not local main) when a remote exists, so commits
+// pushed to origin/main after the feature branch was created still show up.
+func TestGetDiff_FeatureBranch_UsesOriginMain(t *testing.T) {
+	// Create a bare repo to act as "origin".
+	bare := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bare)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.AddRemote(t, bare)
+
+	// Create a feature branch and add a commit.
+	r.CheckoutNewBranch("feature")
+	r.WriteFile("feature.go", "package main\n\nfunc feature() {}\n")
+	r.Add("feature.go")
+	r.Commit("add feature")
+
+	// Simulate origin/main moving ahead: push a new commit to origin/main
+	// by cloning the bare repo into a second working copy.
+	clone := t.TempDir()
+	cmd = exec.Command("git", "clone", bare, clone)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git clone: %v\n%s", err, out)
+	}
+	cloneR := &TestRepo{Dir: clone, t: t}
+	cloneR.mustGit("config", "user.email", "test@example.com")
+	cloneR.mustGit("config", "user.name", "Test")
+	cloneR.WriteFile("upstream.go", "package main\n\nfunc upstream() {}\n")
+	cloneR.Add("upstream.go")
+	cloneR.Commit("upstream commit")
+	cloneR.mustGit("push", "origin", "main")
+
+	// Fetch so the original repo sees the new origin/main.
+	r.mustGit("fetch", "origin")
+
+	// Local main is still at the old commit, but origin/main has moved.
+	// GetDiff should use origin/main, so feature.go shows up but upstream.go does not.
+	r.Chdir()
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "feature.go")
+	assert.NotContains(t, paths, "upstream.go", "should compare against origin/main, not local main")
+}
+
 // ============================================================================
 // GetDiff — deleted and renamed files
 // ============================================================================
@@ -254,6 +307,89 @@ func TestGetDiff_DefaultBranch_DeletedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, diff.Files, 1)
 	assert.Equal(t, StatusDeleted, diff.Files[0].Status)
+}
+
+// ============================================================================
+// IsOnDefaultBranch
+// ============================================================================
+
+func TestIsOnDefaultBranch_OnMain(t *testing.T) {
+	_ = baseRepo(t)
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.True(t, onDefault)
+}
+
+func TestIsOnDefaultBranch_OnFeatureBranch(t *testing.T) {
+	_ = featureBranchRepo(t)
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.False(t, onDefault)
+}
+
+// ============================================================================
+// Per-mode diff functions
+// ============================================================================
+
+func TestBranchDiff_ShowsEverything(t *testing.T) {
+	r := featureBranchRepo(t)
+	r.WriteFile("staged.go", "package main\n\n// staged\n")
+	r.Add("staged.go")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
+	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
+
+	diff, err := BranchDiff()
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "feature.go")
+	assert.Contains(t, paths, "staged.go")
+	assert.Contains(t, paths, "base.go")
+	assert.Contains(t, paths, "untracked.go")
+}
+
+func TestStagedOnlyDiff_ExcludesUnstagedAndUntracked(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("staged.go", "package main\n\n// staged\n")
+	r.Add("staged.go")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
+	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
+
+	diff, err := StagedOnlyDiff()
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "staged.go")
+	assert.NotContains(t, paths, "base.go")
+	assert.NotContains(t, paths, "untracked.go")
+}
+
+func TestUnstagedOnlyDiff_ExcludesStaged(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("staged.go", "package main\n\n// staged\n")
+	r.Add("staged.go")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
+	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
+
+	diff, err := UnstagedOnlyDiff()
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.NotContains(t, paths, "staged.go")
+	assert.Contains(t, paths, "base.go")
+	assert.Contains(t, paths, "untracked.go")
+}
+
+func TestWorkingTreeDiff_ShowsStagedUnstagedUntracked(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("staged.go", "package main\n\n// staged\n")
+	r.Add("staged.go")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
+	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
+
+	diff, err := WorkingTreeDiff()
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "staged.go")
+	assert.Contains(t, paths, "base.go")
+	assert.Contains(t, paths, "untracked.go")
 }
 
 func TestGetDiff_FeatureBranch_RenamedFile(t *testing.T) {

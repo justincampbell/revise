@@ -19,6 +19,7 @@ var allBindings = []BindingGroup{
 		{"← (h)", "Focus file list"},
 		{"→ (l)", "Focus diff view"},
 		{"n/N", "Next/prev file"},
+		{"Tab/S-Tab", "Cycle diff mode"},
 		{"f", "Toggle fullscreen diff"},
 		{"Esc", "Back to file list"},
 		{"?", "Toggle help"},

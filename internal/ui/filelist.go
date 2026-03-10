@@ -64,8 +64,15 @@ func (m fileListModel) selectedFile() *git.FileDiff {
 }
 
 func (m fileListModel) render(focused bool) string {
+	style := panelBorder
+	if focused {
+		style = focusedBorder
+	}
+
 	if len(m.files) == 0 {
-		return "No changes"
+		rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render("No changes")
+		rendered = setBorderTitle(rendered, " Files ", focused)
+		return rendered
 	}
 
 	var b strings.Builder
@@ -99,10 +106,6 @@ func (m fileListModel) render(focused bool) string {
 		}
 	}
 
-	style := panelBorder
-	if focused {
-		style = focusedBorder
-	}
 	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
 
 	title := fmt.Sprintf(" Files (%d/%d) ", m.cursor+1, len(m.files))

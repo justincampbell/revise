@@ -140,6 +140,14 @@ func featureBranchRepo(t *testing.T) *TestRepo {
 	return r
 }
 
+// AddRemote adds a bare repo as "origin" so remote-based detection works.
+// Returns the bare repo path.
+func (r *TestRepo) AddRemote(t *testing.T, bareDir string) {
+	t.Helper()
+	r.mustGit("remote", "add", "origin", bareDir)
+	r.mustGit("push", "-u", "origin", "main")
+}
+
 // --- assertion helpers ---
 
 func filePaths(diff *Diff) []string {

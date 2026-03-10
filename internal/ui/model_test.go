@@ -14,7 +14,7 @@ func makeModel(paths ...string) Model {
 	for i, p := range paths {
 		files[i] = git.FileDiff{Path: p, Status: git.StatusModified}
 	}
-	m := New(&git.Diff{Files: files})
+	m := New(&git.Diff{Files: files}, false)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	return updated.(Model)
 }
@@ -30,7 +30,7 @@ func makeModelWithDiff(filePath string, lines []git.Line) Model {
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{hunk},
 	}}
-	m := New(&git.Diff{Files: files})
+	m := New(&git.Diff{Files: files}, false)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	return updated.(Model)
 }
@@ -285,6 +285,59 @@ func TestModelExport_SetsStatusMessage(t *testing.T) {
 	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
 	m = sendKey(m, "e")
 	assert.NotEmpty(t, m.statusMsg)
+}
+
+// --- DiffMode cycling tests ---
+
+func TestCycleMode_ForwardOnFeatureBranch(t *testing.T) {
+	m := makeModel("a.go")
+	// Default mode on feature branch is ModeBranch (broadest)
+	assert.Equal(t, ModeBranch, m.mode)
+	m.cycleMode(+1)
+	assert.Equal(t, ModeStaged, m.mode)
+	m.cycleMode(+1)
+	assert.Equal(t, ModeUnstaged, m.mode)
+	m.cycleMode(+1)
+	assert.Equal(t, ModeBranch, m.mode) // wraps
+}
+
+func TestCycleMode_BackwardOnFeatureBranch(t *testing.T) {
+	m := makeModel("a.go")
+	m.cycleMode(-1)
+	assert.Equal(t, ModeUnstaged, m.mode) // wraps backward
+	m.cycleMode(-1)
+	assert.Equal(t, ModeStaged, m.mode)
+}
+
+func TestCycleMode_SkipsBranchOnDefaultBranch(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+
+	assert.Equal(t, ModeStaged, m.mode) // starts on broadest available
+	m.cycleMode(+1)
+	assert.Equal(t, ModeUnstaged, m.mode)
+	m.cycleMode(+1)
+	assert.Equal(t, ModeStaged, m.mode) // wraps, skips Branch
+}
+
+func TestCycleMode_BackwardSkipsBranchOnDefaultBranch(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+
+	m.cycleMode(-1)
+	assert.Equal(t, ModeUnstaged, m.mode) // wraps backward, skips Branch
+}
+
+func TestNewModel_FeatureBranch_StartsOnBranch(t *testing.T) {
+	m := New(&git.Diff{}, false)
+	assert.Equal(t, ModeBranch, m.mode)
+}
+
+func TestNewModel_DefaultBranch_StartsOnStaged(t *testing.T) {
+	m := New(&git.Diff{}, true)
+	assert.Equal(t, ModeStaged, m.mode)
 }
 
 func TestModelExport_NoCommentsNoStatus(t *testing.T) {
