@@ -20,7 +20,6 @@ var allBindings = []BindingGroup{
 		{"→ (l)", "Focus diff view"},
 		{"n/N", "Next/prev file"},
 		{"Tab/S-Tab", "Cycle diff mode"},
-		{"+/-", "More/less context lines"},
 		{"f", "Toggle fullscreen diff"},
 		{"Esc", "Back to file list"},
 		{"?", "Toggle help"},
@@ -33,6 +32,7 @@ var allBindings = []BindingGroup{
 	{"Diff View", []Binding{
 		{"j/k, ↑/↓", "Move cursor"},
 		{"}/{ (]/[)", "Next/prev hunk"},
+		{"+/-", "More/less context lines"},
 		{"g/G", "Top/bottom"},
 		{"Fn+↓/↑", "Page down/up"},
 		{"Enter/c", "Add/edit comment on line"},
