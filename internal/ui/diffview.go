@@ -266,6 +266,52 @@ func (m *diffViewModel) pageUp() {
 	m.moveCursorUp(m.viewHeight())
 }
 
+// hunkStarts returns the indices of the first navigable line in each hunk.
+func (m *diffViewModel) hunkStarts() []int {
+	var starts []int
+	for i, ref := range m.lineRefs {
+		if ref == nil || ref.isCommentDisplay {
+			continue
+		}
+		// A navigable line is a hunk start if the previous non-comment line is nil (hunk header or blank separator).
+		if i == 0 || m.lineRefs[i-1] == nil {
+			starts = append(starts, i)
+		}
+	}
+	return starts
+}
+
+// nextHunk moves the cursor to the first navigable line of the next hunk.
+func (m *diffViewModel) nextHunk() {
+	starts := m.hunkStarts()
+	for _, idx := range starts {
+		if idx > m.cursor {
+			m.cursor = idx
+			viewH := m.viewHeight()
+			if m.cursor >= m.offset+viewH {
+				m.offset = m.cursor - viewH + 1
+			}
+			return
+		}
+	}
+}
+
+// prevHunk moves the cursor to the first navigable line of the previous hunk.
+// If the cursor is in the middle of a hunk (not on its first line), it moves
+// to the start of the current hunk instead.
+func (m *diffViewModel) prevHunk() {
+	starts := m.hunkStarts()
+	for i := len(starts) - 1; i >= 0; i-- {
+		if starts[i] < m.cursor {
+			m.cursor = starts[i]
+			if m.cursor < m.offset {
+				m.offset = m.cursor
+			}
+			return
+		}
+	}
+}
+
 func (m *diffViewModel) viewHeight() int {
 	h := m.height
 	if h < 1 {

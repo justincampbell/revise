@@ -349,3 +349,94 @@ func TestClickToAbsIdx_WithInputBox_Below(t *testing.T) {
 	// Click below box (clickY=7, codeAbove=4, inputBoxHeight=3 → nextIdx=4, belowClick=0)
 	assert.Equal(t, 4, m.clickToAbsIdx(7))
 }
+
+// makeDiffViewModelWithHunks creates a diffViewModel with multiple hunks for testing navigation.
+func makeDiffViewModelWithHunks() diffViewModel {
+	m := newDiffViewModel()
+	m.height = 40
+	m.file = &git.FileDiff{
+		Path: "test.go",
+		Hunks: []git.Hunk{
+			{
+				Header: "@@ -1,3 +1,4 @@ func A()",
+				Lines: []git.Line{
+					{Type: git.LineContext, Content: "ctx1", OldNum: 1, NewNum: 1},
+					{Type: git.LineAdded, Content: "added1", NewNum: 2},
+					{Type: git.LineContext, Content: "ctx2", OldNum: 2, NewNum: 3},
+				},
+			},
+			{
+				Header: "@@ -10,3 +11,4 @@ func B()",
+				Lines: []git.Line{
+					{Type: git.LineContext, Content: "ctx3", OldNum: 10, NewNum: 11},
+					{Type: git.LineRemoved, Content: "removed1", OldNum: 11},
+					{Type: git.LineAdded, Content: "added2", NewNum: 12},
+					{Type: git.LineContext, Content: "ctx4", OldNum: 12, NewNum: 13},
+				},
+			},
+			{
+				Header: "@@ -20,2 +22,3 @@ func C()",
+				Lines: []git.Line{
+					{Type: git.LineContext, Content: "ctx5", OldNum: 20, NewNum: 22},
+					{Type: git.LineAdded, Content: "added3", NewNum: 23},
+				},
+			},
+		},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+	return m
+}
+
+func TestNextHunk_MovesToFirstLineOfNextHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	// Cursor starts on first navigable line of hunk 0
+	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // ctx1, newNum=1
+	m.nextHunk()
+	// Should be on first code line of hunk 1
+	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum) // ctx3, newNum=11
+}
+
+func TestNextHunk_FromMiddleOfHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.moveCursorDown(1) // move to added1
+	assert.Equal(t, 2, m.lineRefs[m.cursor].newNum)
+	m.nextHunk()
+	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum) // first line of hunk 1
+}
+
+func TestNextHunk_FromLastHunk_StaysAtBottom(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	// Go to last hunk
+	m.nextHunk()
+	m.nextHunk()
+	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum) // first line of hunk 2
+	m.nextHunk()
+	// Should stay on last hunk's first line (no more hunks)
+	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum)
+}
+
+func TestPrevHunk_MovesToFirstLineOfPrevHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.nextHunk()
+	m.nextHunk()
+	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum)
+	m.prevHunk()
+	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum)
+}
+
+func TestPrevHunk_FromFirstHunk_StaysAtTop(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.prevHunk()
+	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // still on first line
+}
+
+func TestPrevHunk_FromMiddleOfHunk_GoesToStartOfCurrentHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.nextHunk()            // go to hunk 1
+	m.moveCursorDown(2)     // move into middle of hunk 1
+	assert.Equal(t, 12, m.lineRefs[m.cursor].newNum)
+	m.prevHunk()
+	// Should go to start of hunk 1 (since we're in the middle of it)
+	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum)
+}

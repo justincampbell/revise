@@ -46,9 +46,9 @@ func main() {
 
 	var diff *git.Diff
 	if onDefaultBranch {
-		diff, err = git.WorkingTreeDiff()
+		diff, err = git.WorkingTreeDiff(git.DefaultContextLines)
 	} else {
-		diff, err = git.BranchDiff()
+		diff, err = git.BranchDiff(git.DefaultContextLines)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
