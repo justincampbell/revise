@@ -340,6 +340,29 @@ func TestNewModel_DefaultBranch_StartsOnStaged(t *testing.T) {
 	assert.Equal(t, ModeStaged, m.mode)
 }
 
+// --- Mode slider rendering tests ---
+
+func TestModeSlider_FeatureBranch_BranchMode_AllLit(t *testing.T) {
+	m := makeModel("a.go") // feature branch, starts on ModeBranch
+	slider := m.renderModeSlider()
+	// All three labels should appear
+	assert.Contains(t, slider, "Branch")
+	assert.Contains(t, slider, "Staged")
+	assert.Contains(t, slider, "Unstaged")
+	assert.Contains(t, slider, "Tab: switch")
+}
+
+func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+
+	slider := m.renderModeSlider()
+	assert.NotContains(t, slider, "Branch")
+	assert.Contains(t, slider, "Staged")
+	assert.Contains(t, slider, "Unstaged")
+}
+
 func TestModelExport_NoCommentsNoStatus(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},

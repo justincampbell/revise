@@ -253,9 +253,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.syncSelectedFile()
-		if m.diffView.file != nil {
-			m.diffView.offset = 0
-		}
+		m.diffView.offset = 0
+		m.diffView.goToTop()
 		return m, nil
 
 	case clearStatusMsg:
@@ -416,7 +415,7 @@ func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
 }
 
 // availableModes returns the modes available for the current branch state.
-// Order matches display: Branch · Staged · Unstaged (narrowest → broadest).
+// Order matches display: Branch · Staged · Unstaged (broadest → narrowest).
 func (m Model) availableModes() []DiffMode {
 	if m.onDefaultBranch {
 		return []DiffMode{ModeStaged, ModeUnstaged}

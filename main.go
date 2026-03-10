@@ -38,13 +38,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	diff, err := git.GetDiff()
+	onDefaultBranch, err := git.IsOnDefaultBranch()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	onDefaultBranch, err := git.IsOnDefaultBranch()
+	var diff *git.Diff
+	if onDefaultBranch {
+		diff, err = git.WorkingTreeDiff()
+	} else {
+		diff, err = git.BranchDiff()
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
