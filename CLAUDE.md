@@ -140,7 +140,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `→` (`l`) | Focus diff view |
 | `n` / `N` | Next / prev file |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
-| `+`/`-` | More/less context lines |
+| `+`/`-` | More/fewer context lines |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list (exits fullscreen if needed) |
 | `?` | Toggle help overlay |
