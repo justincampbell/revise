@@ -166,7 +166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "+", "=":
 			m.contextLines++
 			return m, m.loadDiff()
-		case "-":
+		case "-", "_":
 			if m.contextLines > 0 {
 				m.contextLines--
 				return m, m.loadDiff()

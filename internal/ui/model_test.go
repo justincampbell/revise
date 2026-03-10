@@ -459,6 +459,14 @@ func TestModelEquals_IncreasesContextLines(t *testing.T) {
 	assert.Equal(t, git.DefaultContextLines+1, m.contextLines)
 }
 
+func TestModelUnderscore_DecreasesContextLines(t *testing.T) {
+	// "_" is the shifted version of "-" on most keyboards
+	m := makeModel("a.go")
+	m.contextLines = 5
+	m = sendKey(m, "_")
+	assert.Equal(t, 4, m.contextLines)
+}
+
 func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "a", NewNum: 1},
