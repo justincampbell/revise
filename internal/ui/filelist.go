@@ -92,10 +92,8 @@ func (m fileListModel) render(focused bool) string {
 	}
 
 	if len(m.files) == 0 {
-		added, removed := m.totals()
 		rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render("No changes")
 		rendered = setBorderTitle(rendered, " Files ", focused)
-		rendered = setBorderBottomCounts(rendered, added, removed, focused)
 		return rendered
 	}
 

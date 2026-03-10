@@ -60,7 +60,7 @@ func TestFileListEnsureVisible_ScrollsDown(t *testing.T) {
 
 func TestFileListEnsureVisible_ScrollsUp(t *testing.T) {
 	m := newFileListModel(makeFiles("a", "b", "c", "d", "e"))
-	m.height = 5 // viewHeight = 4
+	m.height = 5 // viewHeight = 5
 	m.offset = 3
 	m.cursor = 1
 	m.ensureVisible()

@@ -254,6 +254,16 @@ func TestHunkContext_ExtractsTrailingContext(t *testing.T) {
 	assert.Equal(t, "func renderStatusBar() string {", got)
 }
 
+func TestHunkContext_NoAtAt(t *testing.T) {
+	got := hunkContext("some random text")
+	assert.Equal(t, "some random text", got)
+}
+
+func TestHunkContext_EmptyContext(t *testing.T) {
+	got := hunkContext("@@ -1,1 +1,1 @@")
+	assert.Equal(t, "", got)
+}
+
 func TestDiffView_TitleInBorder(t *testing.T) {
 	m := newDiffViewModel()
 	m.width = 40

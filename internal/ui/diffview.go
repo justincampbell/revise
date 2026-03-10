@@ -319,11 +319,7 @@ func formatGutter(l git.Line) string {
 		n = l.OldNum
 	}
 	switch l.Type {
-	case git.LineAdded:
-		return fmt.Sprintf("%5d ", n)
-	case git.LineRemoved:
-		return fmt.Sprintf("%5d ", n)
-	case git.LineContext:
+	case git.LineAdded, git.LineRemoved, git.LineContext:
 		return fmt.Sprintf("%5d ", n)
 	}
 	return "      "
