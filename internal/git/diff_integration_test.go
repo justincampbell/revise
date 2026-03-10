@@ -395,6 +395,42 @@ func TestIsOnDefaultBranch_OnFeatureBranch(t *testing.T) {
 	assert.False(t, onDefault)
 }
 
+func TestIsOnDefaultBranch_BehindRemote(t *testing.T) {
+	r := behindRemoteRepo(t)
+	_ = r
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.False(t, onDefault, "should return false when default branch is behind remote")
+}
+
+func TestIsOnDefaultBranch_AheadOfRemote(t *testing.T) {
+	r := aheadOfRemoteRepo(t)
+	_ = r
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.False(t, onDefault, "should return false when default branch is ahead of remote")
+}
+
+// ============================================================================
+// BranchDiff on default branch behind remote
+// ============================================================================
+
+func TestBranchDiff_DefaultBranchBehindRemote_ShowsRemoteChanges(t *testing.T) {
+	_ = behindRemoteRepo(t)
+	diff, err := BranchDiff(DefaultContextLines)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "remote-change.go", "should include file added on remote")
+}
+
+func TestBranchDiff_DefaultBranchAheadOfRemote_ShowsLocalChanges(t *testing.T) {
+	_ = aheadOfRemoteRepo(t)
+	diff, err := BranchDiff(DefaultContextLines)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "local-change.go", "should include locally committed file")
+}
+
 // ============================================================================
 // Per-mode diff functions
 // ============================================================================

@@ -388,6 +388,91 @@ func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
 	assert.Contains(t, slider, "Unstaged")
 }
 
+// --- Slider click tests ---
+
+func TestSliderModeAt_FeatureBranch_ClickBranch(t *testing.T) {
+	m := makeModel("a.go")
+	// "Branch·Staged·Unstaged" — "Branch" at positions 0-5
+	assert.Equal(t, ModeBranch, m.sliderModeAt(0))
+	assert.Equal(t, ModeBranch, m.sliderModeAt(5))
+}
+
+func TestSliderModeAt_FeatureBranch_ClickStaged(t *testing.T) {
+	m := makeModel("a.go")
+	// "Branch·Staged·Unstaged" — "Staged" at positions 7-12
+	assert.Equal(t, ModeStaged, m.sliderModeAt(7))
+	assert.Equal(t, ModeStaged, m.sliderModeAt(12))
+}
+
+func TestSliderModeAt_FeatureBranch_ClickUnstaged(t *testing.T) {
+	m := makeModel("a.go")
+	// "Branch·Staged·Unstaged" — "Unstaged" at positions 14-21
+	assert.Equal(t, ModeUnstaged, m.sliderModeAt(14))
+	assert.Equal(t, ModeUnstaged, m.sliderModeAt(21))
+}
+
+func TestSliderModeAt_FeatureBranch_ClickSeparator(t *testing.T) {
+	m := makeModel("a.go")
+	// "·" separator at position 6 — should return -1
+	assert.Equal(t, DiffMode(-1), m.sliderModeAt(6))
+}
+
+func TestSliderModeAt_DefaultBranch_ClickStaged(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	// "Staged·Unstaged" — "Staged" at positions 0-5
+	assert.Equal(t, ModeStaged, m.sliderModeAt(0))
+	assert.Equal(t, ModeStaged, m.sliderModeAt(5))
+}
+
+func TestSliderModeAt_DefaultBranch_ClickUnstaged(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	// "Staged·Unstaged" — "Unstaged" at positions 7-14
+	assert.Equal(t, ModeUnstaged, m.sliderModeAt(7))
+	assert.Equal(t, ModeUnstaged, m.sliderModeAt(14))
+}
+
+func TestSliderModeAt_OutsideLabels(t *testing.T) {
+	m := makeModel("a.go")
+	assert.Equal(t, DiffMode(-1), m.sliderModeAt(50))
+	assert.Equal(t, DiffMode(-1), m.sliderModeAt(-1))
+}
+
+func TestMouseClickSlider_SwitchesMode(t *testing.T) {
+	m := makeModel("a.go")
+	assert.Equal(t, ModeBranch, m.mode)
+
+	// Click on "Unstaged" label (position 14) in the status bar row
+	mouseMsg := tea.MouseMsg{
+		X:      14,
+		Y:      m.height - 1,
+		Button: tea.MouseButtonLeft,
+	}
+	updated, cmd := m.Update(mouseMsg)
+	m = updated.(Model)
+	assert.Equal(t, ModeUnstaged, m.mode)
+	assert.NotNil(t, cmd, "should return a command to load the diff")
+}
+
+func TestMouseClickSlider_SameMode_NoReload(t *testing.T) {
+	m := makeModel("a.go")
+	assert.Equal(t, ModeBranch, m.mode)
+
+	// Click on "Branch" label (position 0) — already active
+	mouseMsg := tea.MouseMsg{
+		X:      0,
+		Y:      m.height - 1,
+		Button: tea.MouseButtonLeft,
+	}
+	updated, cmd := m.Update(mouseMsg)
+	m = updated.(Model)
+	assert.Equal(t, ModeBranch, m.mode)
+	assert.Nil(t, cmd, "should not reload when clicking the already-active mode")
+}
+
 func TestModelExport_NoCommentsNoStatus(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},

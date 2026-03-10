@@ -154,6 +154,94 @@ func (r *TestRepo) AddRemoteAs(t *testing.T, bareDir, name string) {
 	r.mustGit("push", "-u", name, "main")
 }
 
+// behindRemoteRepo returns a TestRepo on "main" where origin/main has a commit
+// that the local main does not. Simulates being behind the remote.
+func behindRemoteRepo(t *testing.T) *TestRepo {
+	t.Helper()
+
+	// Create the "remote" bare repo
+	bareDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bareDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+
+	// Create local repo, push initial commit
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.AddRemote(t, bareDir)
+
+	// Clone into a second repo and push a new commit from there
+	cloneDir := t.TempDir()
+	cmd = exec.Command("git", "clone", bareDir, cloneDir)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git clone: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "config", "user.email", "test@example.com")
+	cmd.Dir = cloneDir
+	cmd.Run()
+	cmd = exec.Command("git", "config", "user.name", "Test")
+	cmd.Dir = cloneDir
+	cmd.Run()
+
+	// Add a commit in the clone and push
+	if err := os.WriteFile(filepath.Join(cloneDir, "remote-change.go"), []byte("package main\n\n// from remote\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "add", "remote-change.go")
+	cmd.Dir = cloneDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "remote commit")
+	cmd.Dir = cloneDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "push")
+	cmd.Dir = cloneDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git push: %v\n%s", err, out)
+	}
+
+	// Fetch in the original repo so origin/main is updated
+	r.mustGit("fetch", "origin")
+
+	r.Chdir()
+	return r
+}
+
+// aheadOfRemoteRepo returns a TestRepo on "main" where local main has a commit
+// that origin/main does not. Simulates being ahead of the remote.
+func aheadOfRemoteRepo(t *testing.T) *TestRepo {
+	t.Helper()
+
+	bareDir := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", bareDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.AddRemote(t, bareDir)
+
+	// Add a local commit (not pushed)
+	r.WriteFile("local-change.go", "package main\n\n// local only\n")
+	r.Add("local-change.go")
+	r.Commit("local commit")
+
+	r.Chdir()
+	return r
+}
+
 // --- assertion helpers ---
 
 func filePaths(diff *Diff) []string {
