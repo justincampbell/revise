@@ -38,18 +38,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	diff, err := git.GetDiff()
+	onDefaultBranch, err := git.IsOnDefaultBranch()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if len(diff.Files) == 0 {
-		fmt.Println("No changes found")
-		os.Exit(0)
+	var diff *git.Diff
+	if onDefaultBranch {
+		diff, err = git.WorkingTreeDiff()
+	} else {
+		diff, err = git.BranchDiff()
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	m := ui.New(diff)
+	m := ui.New(diff, onDefaultBranch)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {

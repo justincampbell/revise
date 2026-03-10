@@ -68,6 +68,10 @@ var (
 				BorderForeground(colorYellow).
 				Padding(0, 1)
 
+	// Mode slider styles
+	modeActiveStyle   = lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
+	modeInactiveStyle = lipgloss.NewStyle().Foreground(colorDim)
+
 	// Status bar
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
 
@@ -102,6 +106,8 @@ func init() {
 		commentCountStyle = lipgloss.NewStyle()
 		commentDisplayStyle = lipgloss.NewStyle()
 		commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+		modeActiveStyle = lipgloss.NewStyle().Bold(true)
+		modeInactiveStyle = lipgloss.NewStyle()
 		statusBarStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()

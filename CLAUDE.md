@@ -100,10 +100,20 @@ internal/
 
 ### Diff Strategy
 
-- **On a feature branch**: show `git diff <merge-base> HEAD` (committed changes vs default branch) merged with staged + unstaged working tree changes
-- **On the default branch** (`main`/`master`): show staged + unstaged + untracked working tree changes
+Three diff components displayed left-to-right: **Branch · Staged · Unstaged**. Modes are cumulative — narrower modes drop from the left, Unstaged is always included. Tab/Shift+Tab cycles through modes.
+
+| Mode | Slider | What it shows |
+|------|--------|--------------|
+| **ModeBranch** | **Branch·Staged·Unstaged** | committed + staged + unstaged + untracked (broadest, default) — skipped on default branch |
+| **ModeStaged** | Branch·**Staged·Unstaged** | staged + unstaged + untracked |
+| **ModeUnstaged** | Branch·Staged·**Unstaged** | unstaged + untracked only (narrowest) |
+
+- Default mode: ModeBranch on feature branches (broadest), ModeStaged on default branch
 - Default branch is auto-detected via `origin/main`, `origin/master`, then `git symbolic-ref refs/remotes/origin/HEAD`
 - Working tree changes for the same path replace branch diff entries (latest state wins)
+- `IsOnDefaultBranch()` checks if merge-base == HEAD
+- Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `UnstagedOnlyDiff()`, `StagedOnlyDiff()` (reserved for future use)
+- Untracked files are merged into "Unstaged" — no separate untracked mode
 
 ### UI Layout
 
@@ -129,6 +139,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `←` (`h`) | Focus file list |
 | `→` (`l`) | Focus diff view |
 | `n` / `N` | Next / prev file |
+| `Tab` / `Shift+Tab` | Cycle diff mode |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list (exits fullscreen if needed) |
 | `?` | Toggle help overlay |

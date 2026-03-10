@@ -14,6 +14,23 @@ import (
 
 type clearStatusMsg struct{}
 
+// diffLoadedMsg is sent when an async diff load completes.
+type diffLoadedMsg struct {
+	diff *git.Diff
+	err  error
+}
+
+// DiffMode represents which diff view is active.
+// Modes are cumulative: Unstaged is always included,
+// broader modes add Staged, then Branch.
+type DiffMode int
+
+const (
+	ModeBranch   DiffMode = iota // committed + staged + unstaged + untracked (broadest, feature branch only)
+	ModeStaged                   // staged + unstaged + untracked
+	ModeUnstaged                 // unstaged + untracked only (narrowest)
+)
+
 type focusPanel int
 
 const (
@@ -34,13 +51,16 @@ type Model struct {
 	height   int
 	ready    bool
 
+	mode             DiffMode
+	onDefaultBranch  bool
+
 	comments          comments
 	commentInputActive bool
 	commentTarget     commentKey
 	statusMsg         string
 }
 
-func New(diff *git.Diff) Model {
+func New(diff *git.Diff, onDefaultBranch bool) Model {
 	fl := newFileListModel(diff.Files)
 	dv := newDiffViewModel()
 
@@ -52,12 +72,19 @@ func New(diff *git.Diff) Model {
 		dv.setFile(&diff.Files[0])
 	}
 
+	mode := ModeBranch
+	if onDefaultBranch {
+		mode = ModeStaged
+	}
+
 	return Model{
-		diff:     diff,
-		fileList: fl,
-		diffView: dv,
-		focus:    focusFileList,
-		comments: c,
+		diff:            diff,
+		fileList:        fl,
+		diffView:        dv,
+		focus:           focusFileList,
+		comments:        c,
+		mode:            mode,
+		onDefaultBranch: onDefaultBranch,
 	}
 }
 
@@ -112,6 +139,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.focus = focusFileList
 			return m, nil
+
+		case "tab":
+			m.cycleMode(+1)
+			return m, m.loadDiff()
+		case "shift+tab":
+			m.cycleMode(-1)
+			return m, m.loadDiff()
 
 		// File list navigation (always works)
 		case "n":
@@ -194,6 +228,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ready = true
 		m.updateLayout()
+		return m, nil
+
+	case diffLoadedMsg:
+		if msg.err != nil {
+			m.statusMsg = "Error: " + msg.err.Error()
+			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		m.diff = msg.diff
+		selectedPath := ""
+		if f := m.fileList.selectedFile(); f != nil {
+			selectedPath = f.Path
+		}
+		m.fileList = newFileListModel(m.diff.Files)
+		m.fileList.comments = m.comments
+		m.updateLayout()
+		// Re-select the same file if it still exists
+		if selectedPath != "" {
+			for i, f := range m.diff.Files {
+				if f.Path == selectedPath {
+					m.fileList.cursor = i
+					break
+				}
+			}
+		}
+		m.syncSelectedFile()
+		m.diffView.offset = 0
+		m.diffView.goToTop()
 		return m, nil
 
 	case clearStatusMsg:
@@ -353,11 +414,49 @@ func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
 	return msg.X > m.fileList.width+2
 }
 
-func (m *Model) syncSelectedFile() {
-	f := m.fileList.selectedFile()
-	if f != nil {
-		m.diffView.setFile(f)
+// availableModes returns the modes available for the current branch state.
+// Order matches display: Branch · Staged · Unstaged (broadest → narrowest).
+func (m Model) availableModes() []DiffMode {
+	if m.onDefaultBranch {
+		return []DiffMode{ModeStaged, ModeUnstaged}
 	}
+	return []DiffMode{ModeBranch, ModeStaged, ModeUnstaged}
+}
+
+// cycleMode advances the mode by direction (+1 or -1), wrapping around.
+func (m *Model) cycleMode(direction int) {
+	modes := m.availableModes()
+	currentIdx := 0
+	for i, mode := range modes {
+		if mode == m.mode {
+			currentIdx = i
+			break
+		}
+	}
+	nextIdx := (currentIdx + direction + len(modes)) % len(modes)
+	m.mode = modes[nextIdx]
+}
+
+// loadDiff returns a command that fetches the diff for the current mode.
+func (m *Model) loadDiff() tea.Cmd {
+	mode := m.mode
+	return func() tea.Msg {
+		var diff *git.Diff
+		var err error
+		switch mode {
+		case ModeBranch:
+			diff, err = git.BranchDiff()
+		case ModeStaged:
+			diff, err = git.WorkingTreeDiff()
+		case ModeUnstaged:
+			diff, err = git.UnstagedOnlyDiff()
+		}
+		return diffLoadedMsg{diff: diff, err: err}
+	}
+}
+
+func (m *Model) syncSelectedFile() {
+	m.diffView.setFile(m.fileList.selectedFile())
 }
 
 func (m *Model) nextFile() {
@@ -370,13 +469,39 @@ func (m *Model) prevFile() {
 	m.syncSelectedFile()
 }
 
+func (m Model) renderModeSlider() string {
+	render := func(name string, active bool) string {
+		if active {
+			return modeActiveStyle.Render(name)
+		}
+		return modeInactiveStyle.Render(name)
+	}
+	sep := modeInactiveStyle.Render("·")
+
+	var parts []string
+
+	// Cumulative: broadest mode (ModeBranch) lights all,
+	// narrower modes drop components from the left.
+	if !m.onDefaultBranch {
+		parts = append(parts, render("Branch", m.mode == ModeBranch))
+	}
+	parts = append(parts,
+		render("Staged", m.mode == ModeBranch || m.mode == ModeStaged),
+		render("Unstaged", true),
+	)
+
+	return strings.Join(parts, sep) + modeInactiveStyle.Render("  Tab: switch")
+}
+
 func (m Model) renderStatusBar() string {
+	slider := m.renderModeSlider()
+
 	if m.commentInputActive {
-		return statusBarStyle.Width(m.width).Render("Enter: save  Esc: cancel")
+		return statusBarStyle.Width(m.width).Render(slider + "  Enter: save  Esc: cancel")
 	}
 
 	if m.statusMsg != "" {
-		return statusBarStyle.Width(m.width).Render(m.statusMsg)
+		return statusBarStyle.Width(m.width).Render(slider + "  " + m.statusMsg)
 	}
 
 	// Show comment text when cursor is on a commented line
@@ -385,7 +510,7 @@ func (m Model) renderStatusBar() string {
 		if ref != nil && m.diffView.file != nil {
 			key := ref.commentKey(m.diffView.file.Path)
 			if text, ok := m.comments[key]; ok {
-				return statusBarStyle.Width(m.width).Render("◆ " + text)
+				return statusBarStyle.Width(m.width).Render(slider + "  ◆ " + text)
 			}
 		}
 	}
@@ -393,10 +518,10 @@ func (m Model) renderStatusBar() string {
 	count := len(m.comments)
 	if count > 0 {
 		return statusBarStyle.Width(m.width).Render(
-			fmt.Sprintf("%d comment(s) — c: add/edit  d: delete  e: export", count),
+			slider + "  " + fmt.Sprintf("%d comment(s) — c: add/edit  d: delete  e: export", count),
 		)
 	}
-	return statusBarStyle.Width(m.width).Render("c: add comment  e: export  ?: help  q: quit")
+	return statusBarStyle.Width(m.width).Render(slider + "  c: add comment  e: export  ?: help  q: quit")
 }
 
 func (m Model) View() string {
@@ -406,14 +531,6 @@ func (m Model) View() string {
 
 	if m.showHelp {
 		return renderHelp(m.width, m.height)
-	}
-
-	if len(m.diff.Files) == 0 {
-		return lipgloss.Place(
-			m.width, m.height,
-			lipgloss.Center, lipgloss.Center,
-			"No changes found",
-		)
 	}
 
 	statusBar := m.renderStatusBar()

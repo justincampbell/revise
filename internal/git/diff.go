@@ -93,6 +93,108 @@ func CurrentRef() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// IsOnDefaultBranch returns true if the current HEAD is at the merge-base
+// with the default branch (i.e. no feature-branch commits).
+func IsOnDefaultBranch() (bool, error) {
+	branch, err := DefaultBranch()
+	if err != nil {
+		return false, err
+	}
+
+	remoteBranch := "origin/" + branch
+	mergeBase, err := MergeBase(remoteBranch)
+	if err != nil {
+		mergeBase, err = MergeBase(branch)
+	}
+	if err != nil {
+		// No merge-base means we can't determine — treat as default branch
+		return true, nil
+	}
+
+	head, err := CurrentRef()
+	if err != nil {
+		return false, err
+	}
+
+	return mergeBase == head, nil
+}
+
+// resolveMergeBase finds the merge-base for the current branch.
+func resolveMergeBase() (string, error) {
+	branch, err := DefaultBranch()
+	if err != nil {
+		return "", err
+	}
+
+	remoteBranch := "origin/" + branch
+	mergeBase, err := MergeBase(remoteBranch)
+	if err != nil {
+		mergeBase, err = MergeBase(branch)
+	}
+	if err != nil {
+		return "", fmt.Errorf("no merge-base found: %w", err)
+	}
+	return mergeBase, nil
+}
+
+// BranchDiff returns the merge-base diff merged with all working tree changes.
+// This is the broadest view — committed + staged + unstaged + untracked.
+func BranchDiff() (*Diff, error) {
+	mergeBase, err := resolveMergeBase()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := RawDiff(mergeBase)
+	if err != nil {
+		return nil, err
+	}
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceBranch)
+
+	wtDiff, err := WorkingTreeDiff()
+	if err != nil {
+		return nil, err
+	}
+	// WorkingTreeDiff already tags its hunks as Staged/Unstaged
+	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
+	return diff, nil
+}
+
+// StagedOnlyDiff returns only staged changes.
+func StagedOnlyDiff() (*Diff, error) {
+	raw, err := StagedDiff()
+	if err != nil {
+		return nil, err
+	}
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceStaged)
+	return diff, nil
+}
+
+// UnstagedOnlyDiff returns unstaged changes + untracked files.
+func UnstagedOnlyDiff() (*Diff, error) {
+	raw, err := UnstagedDiff()
+	if err != nil {
+		return nil, err
+	}
+
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceUnstaged)
+
+	untracked, err := UntrackedFiles()
+	if err != nil {
+		return nil, err
+	}
+	diff.Files = append(diff.Files, untracked...)
+
+	return diff, nil
+}
+
+// WorkingTreeDiff returns staged + unstaged + untracked changes.
+func WorkingTreeDiff() (*Diff, error) {
+	return getWorkingTreeDiff()
+}
+
 // GetDiff returns a parsed Diff for the current branch vs the default branch.
 // If on the default branch, it shows working tree changes (staged + unstaged).
 // Otherwise it shows committed changes vs merge-base plus working tree changes.
@@ -105,86 +207,78 @@ func GetDiff() (*Diff, error) {
 		return nil, fmt.Errorf("repository has no commits")
 	}
 
-	branch, err := DefaultBranch()
+	onDefault, err := IsOnDefaultBranch()
 	if err != nil {
 		return nil, err
 	}
 
-	mergeBase, err := MergeBase(branch)
-	if err != nil {
-		// If merge-base fails (e.g. detached HEAD with no common ancestor),
-		// fall back to just showing uncommitted changes
-		return getWorkingTreeDiff()
+	if onDefault {
+		return WorkingTreeDiff()
 	}
 
-	// Check if we're on the default branch (merge-base == HEAD)
-	head, err := CurrentRef()
-	if err != nil {
-		return nil, err
-	}
-
-	if mergeBase == head {
-		// On the default branch — show working tree changes
-		return getWorkingTreeDiff()
-	}
-
-	// On a feature branch — show branch diff + working tree changes
-	raw, err := RawDiff(mergeBase)
-	if err != nil {
-		return nil, err
-	}
-
-	diff := Parse(raw)
-
-	// Merge in working tree changes (staged + unstaged)
-	wtDiff, err := getWorkingTreeDiff()
-	if err != nil {
-		return nil, err
-	}
-	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
-
-	return diff, nil
+	return BranchDiff()
 }
 
 // getWorkingTreeDiff returns staged + unstaged + untracked changes.
 func getWorkingTreeDiff() (*Diff, error) {
-	staged, err := StagedDiff()
+	stagedRaw, err := StagedDiff()
 	if err != nil {
 		return nil, err
 	}
-	unstaged, err := UnstagedDiff()
+	unstagedRaw, err := UnstagedDiff()
 	if err != nil {
 		return nil, err
 	}
 
-	diff := Parse(staged + unstaged)
+	staged := Parse(stagedRaw)
+	tagHunks(staged.Files, SourceStaged)
+	unstaged := Parse(unstagedRaw)
+	tagHunks(unstaged.Files, SourceUnstaged)
+	// Merge so same-path files appear once with hunks from both.
+	staged.Files = mergeFileDiffs(staged.Files, unstaged.Files)
 
 	untracked, err := UntrackedFiles()
 	if err != nil {
 		return nil, err
 	}
-	diff.Files = append(diff.Files, untracked...)
+	staged.Files = append(staged.Files, untracked...)
 
-	return diff, nil
+	return staged, nil
 }
 
-// mergeFileDiffs combines branch diffs with working tree diffs.
-// Working tree entries for the same path replace branch entries
-// (they represent the latest state). New paths are appended.
-func mergeFileDiffs(branch, wt []FileDiff) []FileDiff {
-	seen := make(map[string]int, len(branch))
-	for i, f := range branch {
+// tagHunks sets the Source field on all hunks in the given file diffs.
+func tagHunks(files []FileDiff, source HunkSource) {
+	for i := range files {
+		for j := range files[i].Hunks {
+			files[i].Hunks[j].Source = source
+		}
+	}
+}
+
+// mergeFileDiffs combines two sets of file diffs.
+// For the same path, hunks from both are combined (base first, then overlay).
+// New paths are appended. The inputs are not mutated.
+func mergeFileDiffs(base, overlay []FileDiff) []FileDiff {
+	result := make([]FileDiff, len(base))
+	copy(result, base)
+
+	seen := make(map[string]int, len(result))
+	for i, f := range result {
 		seen[f.Path] = i
 	}
 
-	for _, f := range wt {
+	for _, f := range overlay {
 		if idx, ok := seen[f.Path]; ok {
-			// Working tree has newer changes for this file — replace
-			branch[idx] = f
+			// Same file — combine hunks
+			combined := make([]Hunk, len(result[idx].Hunks), len(result[idx].Hunks)+len(f.Hunks))
+			copy(combined, result[idx].Hunks)
+			combined = append(combined, f.Hunks...)
+			result[idx].Hunks = combined
 		} else {
-			branch = append(branch, f)
+			result = append(result, f)
+			seen[f.Path] = len(result) - 1
 		}
 	}
 
-	return branch
+	return result
 }
