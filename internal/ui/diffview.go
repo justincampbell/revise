@@ -329,7 +329,7 @@ func formatGutter(l git.Line) string {
 
 // linePrefix returns the 1-character cursor indicator for a display line.
 func (m diffViewModel) linePrefix(absIdx int) string {
-	if absIdx == m.cursor {
+	if m.file != nil && absIdx == m.cursor {
 		return cursorStyle.Render("▶")
 	}
 	return " "
