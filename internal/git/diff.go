@@ -6,27 +6,50 @@ import (
 	"strings"
 )
 
+// RemoteName returns the name of the tracking remote.
+// It prefers "origin" if present, otherwise returns the first configured remote.
+// Returns an empty string if there are no remotes.
+func RemoteName() string {
+	out, err := exec.Command("git", "remote").Output()
+	if err != nil {
+		return ""
+	}
+	remotes := strings.Fields(strings.TrimSpace(string(out)))
+	for _, r := range remotes {
+		if r == "origin" {
+			return "origin"
+		}
+	}
+	if len(remotes) > 0 {
+		return remotes[0]
+	}
+	return ""
+}
+
 // DefaultBranch detects the default branch of the repository.
 func DefaultBranch() (string, error) {
-	// Try to get the default branch from the remote
-	out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main").Output()
-	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
-		return "main", nil
-	}
+	remote := RemoteName()
+	if remote != "" {
+		// Try to get the default branch from the remote
+		out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/"+remote+"/main").Output()
+		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+			return "main", nil
+		}
 
-	out, err = exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/master").Output()
-	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
-		return "master", nil
-	}
+		out, err = exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/"+remote+"/master").Output()
+		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+			return "master", nil
+		}
 
-	// Fallback: check remote HEAD
-	out, err = exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD").Output()
-	if err == nil {
-		ref := strings.TrimSpace(string(out))
-		// refs/remotes/origin/main -> main
-		parts := strings.Split(ref, "/")
-		if len(parts) > 0 {
-			return parts[len(parts)-1], nil
+		// Fallback: check remote HEAD
+		out, err = exec.Command("git", "symbolic-ref", "refs/remotes/"+remote+"/HEAD").Output()
+		if err == nil {
+			ref := strings.TrimSpace(string(out))
+			// refs/remotes/origin/main -> main
+			parts := strings.Split(ref, "/")
+			if len(parts) > 0 {
+				return parts[len(parts)-1], nil
+			}
 		}
 	}
 
@@ -101,9 +124,11 @@ func IsOnDefaultBranch() (bool, error) {
 		return false, err
 	}
 
-	remoteBranch := "origin/" + branch
-	mergeBase, err := MergeBase(remoteBranch)
-	if err != nil {
+	var mergeBase string
+	if remote := RemoteName(); remote != "" {
+		mergeBase, err = MergeBase(remote + "/" + branch)
+	}
+	if err != nil || mergeBase == "" {
 		mergeBase, err = MergeBase(branch)
 	}
 	if err != nil {
@@ -126,9 +151,11 @@ func resolveMergeBase() (string, error) {
 		return "", err
 	}
 
-	remoteBranch := "origin/" + branch
-	mergeBase, err := MergeBase(remoteBranch)
-	if err != nil {
+	var mergeBase string
+	if remote := RemoteName(); remote != "" {
+		mergeBase, err = MergeBase(remote + "/" + branch)
+	}
+	if err != nil || mergeBase == "" {
 		mergeBase, err = MergeBase(branch)
 	}
 	if err != nil {

@@ -144,8 +144,14 @@ func featureBranchRepo(t *testing.T) *TestRepo {
 // Returns the bare repo path.
 func (r *TestRepo) AddRemote(t *testing.T, bareDir string) {
 	t.Helper()
-	r.mustGit("remote", "add", "origin", bareDir)
-	r.mustGit("push", "-u", "origin", "main")
+	r.AddRemoteAs(t, bareDir, "origin")
+}
+
+// AddRemoteAs adds a bare repo with the given remote name and pushes main to it.
+func (r *TestRepo) AddRemoteAs(t *testing.T, bareDir, name string) {
+	t.Helper()
+	r.mustGit("remote", "add", name, bareDir)
+	r.mustGit("push", "-u", name, "main")
 }
 
 // --- assertion helpers ---
