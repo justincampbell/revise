@@ -41,23 +41,23 @@ const (
 const fileListWidth = 30
 
 type Model struct {
-	diff     *git.Diff
-	fileList fileListModel
-	diffView diffViewModel
+	diff       *git.Diff
+	fileList   fileListModel
+	diffView   diffViewModel
 	focus      focusPanel
 	showHelp   bool
 	fullscreen bool
-	width    int
-	height   int
-	ready    bool
+	width      int
+	height     int
+	ready      bool
 
-	mode             DiffMode
-	onDefaultBranch  bool
+	mode            DiffMode
+	onDefaultBranch bool
 
-	comments          comments
+	comments           comments
 	commentInputActive bool
-	commentTarget     commentKey
-	statusMsg         string
+	commentTarget      commentKey
+	statusMsg          string
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {

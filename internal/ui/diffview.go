@@ -77,11 +77,9 @@ func (m *diffViewModel) buildLines() {
 	}
 
 	for _, hunk := range m.file.Hunks {
-		header := hunk.Header
-		if hunk.Source != "" {
-			header = header + "  " + string(hunk.Source)
+		if header := renderHunkHeader(hunk); header != "" {
+			add(header, nil)
 		}
-		add(hunkStyle.Render(header), nil)
 		for _, line := range hunk.Lines {
 			ref := &lineRef{
 				newNum:   line.NewNum,
@@ -269,7 +267,7 @@ func (m *diffViewModel) pageUp() {
 }
 
 func (m *diffViewModel) viewHeight() int {
-	h := m.height - 2 // border
+	h := m.height
 	if h < 1 {
 		h = 1
 	}
@@ -316,15 +314,46 @@ func renderDiffLine(l git.Line) string {
 }
 
 func formatGutter(l git.Line) string {
+	n := l.NewNum
+	if l.Type == git.LineRemoved {
+		n = l.OldNum
+	}
 	switch l.Type {
 	case git.LineAdded:
-		return fmt.Sprintf("     %4d ", l.NewNum)
+		return fmt.Sprintf("%5d ", n)
 	case git.LineRemoved:
-		return fmt.Sprintf("%4d      ", l.OldNum)
+		return fmt.Sprintf("%5d ", n)
 	case git.LineContext:
-		return fmt.Sprintf("%4d %4d ", l.OldNum, l.NewNum)
+		return fmt.Sprintf("%5d ", n)
 	}
-	return "          "
+	return "      "
+}
+
+func renderHunkHeader(h git.Hunk) string {
+	header := hunkContext(h.Header)
+	if header == "" {
+		return ""
+	}
+
+	style := hunkStyle
+	switch h.Source {
+	case git.SourceBranch:
+		style = hunkBranchStyle
+	case git.SourceStaged:
+		style = hunkStagedStyle
+	case git.SourceUnstaged:
+		style = hunkUnstagedStyle
+	}
+
+	return style.Render(header)
+}
+
+func hunkContext(header string) string {
+	parts := strings.SplitN(header, "@@", 3)
+	if len(parts) < 3 {
+		return strings.TrimSpace(header)
+	}
+	return strings.TrimSpace(parts[2])
 }
 
 // linePrefix returns the 1-character cursor indicator for a display line.
@@ -339,10 +368,6 @@ func (m diffViewModel) linePrefix(absIdx int) string {
 const inputBoxHeight = 3 // border top + content + border bottom
 
 func (m diffViewModel) render(focused bool) string {
-	if len(m.lines) == 0 {
-		return panelBorder.Width(m.width).Height(m.height).Render("No changes to display")
-	}
-
 	viewH := m.viewHeight()
 	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
 	if maxWidth < 1 {
@@ -358,8 +383,11 @@ func (m diffViewModel) render(focused bool) string {
 	}
 
 	var renderedLines []string
+	if len(m.lines) == 0 {
+		renderedLines = append(renderedLines, "No changes to display")
+	}
 
-	if m.commentInputActive {
+	if m.commentInputActive && len(m.lines) > 0 {
 		codeAbove := m.cursor - m.offset + 1
 		if codeAbove < 0 {
 			codeAbove = 0
@@ -399,7 +427,7 @@ func (m diffViewModel) render(focused bool) string {
 		for absIdx := nextIdx; absIdx < endAfter; absIdx++ {
 			renderedLines = append(renderedLines, renderLine(absIdx))
 		}
-	} else {
+	} else if len(m.lines) > 0 {
 		end := m.offset + viewH
 		if end > len(m.lines) {
 			end = len(m.lines)
@@ -409,6 +437,10 @@ func (m diffViewModel) render(focused bool) string {
 		}
 	}
 
+	added, removed := 0, 0
+	if m.file != nil {
+		added, removed = fileTotals(*m.file)
+	}
 	content := strings.Join(renderedLines, "\n")
 
 	style := panelBorder
@@ -427,6 +459,7 @@ func (m diffViewModel) render(focused bool) string {
 	if title != "" {
 		rendered = setBorderTitle(rendered, title, focused)
 	}
+	rendered = setBorderBottomCounts(rendered, added, removed, focused)
 	return rendered
 }
 
@@ -463,4 +496,81 @@ func setBorderTitle(rendered, title string, focused bool) string {
 
 	newTop := bc.Render("╭") + titleRendered + bc.Render(strings.Repeat("─", fillWidth)) + bc.Render("╮")
 	return newTop + rest
+}
+
+// setBorderBottomTitle overlays a centered title onto the bottom border line.
+func setBorderBottomTitle(rendered, title string, focused bool) string {
+	lastNl := strings.LastIndexByte(rendered, '\n')
+	if lastNl < 0 {
+		return rendered
+	}
+	rest := rendered[:lastNl+1]
+	bottomLine := rendered[lastNl+1:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(bottomLine)
+	titleWidth := ansi.StringWidth(title)
+
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	fillWidth := totalWidth - 1 - titleWidth - 1 // minus ╰ and ╯
+	leftFill := fillWidth / 2
+	rightFill := fillWidth - leftFill
+
+	newBottom := bc.Render("╰") + bc.Render(strings.Repeat("─", leftFill)) + title + bc.Render(strings.Repeat("─", rightFill)) + bc.Render("╯")
+	return rest + newBottom
+}
+
+// setBorderBottomCounts renders " +A/-R " on the bottom border with the slash
+// anchored to the pane center so it doesn't shift as digit widths change.
+func setBorderBottomCounts(rendered string, added, removed int, focused bool) string {
+	lastNl := strings.LastIndexByte(rendered, '\n')
+	if lastNl < 0 {
+		return rendered
+	}
+	rest := rendered[:lastNl+1]
+	bottomLine := rendered[lastNl+1:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(bottomLine)
+	contentWidth := totalWidth - 2 // exclude corners
+	if contentWidth < 1 {
+		return rendered
+	}
+
+	left := " " + statusAdded.Render(fmt.Sprintf("+%d", added))
+	slash := statusBarStyle.Render("/")
+	right := statusDeleted.Render(fmt.Sprintf("-%d", removed)) + " "
+
+	leftWidth := ansi.StringWidth(left)
+	rightWidth := ansi.StringWidth(right)
+	center := contentWidth / 2 // slash column in inner area
+
+	leftFill := center - leftWidth
+	rightFill := contentWidth - center - 1 - rightWidth // minus slash
+	if leftFill < 0 || rightFill < 0 {
+		// Fallback to centered title for very narrow panes.
+		return setBorderBottomTitle(rendered, renderPaneChangeSummary(added, removed), focused)
+	}
+
+	newBottom := bc.Render("╰") +
+		bc.Render(strings.Repeat("─", leftFill)) +
+		left +
+		slash +
+		right +
+		bc.Render(strings.Repeat("─", rightFill)) +
+		bc.Render("╯")
+	return rest + newBottom
 }

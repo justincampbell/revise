@@ -52,7 +52,7 @@ func TestFileListSelectedFile_Empty(t *testing.T) {
 
 func TestFileListEnsureVisible_ScrollsDown(t *testing.T) {
 	m := newFileListModel(makeFiles("a", "b", "c", "d", "e"))
-	m.height = 5 // viewHeight = 3
+	m.height = 3 // viewHeight = 3
 	m.cursor = 4
 	m.ensureVisible()
 	assert.Equal(t, 2, m.offset)
@@ -60,7 +60,7 @@ func TestFileListEnsureVisible_ScrollsDown(t *testing.T) {
 
 func TestFileListEnsureVisible_ScrollsUp(t *testing.T) {
 	m := newFileListModel(makeFiles("a", "b", "c", "d", "e"))
-	m.height = 5 // viewHeight = 3
+	m.height = 5 // viewHeight = 4
 	m.offset = 3
 	m.cursor = 1
 	m.ensureVisible()
@@ -91,4 +91,72 @@ func TestFileList_TitleInBorder(t *testing.T) {
 	m.height = 10
 	rendered := m.render(true)
 	assert.Contains(t, rendered, "Files (1/3)")
+}
+
+func TestFileList_RenderShowsCenteredFooterTotals(t *testing.T) {
+	m := newFileListModel([]git.FileDiff{
+		{
+			Path:   "a.go",
+			Status: git.StatusModified,
+			Hunks: []git.Hunk{{
+				Header: "@@ -1,1 +1,2 @@",
+				Lines: []git.Line{
+					{Type: git.LineAdded, Content: "a", NewNum: 1},
+					{Type: git.LineRemoved, Content: "b", OldNum: 1},
+					{Type: git.LineAdded, Content: "c", NewNum: 2},
+				},
+			}},
+		},
+	})
+	m.width = 40
+	m.height = 8
+	rendered := m.render(true)
+	assert.Contains(t, rendered, "+2/-1")
+}
+
+func TestFileTotals(t *testing.T) {
+	f := git.FileDiff{
+		Path:   "a.go",
+		Status: git.StatusModified,
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,2 @@",
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "a", NewNum: 1},
+				{Type: git.LineRemoved, Content: "b", OldNum: 1},
+				{Type: git.LineAdded, Content: "c", NewNum: 2},
+			},
+		}},
+	}
+	added, removed := fileTotals(f)
+	assert.Equal(t, 2, added)
+	assert.Equal(t, 1, removed)
+}
+
+func TestFileListTotals(t *testing.T) {
+	m := newFileListModel([]git.FileDiff{
+		{
+			Path:   "a.go",
+			Status: git.StatusModified,
+			Hunks: []git.Hunk{{
+				Header: "@@ -1,1 +1,2 @@",
+				Lines: []git.Line{
+					{Type: git.LineAdded, Content: "a", NewNum: 1},
+					{Type: git.LineRemoved, Content: "b", OldNum: 1},
+				},
+			}},
+		},
+		{
+			Path:   "b.go",
+			Status: git.StatusModified,
+			Hunks: []git.Hunk{{
+				Header: "@@ -1,0 +1,1 @@",
+				Lines: []git.Line{
+					{Type: git.LineAdded, Content: "c", NewNum: 1},
+				},
+			}},
+		},
+	})
+	added, removed := m.totals()
+	assert.Equal(t, 2, added)
+	assert.Equal(t, 1, removed)
 }
