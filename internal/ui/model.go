@@ -513,7 +513,8 @@ func (m Model) renderModeSlider() string {
 		render("Unstaged", true),
 	)
 
-	return strings.Join(parts, sep) + modeInactiveStyle.Render("  Tab: switch")
+	ctx := fmt.Sprintf("  +/-: context (%d)", m.contextLines)
+	return strings.Join(parts, sep) + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx)
 }
 
 func (m Model) renderStatusBar() string {

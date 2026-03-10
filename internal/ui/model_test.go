@@ -371,6 +371,12 @@ func TestModeSlider_FeatureBranch_BranchMode_AllLit(t *testing.T) {
 	assert.Contains(t, slider, "Tab: switch")
 }
 
+func TestModeSlider_ShowsContextLineCount(t *testing.T) {
+	m := makeModel("a.go")
+	slider := m.renderModeSlider()
+	assert.Contains(t, slider, "+/-: context (3)")
+}
+
 func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
 	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
