@@ -159,12 +159,17 @@ func (r *TestRepo) AddRemoteAs(t *testing.T, bareDir, name string) {
 func behindRemoteRepo(t *testing.T) *TestRepo {
 	t.Helper()
 
-	// Create the "remote" bare repo
+	// Create the "remote" bare repo with main as default branch
 	bareDir := t.TempDir()
 	cmd := exec.Command("git", "init", "--bare", bareDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "symbolic-ref", "HEAD", "refs/heads/main")
+	cmd.Dir = bareDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
 	}
 
 	// Create local repo, push initial commit
@@ -225,6 +230,11 @@ func aheadOfRemoteRepo(t *testing.T) *TestRepo {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "symbolic-ref", "HEAD", "refs/heads/main")
+	cmd.Dir = bareDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git symbolic-ref: %v\n%s", err, out)
 	}
 
 	r := NewTestRepo(t)
