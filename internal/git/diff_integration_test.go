@@ -261,6 +261,11 @@ func TestGetDiff_FeatureBranch_UsesOriginMain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
 	}
+	// Ensure the bare repo's default branch is "main" regardless of git config.
+	cmd = exec.Command("git", "-C", bare, "symbolic-ref", "HEAD", "refs/heads/main")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git symbolic-ref HEAD: %v\n%s", err, out)
+	}
 
 	r := NewTestRepo(t)
 	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
