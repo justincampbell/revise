@@ -402,3 +402,46 @@ func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
 	assert.True(t, m.commentInputActive)
 	assert.Equal(t, "q", m.diffView.textInput.Value())
 }
+
+func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "a", NewNum: 1},
+		{Type: git.LineRemoved, Content: "b", OldNum: 1},
+		{Type: git.LineAdded, Content: "c", NewNum: 2},
+	})
+	m.focus = focusFileList
+	status := m.renderStatusBar()
+	assert.NotContains(t, status, "+2/-1")
+}
+
+func TestRenderStatusBar_DiffNoPaneTotals(t *testing.T) {
+	files := []git.FileDiff{
+		{
+			Path:   "a.go",
+			Status: git.StatusModified,
+			Hunks: []git.Hunk{{
+				Header: "@@ -1,1 +1,2 @@",
+				Lines: []git.Line{
+					{Type: git.LineAdded, Content: "a", NewNum: 1},
+					{Type: git.LineRemoved, Content: "b", OldNum: 1},
+				},
+			}},
+		},
+		{
+			Path:   "b.go",
+			Status: git.StatusModified,
+			Hunks: []git.Hunk{{
+				Header: "@@ -1,0 +1,1 @@",
+				Lines: []git.Line{
+					{Type: git.LineAdded, Content: "c", NewNum: 1},
+				},
+			}},
+		},
+	}
+	m := New(&git.Diff{Files: files}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	m.focus = focusDiffView
+	status := m.renderStatusBar()
+	assert.NotContains(t, status, "a.go +1/-1")
+}

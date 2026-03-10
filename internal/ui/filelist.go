@@ -48,8 +48,7 @@ func (m *fileListModel) ensureVisible() {
 }
 
 func (m *fileListModel) viewHeight() int {
-	// Account for top/bottom border
-	h := m.height - 2
+	h := m.height
 	if h < 1 {
 		h = 1
 	}
@@ -61,6 +60,29 @@ func (m fileListModel) selectedFile() *git.FileDiff {
 		return nil
 	}
 	return &m.files[m.cursor]
+}
+
+func (m fileListModel) totals() (added, removed int) {
+	for _, f := range m.files {
+		a, r := fileTotals(f)
+		added += a
+		removed += r
+	}
+	return added, removed
+}
+
+func fileTotals(f git.FileDiff) (added, removed int) {
+	for _, h := range f.Hunks {
+		for _, l := range h.Lines {
+			switch l.Type {
+			case git.LineAdded:
+				added++
+			case git.LineRemoved:
+				removed++
+			}
+		}
+	}
+	return added, removed
 }
 
 func (m fileListModel) render(focused bool) string {
@@ -106,10 +128,12 @@ func (m fileListModel) render(focused bool) string {
 		}
 	}
 
+	added, removed := m.totals()
 	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
 
 	title := fmt.Sprintf(" Files (%d/%d) ", m.cursor+1, len(m.files))
 	rendered = setBorderTitle(rendered, title, focused)
+	rendered = setBorderBottomCounts(rendered, added, removed, focused)
 	return rendered
 }
 
@@ -141,4 +165,9 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return "…" + s[len(s)-maxLen+1:]
+}
+
+func renderPaneChangeSummary(added, removed int) string {
+	summary := " " + statusAdded.Render(fmt.Sprintf("+%d", added)) + statusBarStyle.Render("/") + statusDeleted.Render(fmt.Sprintf("-%d", removed)) + " "
+	return summary
 }
