@@ -51,7 +51,7 @@ func TestStagedDiff_ContainsOnlyStagedContent(t *testing.T) {
 	r.Add("base.go")
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* ALPHA */ }\n\n// BETA\n")
 
-	raw, err := StagedDiff()
+	raw, err := StagedDiff(DefaultContextLines)
 	require.NoError(t, err)
 	assert.Contains(t, raw, "ALPHA")
 	assert.NotContains(t, raw, "BETA")
@@ -63,7 +63,7 @@ func TestUnstagedDiff_ContainsUnstagedContent(t *testing.T) {
 	r.Add("base.go")
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* ALPHA */ }\n\n// BETA\n")
 
-	raw, err := UnstagedDiff()
+	raw, err := UnstagedDiff(DefaultContextLines)
 	require.NoError(t, err)
 	// BETA was added after staging; ALPHA may appear as context
 	assert.Contains(t, raw, "BETA")
@@ -406,7 +406,7 @@ func TestBranchDiff_ShowsEverything(t *testing.T) {
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
 	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
 
-	diff, err := BranchDiff()
+	diff, err := BranchDiff(DefaultContextLines)
 	require.NoError(t, err)
 	paths := filePaths(diff)
 	assert.Contains(t, paths, "feature.go")
@@ -422,7 +422,7 @@ func TestStagedOnlyDiff_ExcludesUnstagedAndUntracked(t *testing.T) {
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
 	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
 
-	diff, err := StagedOnlyDiff()
+	diff, err := StagedOnlyDiff(DefaultContextLines)
 	require.NoError(t, err)
 	paths := filePaths(diff)
 	assert.Contains(t, paths, "staged.go")
@@ -437,7 +437,7 @@ func TestUnstagedOnlyDiff_ExcludesStaged(t *testing.T) {
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
 	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
 
-	diff, err := UnstagedOnlyDiff()
+	diff, err := UnstagedOnlyDiff(DefaultContextLines)
 	require.NoError(t, err)
 	paths := filePaths(diff)
 	assert.NotContains(t, paths, "staged.go")
@@ -452,7 +452,7 @@ func TestWorkingTreeDiff_ShowsStagedUnstagedUntracked(t *testing.T) {
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* unstaged */ }\n")
 	r.WriteFile("untracked.go", "package main\n\n// untracked\n")
 
-	diff, err := WorkingTreeDiff()
+	diff, err := WorkingTreeDiff(DefaultContextLines)
 	require.NoError(t, err)
 	paths := filePaths(diff)
 	assert.Contains(t, paths, "staged.go")
@@ -467,7 +467,7 @@ func TestWorkingTreeDiff_SameFileStagedAndUnstaged(t *testing.T) {
 	r.Add("base.go")
 	r.WriteFile("base.go", "package main\n\nfunc base() { /* staged edit */ }\n\n// unstaged addition\n")
 
-	diff, err := WorkingTreeDiff()
+	diff, err := WorkingTreeDiff(DefaultContextLines)
 	require.NoError(t, err)
 
 	count := 0
@@ -514,7 +514,7 @@ func TestBranchDiff_ThreeSourceCombination(t *testing.T) {
 	r.WriteFile("shared.go", "package main\n\nfunc shared() { /* branch */ }\n\nfunc staged() {}\n\n// unstaged\n")
 	r.Chdir()
 
-	diff, err := BranchDiff()
+	diff, err := BranchDiff(DefaultContextLines)
 	require.NoError(t, err)
 
 	f := fileByPath(diff, "shared.go")
@@ -542,7 +542,7 @@ func TestUntrackedFiles_TaggedAsUnstaged(t *testing.T) {
 	r := baseRepo(t)
 	r.WriteFile("new.go", "package main\n\nfunc newFn() {}\n")
 
-	diff, err := WorkingTreeDiff()
+	diff, err := WorkingTreeDiff(DefaultContextLines)
 	require.NoError(t, err)
 
 	f := fileByPath(diff, "new.go")

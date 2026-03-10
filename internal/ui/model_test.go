@@ -403,6 +403,62 @@ func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
 	assert.Equal(t, "q", m.diffView.textInput.Value())
 }
 
+// --- Hunk navigation tests ---
+
+func TestModelNextHunk_Key(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineContext, Content: "a", OldNum: 1, NewNum: 1},
+		{Type: git.LineAdded, Content: "b", NewNum: 2},
+	})
+	m = sendKey(m, "l") // focus diff
+	startCursor := m.diffView.cursor
+	// } should move to next hunk (or stay if only one)
+	m = sendKey(m, "}")
+	// With single hunk, cursor stays same
+	assert.Equal(t, startCursor, m.diffView.cursor)
+}
+
+func TestModelPrevHunk_Key(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineContext, Content: "a", OldNum: 1, NewNum: 1},
+		{Type: git.LineAdded, Content: "b", NewNum: 2},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "{")
+	// With single hunk at top, cursor stays at first navigable line
+	assert.NotNil(t, m.diffView.cursorRef())
+}
+
+// --- Context lines tests ---
+
+func TestModelPlus_IncreasesContextLines(t *testing.T) {
+	m := makeModel("a.go")
+	assert.Equal(t, git.DefaultContextLines, m.contextLines)
+	m = sendKey(m, "+")
+	assert.Equal(t, git.DefaultContextLines+1, m.contextLines)
+}
+
+func TestModelMinus_DecreasesContextLines(t *testing.T) {
+	m := makeModel("a.go")
+	m.contextLines = 5
+	m = sendKey(m, "-")
+	assert.Equal(t, 4, m.contextLines)
+}
+
+func TestModelMinus_ClampsAtZero(t *testing.T) {
+	m := makeModel("a.go")
+	m.contextLines = 0
+	m = sendKey(m, "-")
+	assert.Equal(t, 0, m.contextLines)
+}
+
+func TestModelEquals_IncreasesContextLines(t *testing.T) {
+	// "=" is the unshifted version of "+" on most keyboards
+	m := makeModel("a.go")
+	m = sendKey(m, "=")
+	assert.Equal(t, git.DefaultContextLines+1, m.contextLines)
+}
+
 func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "a", NewNum: 1},

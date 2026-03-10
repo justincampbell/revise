@@ -53,6 +53,7 @@ type Model struct {
 
 	mode            DiffMode
 	onDefaultBranch bool
+	contextLines    int
 
 	comments           comments
 	commentInputActive bool
@@ -85,6 +86,7 @@ func New(diff *git.Diff, onDefaultBranch bool) Model {
 		comments:        c,
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
+		contextLines:    git.DefaultContextLines,
 	}
 }
 
@@ -158,6 +160,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "N":
 			m.prevFile()
+			return m, nil
+
+		// Adjust context lines
+		case "+", "=":
+			m.contextLines++
+			return m, m.loadDiff()
+		case "-":
+			if m.contextLines > 0 {
+				m.contextLines--
+				return m, m.loadDiff()
+			}
 			return m, nil
 
 		// Export works from any panel
@@ -319,6 +332,10 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.diffView.pageDown()
 	case "pgup":
 		m.diffView.pageUp()
+	case "}", "]":
+		m.diffView.nextHunk()
+	case "{", "[":
+		m.diffView.prevHunk()
 	case "c", "enter":
 		if m.diffView.cursorRef() != nil {
 			m.startCommentInput()
@@ -445,16 +462,17 @@ func (m *Model) cycleMode(direction int) {
 // loadDiff returns a command that fetches the diff for the current mode.
 func (m *Model) loadDiff() tea.Cmd {
 	mode := m.mode
+	ctx := m.contextLines
 	return func() tea.Msg {
 		var diff *git.Diff
 		var err error
 		switch mode {
 		case ModeBranch:
-			diff, err = git.BranchDiff()
+			diff, err = git.BranchDiff(ctx)
 		case ModeStaged:
-			diff, err = git.WorkingTreeDiff()
+			diff, err = git.WorkingTreeDiff(ctx)
 		case ModeUnstaged:
-			diff, err = git.UnstagedOnlyDiff()
+			diff, err = git.UnstagedOnlyDiff(ctx)
 		}
 		return diffLoadedMsg{diff: diff, err: err}
 	}

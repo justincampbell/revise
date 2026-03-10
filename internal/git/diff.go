@@ -65,9 +65,13 @@ func MergeBase(branch string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// DefaultContextLines is the default number of context lines in unified diffs.
+const DefaultContextLines = 3
+
 // RawDiff returns the raw unified diff from the merge-base to HEAD.
-func RawDiff(mergeBase string) (string, error) {
-	out, err := exec.Command("git", "diff", mergeBase, "HEAD").Output()
+func RawDiff(mergeBase string, contextLines int) (string, error) {
+	args := []string{"diff", fmt.Sprintf("-U%d", contextLines), mergeBase, "HEAD"}
+	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return "", fmt.Errorf("git diff failed: %s", string(exitErr.Stderr))
@@ -78,8 +82,9 @@ func RawDiff(mergeBase string) (string, error) {
 }
 
 // StagedDiff returns the raw diff of staged changes.
-func StagedDiff() (string, error) {
-	out, err := exec.Command("git", "diff", "--cached").Output()
+func StagedDiff(contextLines int) (string, error) {
+	args := []string{"diff", fmt.Sprintf("-U%d", contextLines), "--cached"}
+	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("git diff --cached: %w", err)
 	}
@@ -87,8 +92,9 @@ func StagedDiff() (string, error) {
 }
 
 // UnstagedDiff returns the raw diff of unstaged changes.
-func UnstagedDiff() (string, error) {
-	out, err := exec.Command("git", "diff").Output()
+func UnstagedDiff(contextLines int) (string, error) {
+	args := []string{"diff", fmt.Sprintf("-U%d", contextLines)}
+	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("git diff: %w", err)
 	}
@@ -166,19 +172,19 @@ func resolveMergeBase() (string, error) {
 
 // BranchDiff returns the merge-base diff merged with all working tree changes.
 // This is the broadest view — committed + staged + unstaged + untracked.
-func BranchDiff() (*Diff, error) {
+func BranchDiff(contextLines int) (*Diff, error) {
 	mergeBase, err := resolveMergeBase()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := RawDiff(mergeBase)
+	raw, err := RawDiff(mergeBase, contextLines)
 	if err != nil {
 		return nil, err
 	}
 	diff := Parse(raw)
 	tagHunks(diff.Files, SourceBranch)
 
-	wtDiff, err := WorkingTreeDiff()
+	wtDiff, err := WorkingTreeDiff(contextLines)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +194,8 @@ func BranchDiff() (*Diff, error) {
 }
 
 // StagedOnlyDiff returns only staged changes.
-func StagedOnlyDiff() (*Diff, error) {
-	raw, err := StagedDiff()
+func StagedOnlyDiff(contextLines int) (*Diff, error) {
+	raw, err := StagedDiff(contextLines)
 	if err != nil {
 		return nil, err
 	}
@@ -199,8 +205,8 @@ func StagedOnlyDiff() (*Diff, error) {
 }
 
 // UnstagedOnlyDiff returns unstaged changes + untracked files.
-func UnstagedOnlyDiff() (*Diff, error) {
-	raw, err := UnstagedDiff()
+func UnstagedOnlyDiff(contextLines int) (*Diff, error) {
+	raw, err := UnstagedDiff(contextLines)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +224,8 @@ func UnstagedOnlyDiff() (*Diff, error) {
 }
 
 // WorkingTreeDiff returns staged + unstaged + untracked changes.
-func WorkingTreeDiff() (*Diff, error) {
-	return getWorkingTreeDiff()
+func WorkingTreeDiff(contextLines int) (*Diff, error) {
+	return getWorkingTreeDiff(contextLines)
 }
 
 // GetDiff returns a parsed Diff for the current branch vs the default branch.
@@ -240,19 +246,19 @@ func GetDiff() (*Diff, error) {
 	}
 
 	if onDefault {
-		return WorkingTreeDiff()
+		return WorkingTreeDiff(DefaultContextLines)
 	}
 
-	return BranchDiff()
+	return BranchDiff(DefaultContextLines)
 }
 
 // getWorkingTreeDiff returns staged + unstaged + untracked changes.
-func getWorkingTreeDiff() (*Diff, error) {
-	stagedRaw, err := StagedDiff()
+func getWorkingTreeDiff(contextLines int) (*Diff, error) {
+	stagedRaw, err := StagedDiff(contextLines)
 	if err != nil {
 		return nil, err
 	}
-	unstagedRaw, err := UnstagedDiff()
+	unstagedRaw, err := UnstagedDiff(contextLines)
 	if err != nil {
 		return nil, err
 	}

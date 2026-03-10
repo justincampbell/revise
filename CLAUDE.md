@@ -140,6 +140,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `→` (`l`) | Focus diff view |
 | `n` / `N` | Next / prev file |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
+| `+`/`-` | More/less context lines |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list (exits fullscreen if needed) |
 | `?` | Toggle help overlay |
@@ -147,6 +148,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `e` | Export comments (works from any panel) |
 | `j/k`, `↑/↓` | Navigate files (file list) / move cursor (diff) |
 | `Enter` | Select file and focus diff (file list) / open comment input (diff) |
+| `}` / `{` (`]`/`[`) | Next / prev hunk |
 | `g` / `G` | Top / bottom of diff |
 | `Fn+↓` / `Space` | Page down |
 | `Fn+↑` | Page up |
