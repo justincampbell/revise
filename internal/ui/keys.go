@@ -29,6 +29,7 @@ var allBindings = []BindingGroup{
 		{"j/k, ↑/↓", "Navigate files"},
 		{"Enter", "Select file and focus diff"},
 		{"t", "Toggle tree view"},
+		{"→/←", "Expand/collapse (tree view)"},
 	}},
 	{"Diff View", []Binding{
 		{"j/k, ↑/↓", "Move cursor"},

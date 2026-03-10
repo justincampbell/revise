@@ -126,28 +126,57 @@ func TestFlattenTree_CollapsedDir(t *testing.T) {
 	assert.Equal(t, "main.go", rows[1].node.name)
 }
 
-func TestTreeDisplayName_Dir(t *testing.T) {
+func TestTreeDisplayName_Dir_AtRoot(t *testing.T) {
 	node := &treeNode{name: "internal/ui", children: []*treeNode{}, expanded: true}
-	row := treeRow{node: node, depth: 0}
+	row := treeRow{node: node, depth: 0, prefix: ""}
 	assert.Equal(t, "▾ internal/ui/", treeDisplayName(row))
 }
 
 func TestTreeDisplayName_CollapsedDir(t *testing.T) {
 	node := &treeNode{name: "internal/ui", children: []*treeNode{}, expanded: false}
-	row := treeRow{node: node, depth: 0}
+	row := treeRow{node: node, depth: 0, prefix: ""}
 	assert.Equal(t, "▸ internal/ui/", treeDisplayName(row))
 }
 
-func TestTreeDisplayName_File(t *testing.T) {
-	node := &treeNode{name: "model.go", fileIdx: 0}
-	row := treeRow{node: node, depth: 1}
-	assert.Equal(t, "    model.go", treeDisplayName(row))
+func TestTreeDisplayName_WithBranchChars(t *testing.T) {
+	// Build a real tree to get proper prefixes
+	files := makeFileDiffs("dir/a.go", "dir/b.go", "root.go")
+	tree := buildTree(files)
+	rows := flattenTree(tree)
+
+	// dir/ is not last sibling (root.go follows), so children get "│   " prefix
+	require.Len(t, rows, 4)
+	assert.Equal(t, "▾ dir/", treeDisplayName(rows[0]))
+	assert.Equal(t, "│   ├── a.go", treeDisplayName(rows[1]))
+	assert.Equal(t, "│   └── b.go", treeDisplayName(rows[2]))
+	assert.Equal(t, "root.go", treeDisplayName(rows[3]))
 }
 
-func TestTreeDisplayName_NestedFile(t *testing.T) {
-	node := &treeNode{name: "types.go", fileIdx: 0}
-	row := treeRow{node: node, depth: 2}
-	assert.Equal(t, "      types.go", treeDisplayName(row))
+func TestTreeDisplayName_WithBranchChars_LastDir(t *testing.T) {
+	// When directory IS the last root sibling, children get "    " prefix
+	files := makeFileDiffs("dir/a.go", "dir/b.go")
+	tree := buildTree(files)
+	rows := flattenTree(tree)
+
+	require.Len(t, rows, 3)
+	assert.Equal(t, "▾ dir/", treeDisplayName(rows[0]))
+	assert.Equal(t, "    ├── a.go", treeDisplayName(rows[1]))
+	assert.Equal(t, "    └── b.go", treeDisplayName(rows[2]))
+}
+
+func TestTreeDisplayName_NestedBranchChars(t *testing.T) {
+	files := makeFileDiffs("a/b/c.go", "a/b/d.go", "a/e.go")
+	tree := buildTree(files)
+	rows := flattenTree(tree)
+
+	// a/ is only root (isLast=true), so children get "    " prefix
+	// b/ is not last child of a/ (e.go follows), so b/'s children get "    │   "
+	require.Len(t, rows, 5)
+	assert.Equal(t, "▾ a/", treeDisplayName(rows[0]))
+	assert.Equal(t, "    ├── ▾ b/", treeDisplayName(rows[1]))
+	assert.Equal(t, "    │   ├── c.go", treeDisplayName(rows[2]))
+	assert.Equal(t, "    │   └── d.go", treeDisplayName(rows[3]))
+	assert.Equal(t, "    └── e.go", treeDisplayName(rows[4]))
 }
 
 func TestBuildTree_FileIndices(t *testing.T) {

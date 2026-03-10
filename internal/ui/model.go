@@ -118,15 +118,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == focusDiffView {
 				m.fullscreen = !m.fullscreen
 				m.updateLayout()
-			} else {
-				m.focus = focusDiffView
+				return m, nil
 			}
+			// In tree view on file list, try to expand first
+			if m.focus == focusFileList && m.fileList.expandNode() {
+				m.syncSelectedFile()
+				return m, nil
+			}
+			m.focus = focusDiffView
 			return m, nil
 
 		case "left", "h":
 			if m.fullscreen {
 				m.fullscreen = false
 				m.updateLayout()
+				m.focus = focusFileList
+				return m, nil
+			}
+			// In tree view on file list, collapse or move to parent
+			if m.focus == focusFileList && m.fileList.collapseOrParent() {
+				m.syncSelectedFile()
+				return m, nil
 			}
 			m.focus = focusFileList
 			return m, nil

@@ -647,6 +647,75 @@ func TestModelT_SelectedFileOnDir_ReturnsNil(t *testing.T) {
 	assert.Nil(t, m.fileList.selectedFile())
 }
 
+func TestModelTreeView_RightExpandsCollapsedDir(t *testing.T) {
+	m := makeModel("dir/a.go", "dir/b.go")
+	m = sendKey(m, "t") // enable tree view
+	require.True(t, m.fileList.treeView)
+
+	// Collapse the directory first
+	m = sendSpecialKey(m, tea.KeyEnter)
+	require.False(t, m.fileList.rows[0].node.expanded)
+	require.Len(t, m.fileList.rows, 1) // only dir visible
+
+	// Right arrow should expand it
+	m = sendSpecialKey(m, tea.KeyRight)
+	assert.True(t, m.fileList.rows[0].node.expanded)
+	assert.Len(t, m.fileList.rows, 3) // dir + 2 files
+	assert.Equal(t, focusFileList, m.focus) // should NOT change focus
+}
+
+func TestModelTreeView_RightOnExpandedDir_FocusesDiff(t *testing.T) {
+	m := makeModel("dir/a.go", "dir/b.go")
+	m = sendKey(m, "t") // enable tree view
+	// Dir is already expanded, right should focus diff
+	assert.True(t, m.fileList.rows[0].node.expanded)
+	m = sendSpecialKey(m, tea.KeyRight)
+	assert.Equal(t, focusDiffView, m.focus)
+}
+
+func TestModelTreeView_RightOnFile_FocusesDiff(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "t")
+	// Only a file, no dir — right focuses diff
+	m = sendSpecialKey(m, tea.KeyRight)
+	assert.Equal(t, focusDiffView, m.focus)
+}
+
+func TestModelTreeView_LeftCollapsesExpandedDir(t *testing.T) {
+	m := makeModel("dir/a.go", "dir/b.go")
+	m = sendKey(m, "t")
+	require.True(t, m.fileList.rows[0].node.expanded)
+
+	// Left on expanded dir collapses it
+	m = sendSpecialKey(m, tea.KeyLeft)
+	assert.False(t, m.fileList.rows[0].node.expanded)
+	assert.Len(t, m.fileList.rows, 1)
+}
+
+func TestModelTreeView_LeftOnChild_MovesToParent(t *testing.T) {
+	m := makeModel("dir/a.go", "dir/b.go")
+	m = sendKey(m, "t")
+	require.True(t, m.fileList.treeView)
+
+	// Move to first file child
+	m = sendKey(m, "j")
+	require.Equal(t, 1, m.fileList.cursor)
+	require.False(t, m.fileList.rows[1].node.isDir())
+
+	// Left should move cursor to parent dir
+	m = sendSpecialKey(m, tea.KeyLeft)
+	assert.Equal(t, 0, m.fileList.cursor)
+	assert.True(t, m.fileList.rows[0].node.isDir())
+}
+
+func TestModelTreeView_LeftOnRootFile_StaysOnFileList(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "t")
+	// Left on a root-level file with no parent dir — should stay on file list
+	m = sendSpecialKey(m, tea.KeyLeft)
+	assert.Equal(t, focusFileList, m.focus)
+}
+
 func TestRenderStatusBar_DiffNoPaneTotals(t *testing.T) {
 	files := []git.FileDiff{
 		{

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"path"
 	"sort"
 	"strings"
 
@@ -15,6 +14,7 @@ type treeNode struct {
 	path     string // full path
 	fileIdx  int    // index into []git.FileDiff, -1 for directories
 	children []*treeNode
+	parent   *treeNode
 	expanded bool
 }
 
@@ -41,6 +41,7 @@ func insertNode(parent *treeNode, parts []string, fileIdx int) {
 			name:    parts[0],
 			path:    parts[0],
 			fileIdx: fileIdx,
+			parent:  parent,
 		})
 		return
 	}
@@ -59,6 +60,7 @@ func insertNode(parent *treeNode, parts []string, fileIdx int) {
 			path:     dirName,
 			fileIdx:  -1,
 			children: []*treeNode{},
+			parent:   parent,
 			expanded: true,
 		}
 		parent.children = append(parent.children, dir)
@@ -77,6 +79,10 @@ func collapseChains(node *treeNode) {
 				child.name = child.name + "/" + grandchild.name
 				child.path = child.name
 				child.children = grandchild.children
+			}
+			// Fix parent pointers after collapsing
+			for _, gc := range child.children {
+				gc.parent = child
 			}
 		}
 	}
@@ -101,36 +107,61 @@ func sortChildren(node *treeNode) {
 
 // flattenTree produces the visible rows from a tree, respecting expanded state.
 type treeRow struct {
-	node  *treeNode
-	depth int
+	node   *treeNode
+	depth  int
+	prefix string // tree branch prefix like "├── ", "└── ", "│   ├── "
 }
 
 func flattenTree(nodes []*treeNode) []treeRow {
 	var rows []treeRow
-	flattenNodes(nodes, 0, &rows)
+	flattenNodes(nodes, 0, nil, &rows)
 	return rows
 }
 
-func flattenNodes(nodes []*treeNode, depth int, rows *[]treeRow) {
-	for _, n := range nodes {
-		*rows = append(*rows, treeRow{node: n, depth: depth})
+func flattenNodes(nodes []*treeNode, depth int, ancestors []bool, rows *[]treeRow) {
+	for i, n := range nodes {
+		isLast := i == len(nodes)-1
+		prefix := buildPrefix(ancestors, isLast, depth)
+		*rows = append(*rows, treeRow{node: n, depth: depth, prefix: prefix})
 		if n.isDir() && n.expanded {
-			flattenNodes(n.children, depth+1, rows)
+			newAncestors := append(append([]bool{}, ancestors...), isLast)
+			flattenNodes(n.children, depth+1, newAncestors, rows)
 		}
 	}
 }
 
+// buildPrefix creates the tree branch prefix string for a given depth.
+// ancestors[i] is true if the ancestor at depth i was the last child of its parent.
+func buildPrefix(ancestors []bool, isLast bool, depth int) string {
+	if depth == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, ancestorIsLast := range ancestors {
+		if ancestorIsLast {
+			b.WriteString("    ")
+		} else {
+			b.WriteString("│   ")
+		}
+	}
+	if isLast {
+		b.WriteString("└── ")
+	} else {
+		b.WriteString("├── ")
+	}
+	return b.String()
+}
+
 // treeDisplayName returns the display name for a tree row.
 func treeDisplayName(row treeRow) string {
-	indent := strings.Repeat("  ", row.depth)
 	if row.node.isDir() {
 		arrow := "▸"
 		if row.node.expanded {
 			arrow = "▾"
 		}
-		return indent + arrow + " " + row.node.name + "/"
+		return row.prefix + arrow + " " + row.node.name + "/"
 	}
-	return indent + "  " + row.node.name
+	return row.prefix + row.node.name
 }
 
 // treeFileStatus returns the status indicator for a tree row, or "" for directories.
@@ -150,10 +181,4 @@ func treeFilePath(row treeRow, files []git.FileDiff) string {
 		return files[row.node.fileIdx].Path
 	}
 	return ""
-}
-
-// treeRootPath returns the directory path by joining ancestor names.
-// For building the tree display, we just use the node name since chains are collapsed.
-func treeRootPath(node *treeNode) string {
-	return path.Clean(node.name)
 }

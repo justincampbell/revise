@@ -151,6 +151,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `j/k`, `↑/↓` | Navigate files (file list) / move cursor (diff) |
 | `Enter` | Select file and focus diff (file list) / toggle expand dir (tree) / open comment input (diff) |
 | `t` | Toggle tree view (file list) |
+| `→`/`←` | Expand/collapse dir in tree view (← on child moves to parent) |
 | `}` / `{` (`]`/`[`) | Next / prev hunk |
 | `g` / `G` | Top / bottom of diff |
 | `Fn+↓` / `Space` | Page down |

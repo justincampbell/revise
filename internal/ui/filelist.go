@@ -141,6 +141,59 @@ func (m *fileListModel) toggleExpand() bool {
 	return true
 }
 
+// expandNode expands the current directory node.
+// Returns true if it handled the action (current row is a collapsed dir).
+func (m *fileListModel) expandNode() bool {
+	if !m.treeView || m.cursor < 0 || m.cursor >= len(m.rows) {
+		return false
+	}
+	row := m.rows[m.cursor]
+	if !row.node.isDir() {
+		return false
+	}
+	if row.node.expanded {
+		return false
+	}
+	row.node.expanded = true
+	m.rows = flattenTree(m.tree)
+	m.ensureVisible()
+	return true
+}
+
+// collapseOrParent collapses the current directory if expanded,
+// or moves cursor to the parent directory. Returns true if handled.
+func (m *fileListModel) collapseOrParent() bool {
+	if !m.treeView || m.cursor < 0 || m.cursor >= len(m.rows) {
+		return false
+	}
+	row := m.rows[m.cursor]
+
+	// If on an expanded directory, collapse it
+	if row.node.isDir() && row.node.expanded {
+		row.node.expanded = false
+		m.rows = flattenTree(m.tree)
+		if m.cursor >= len(m.rows) {
+			m.cursor = len(m.rows) - 1
+		}
+		m.ensureVisible()
+		return true
+	}
+
+	// Otherwise, move to parent directory
+	parent := row.node.parent
+	if parent == nil {
+		return false
+	}
+	for i, r := range m.rows {
+		if r.node == parent {
+			m.cursor = i
+			m.ensureVisible()
+			return true
+		}
+	}
+	return false
+}
+
 func (m fileListModel) totals() (added, removed int) {
 	for _, f := range m.files {
 		a, r := fileTotals(f)
