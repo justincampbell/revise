@@ -40,6 +40,35 @@ func TestMergeFileDiffs_AppendsNewPath(t *testing.T) {
 	assert.Equal(t, "new.go", result[1].Path)
 }
 
+func TestMergeFileDiffs_AddedThenDeleted(t *testing.T) {
+	branch := []FileDiff{
+		{Path: "temp.go", Status: StatusAdded},
+		{Path: "keep.go", Status: StatusModified},
+	}
+	wt := []FileDiff{
+		{Path: "temp.go", Status: StatusDeleted},
+	}
+
+	result := mergeFileDiffs(branch, wt)
+
+	require.Len(t, result, 1, "temp.go should be removed (added then deleted = net zero)")
+	assert.Equal(t, "keep.go", result[0].Path)
+}
+
+func TestMergeFileDiffs_ModifiedThenDeleted(t *testing.T) {
+	branch := []FileDiff{
+		{Path: "existing.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ branch @@", Source: SourceBranch}}},
+	}
+	wt := []FileDiff{
+		{Path: "existing.go", Status: StatusDeleted, Hunks: []Hunk{{Header: "@@ delete @@", Source: SourceStaged}}},
+	}
+
+	result := mergeFileDiffs(branch, wt)
+
+	require.Len(t, result, 1, "modified then deleted should still appear (file existed before branch)")
+	require.Len(t, result[0].Hunks, 2, "should combine hunks from both")
+}
+
 func TestMergeFileDiffs_EmptyInputs(t *testing.T) {
 	result := mergeFileDiffs(nil, nil)
 	assert.Empty(t, result)
