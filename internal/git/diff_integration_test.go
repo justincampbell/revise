@@ -309,6 +309,67 @@ func TestGetDiff_FeatureBranch_UsesOriginMain(t *testing.T) {
 }
 
 // ============================================================================
+// GetDiff — files added on branch then removed (net zero)
+// ============================================================================
+
+func TestGetDiff_FeatureBranch_AddedThenDeletedCommitted(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+	r.WriteFile("temp.go", "package main\n\nfunc temp() {}\n")
+	r.Add("temp.go")
+	r.Commit("add temp")
+	r.mustGit("rm", "temp.go")
+	r.Commit("remove temp")
+	r.Chdir()
+
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	assert.Empty(t, diff.Files, "file added then removed in commits should not appear")
+}
+
+func TestGetDiff_FeatureBranch_AddedThenDeletedStaged(t *testing.T) {
+	r := featureBranchRepo(t)
+	r.mustGit("rm", "feature.go")
+
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	assert.Empty(t, diff.Files, "file added on branch then staged for deletion should not appear")
+}
+
+func TestGetDiff_FeatureBranch_AddedThenDeletedUnstaged(t *testing.T) {
+	r := featureBranchRepo(t)
+	r.RemoveFile("feature.go")
+
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	assert.Empty(t, diff.Files, "file added on branch then deleted from working tree should not appear")
+}
+
+func TestGetDiff_FeatureBranch_AddedThenRenamed(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+	r.WriteFile("temp.go", "package main\n\nfunc temp() {}\n")
+	r.Add("temp.go")
+	r.Commit("add temp")
+	r.mustGit("mv", "temp.go", "renamed.go")
+	r.Commit("rename temp to renamed")
+	r.Chdir()
+
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	// The net effect is: renamed.go is a new file (temp.go never existed on main)
+	paths := filePaths(diff)
+	assert.NotContains(t, paths, "temp.go", "original name should not appear")
+	assert.Contains(t, paths, "renamed.go", "renamed file should appear")
+}
+
+// ============================================================================
 // GetDiff — deleted and renamed files
 // ============================================================================
 

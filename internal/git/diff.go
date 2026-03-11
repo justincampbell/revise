@@ -349,26 +349,46 @@ func tagHunks(files []FileDiff, source HunkSource) {
 // mergeFileDiffs combines two sets of file diffs.
 // For the same path, hunks from both are combined (base first, then overlay).
 // New paths are appended. The inputs are not mutated.
+// If a file was added in base and deleted in overlay, it is removed entirely
+// (net zero change — e.g. file added on branch then deleted in working tree).
 func mergeFileDiffs(base, overlay []FileDiff) []FileDiff {
 	result := make([]FileDiff, len(base))
 	copy(result, base)
 
 	seen := make(map[string]int, len(result))
+	baseStatus := make(map[string]FileStatus, len(result))
 	for i, f := range result {
 		seen[f.Path] = i
+		baseStatus[f.Path] = f.Status
 	}
 
+	remove := make(map[int]bool)
 	for _, f := range overlay {
 		if idx, ok := seen[f.Path]; ok {
-			// Same file — combine hunks
-			combined := make([]Hunk, len(result[idx].Hunks), len(result[idx].Hunks)+len(f.Hunks))
-			copy(combined, result[idx].Hunks)
-			combined = append(combined, f.Hunks...)
-			result[idx].Hunks = combined
+			if f.Status == StatusDeleted && baseStatus[f.Path] == StatusAdded {
+				// Added in base, deleted in overlay — net zero
+				remove[idx] = true
+			} else {
+				// Same file — combine hunks
+				combined := make([]Hunk, len(result[idx].Hunks), len(result[idx].Hunks)+len(f.Hunks))
+				copy(combined, result[idx].Hunks)
+				combined = append(combined, f.Hunks...)
+				result[idx].Hunks = combined
+			}
 		} else {
 			result = append(result, f)
 			seen[f.Path] = len(result) - 1
 		}
+	}
+
+	if len(remove) > 0 {
+		filtered := make([]FileDiff, 0, len(result)-len(remove))
+		for i, f := range result {
+			if !remove[i] {
+				filtered = append(filtered, f)
+			}
+		}
+		return filtered
 	}
 
 	return result
