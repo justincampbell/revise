@@ -77,9 +77,11 @@ internal/
   git/
     types.go                   # Diff, FileDiff, Hunk, Line types
     diff.go                    # GetDiff, branch detection, merge-base logic
+    apply.go                   # stage/unstage/discard hunks via git apply
     parse.go                   # unified diff parser
     untracked.go               # untracked file detection
     parse_test.go              # parser unit tests
+    apply_test.go              # stage/unstage/discard integration tests
     diff_test.go               # mergeFileDiffs unit tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
@@ -154,6 +156,9 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `Fn+↑` | Page up |
 | `c` / `Enter` | Add/edit comment on current diff line |
 | `d` | Delete comment on current diff line |
+| `s` / `S` | Stage hunk / file (file list: `s` stages file) |
+| `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
+| `D` | Discard hunk / file (with `y` confirmation) |
 
 ### Mouse Support
 

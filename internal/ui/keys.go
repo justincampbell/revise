@@ -28,6 +28,9 @@ var allBindings = []BindingGroup{
 	{"File List", []Binding{
 		{"j/k, ↑/↓", "Navigate files"},
 		{"Enter", "Select file and focus diff"},
+		{"s", "Stage file"},
+		{"u", "Unstage file"},
+		{"D", "Discard file"},
 	}},
 	{"Diff View", []Binding{
 		{"j/k, ↑/↓", "Move cursor"},
@@ -37,6 +40,9 @@ var allBindings = []BindingGroup{
 		{"Fn+↓/↑", "Page down/up"},
 		{"Enter/c", "Add/edit comment on line"},
 		{"d", "Delete comment on line"},
+		{"s/S", "Stage hunk/file"},
+		{"u/U", "Unstage hunk/file"},
+		{"D", "Discard hunk"},
 	}},
 	{"Global", []Binding{
 		{"e", "Export comments to clipboard"},

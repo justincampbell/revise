@@ -558,6 +558,235 @@ func TestModelUnderscore_DecreasesContextLines(t *testing.T) {
 	assert.Equal(t, 4, m.contextLines)
 }
 
+// --- Stage/Unstage/Discard tests ---
+
+// makeModelWithSourcedHunk creates a model with a single hunk from the given source.
+func makeModelWithSourcedHunk(source git.HunkSource) Model {
+	hunk := git.Hunk{
+		Header:   "@@ -1,3 +1,4 @@",
+		Source:   source,
+		OldStart: 1, OldCount: 3, NewStart: 1, NewCount: 4,
+		Lines: []git.Line{
+			{Type: git.LineContext, Content: "a", OldNum: 1, NewNum: 1},
+			{Type: git.LineAdded, Content: "b", NewNum: 2},
+			{Type: git.LineContext, Content: "c", OldNum: 2, NewNum: 3},
+			{Type: git.LineContext, Content: "d", OldNum: 3, NewNum: 4},
+		},
+	}
+	files := []git.FileDiff{{
+		Path:   "test.go",
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{hunk},
+	}}
+	m := New(&git.Diff{Files: files}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return updated.(Model)
+}
+
+func TestModelStageKey_OnUnstagedHunk_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for staging")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelStageKey_OnStagedHunk_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "s")
+	assert.Contains(t, m.statusMsg, "unstaged")
+}
+
+func TestModelStageKey_OnBranchHunk_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceBranch)
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "s")
+	assert.Contains(t, m.statusMsg, "unstaged")
+}
+
+func TestModelUnstageKey_OnStagedHunk_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for unstaging")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelUnstageKey_OnUnstagedHunk_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "u")
+	assert.Contains(t, m.statusMsg, "staged")
+}
+
+func TestModelDiscardKey_OnUnstagedHunk_PromptsConfirmation(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.True(t, m.confirmDiscard)
+	assert.Contains(t, m.confirmMsg, "cannot be undone")
+}
+
+func TestModelDiscardKey_ConfirmWithY_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	require.True(t, m.confirmDiscard)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(Model)
+	assert.False(t, m.confirmDiscard)
+	assert.NotNil(t, cmd, "should return a command after confirmation")
+}
+
+func TestModelDiscardKey_CancelWithOtherKey(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	require.True(t, m.confirmDiscard)
+	m = sendKey(m, "n")
+	assert.False(t, m.confirmDiscard)
+	assert.Empty(t, m.confirmMsg)
+}
+
+func TestModelDiscardKey_OnStagedHunk_PromptsConfirmation(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.True(t, m.confirmDiscard)
+	assert.Contains(t, m.confirmMsg, "cannot be undone")
+}
+
+func TestModelDiscardKey_OnBranchHunk_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceBranch)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "committed")
+	assert.False(t, m.confirmDiscard)
+}
+
+func TestModelStageFileKey_WithUnstagedHunks_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for staging file")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelStageFileKey_NoUnstagedHunks_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "No unstaged")
+}
+
+func TestModelStageFileKey_BranchHunksOnly_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceBranch)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "No unstaged")
+}
+
+func TestModelUnstageFileKey_WithStagedHunks_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for unstaging file")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelUnstageFileKey_NoStagedHunks_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "No staged")
+}
+
+// --- File list stage/unstage tests ---
+
+func TestModelFileList_S_StagesFile(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for staging file")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelFileList_S_NoUnstaged_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "s")
+	assert.Contains(t, m.statusMsg, "No unstaged")
+}
+
+func TestModelFileList_U_UnstagesFile(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "should return a command for unstaging file")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelFileList_U_NoStaged_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "u")
+	assert.Contains(t, m.statusMsg, "No staged")
+}
+
+func TestModelFileList_D_PromptsConfirmation(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.True(t, m.confirmDiscard)
+	assert.Contains(t, m.confirmMsg, "cannot be undone")
+}
+
+func TestModelFileList_D_ConfirmWithY_ReturnsCmd(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	require.True(t, m.confirmDiscard)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(Model)
+	assert.False(t, m.confirmDiscard)
+	assert.NotNil(t, cmd, "should return a command after confirmation")
+}
+
+func TestModelFileList_D_StagedFile_PromptsConfirmation(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.True(t, m.confirmDiscard)
+	assert.Contains(t, m.confirmMsg, "cannot be undone")
+}
+
+func TestModelFileList_D_BranchOnlyFile_ShowsError(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceBranch)
+	require.Equal(t, focusFileList, m.focus)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "No changes")
+	assert.False(t, m.confirmDiscard)
+}
+
 func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "a", NewNum: 1},
