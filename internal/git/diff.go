@@ -136,6 +136,16 @@ func resolveRef(ref string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// CurrentBranchName returns the name of the currently checked out branch,
+// or "" if in detached HEAD state.
+func CurrentBranchName() string {
+	out, err := exec.Command("git", "symbolic-ref", "--short", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // IsOnDefaultBranch returns true if the current HEAD is at the merge-base
 // with the default branch AND up to date with the remote tracking branch.
 // Returns false when on a feature branch (merge-base != HEAD) or when on
@@ -167,10 +177,18 @@ func IsOnDefaultBranch() (bool, error) {
 	}
 
 	if mergeBase != head {
-		return false, nil // feature branch
+		return false, nil // feature branch with commits
 	}
 
-	// merge-base == HEAD: we're on or at the default branch.
+	// merge-base == HEAD: no commits diverging from the default branch.
+	// If we're on a differently-named branch (feature branch with zero
+	// commits), treat as default branch — show working tree only.
+	currentBranch := CurrentBranchName()
+	if currentBranch != "" && currentBranch != branch {
+		return true, nil // feature branch with no commits — show working tree
+	}
+
+	// Actually on the default branch.
 	// Check if the remote tracking branch has different commits.
 	if remote != "" {
 		remoteRef := resolveRef(remote + "/" + branch)

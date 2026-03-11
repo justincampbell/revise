@@ -456,6 +456,14 @@ func TestIsOnDefaultBranch_OnFeatureBranch(t *testing.T) {
 	assert.False(t, onDefault)
 }
 
+func TestIsOnDefaultBranch_FeatureBranchNoCommitsBehindRemote(t *testing.T) {
+	r := behindRemoteRepo(t)
+	r.CheckoutNewBranch("feature-no-commits")
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.True(t, onDefault, "feature branch with no commits should be treated as default branch")
+}
+
 func TestIsOnDefaultBranch_BehindRemote(t *testing.T) {
 	r := behindRemoteRepo(t)
 	_ = r
