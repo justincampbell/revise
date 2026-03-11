@@ -9,10 +9,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
 
 type clearStatusMsg struct{}
+
+// hunkApplyMsg is sent when an async hunk stage/unstage/discard completes.
+type hunkApplyMsg struct {
+	err error
+}
 
 // diffLoadedMsg is sent when an async diff load completes.
 type diffLoadedMsg struct {
@@ -59,6 +65,10 @@ type Model struct {
 	commentInputActive bool
 	commentTarget      commentKey
 	statusMsg          string
+
+	confirmDiscard    bool    // waiting for confirmation to discard
+	confirmMsg        string  // message shown in the discard confirmation modal
+	pendingDiscardCmd tea.Cmd // the discard command to run on confirmation
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -99,6 +109,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.commentInputActive {
 			return m.updateCommentInput(msg)
+		}
+
+		if m.confirmDiscard {
+			return m.updateConfirmDiscard(msg)
 		}
 
 		if m.showHelp {
@@ -283,6 +297,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffView.goToTop()
 		return m, nil
 
+	case hunkApplyMsg:
+		if msg.err != nil {
+			m.statusMsg = "Error: " + msg.err.Error()
+			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		return m, m.loadDiff()
+
 	case clearStatusMsg:
 		m.statusMsg = ""
 		return m, nil
@@ -322,6 +343,18 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.syncSelectedFile()
 		m.focus = focusDiffView
+	case "s":
+		if cmd := m.stageCurrentFile(); cmd != nil {
+			return m, cmd
+		}
+	case "u":
+		if cmd := m.unstageCurrentFile(); cmd != nil {
+			return m, cmd
+		}
+	case "D":
+		if cmd := m.discardCurrentFile(); cmd != nil {
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -350,6 +383,26 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		m.deleteCommentAtCursor()
+	case "s":
+		if cmd := m.stageCurrentHunk(); cmd != nil {
+			return m, cmd
+		}
+	case "u":
+		if cmd := m.unstageCurrentHunk(); cmd != nil {
+			return m, cmd
+		}
+	case "D":
+		if cmd := m.discardCurrentHunk(); cmd != nil {
+			return m, cmd
+		}
+	case "S":
+		if cmd := m.stageCurrentFile(); cmd != nil {
+			return m, cmd
+		}
+	case "U":
+		if cmd := m.unstageCurrentFile(); cmd != nil {
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -377,6 +430,18 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m Model) updateConfirmDiscard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.confirmDiscard = false
+	m.confirmMsg = ""
+	switch msg.String() {
+	case "y", "Y":
+		return m, m.pendingDiscardCmd
+	default:
+		m.pendingDiscardCmd = nil
+		return m, nil
+	}
 }
 
 func (m *Model) startCommentInput() {
@@ -415,6 +480,133 @@ func (m *Model) deleteCommentAtCursor() {
 	m.diffView.rebuildLinesPreservingCursor()
 }
 
+// stageCurrentHunk stages the hunk at the cursor. Only works on unstaged hunks.
+func (m *Model) stageCurrentHunk() tea.Cmd {
+	idx := m.diffView.currentHunkIndex()
+	if idx < 0 || m.diffView.file == nil {
+		return nil
+	}
+	hunk := m.diffView.file.Hunks[idx]
+	if hunk.Source != git.SourceUnstaged {
+		m.statusMsg = "Can only stage unstaged hunks"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := m.diffView.file.Path
+	status := m.diffView.file.Status
+	return func() tea.Msg {
+		err := git.StageHunk(path, status, hunk)
+		return hunkApplyMsg{err: err}
+	}
+}
+
+// unstageCurrentHunk unstages the hunk at the cursor. Only works on staged hunks.
+func (m *Model) unstageCurrentHunk() tea.Cmd {
+	idx := m.diffView.currentHunkIndex()
+	if idx < 0 || m.diffView.file == nil {
+		return nil
+	}
+	hunk := m.diffView.file.Hunks[idx]
+	if hunk.Source != git.SourceStaged {
+		m.statusMsg = "Can only unstage staged hunks"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := m.diffView.file.Path
+	status := m.diffView.file.Status
+	return func() tea.Msg {
+		err := git.UnstageHunk(path, status, hunk)
+		return hunkApplyMsg{err: err}
+	}
+}
+
+// discardCurrentHunk prompts for confirmation, then discards the hunk at the cursor.
+func (m *Model) discardCurrentHunk() tea.Cmd {
+	idx := m.diffView.currentHunkIndex()
+	if idx < 0 || m.diffView.file == nil {
+		return nil
+	}
+	hunk := m.diffView.file.Hunks[idx]
+	if hunk.Source == git.SourceBranch {
+		m.statusMsg = "Cannot discard committed changes"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := m.diffView.file.Path
+	status := m.diffView.file.Status
+	m.confirmDiscard = true
+	m.confirmMsg = "Discard hunk? This cannot be undone."
+	m.pendingDiscardCmd = func() tea.Msg {
+		err := git.DiscardHunk(path, status, hunk)
+		return hunkApplyMsg{err: err}
+	}
+	return nil
+}
+
+// stageCurrentFile stages all unstaged changes in the current file.
+func (m *Model) stageCurrentFile() tea.Cmd {
+	file := m.diffView.file
+	if file == nil {
+		return nil
+	}
+	if !fileHasSource(file, git.SourceUnstaged) {
+		m.statusMsg = "No unstaged changes to stage"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := file.Path
+	return func() tea.Msg {
+		err := git.StageFile(path)
+		return hunkApplyMsg{err: err}
+	}
+}
+
+// unstageCurrentFile unstages all staged changes in the current file.
+func (m *Model) unstageCurrentFile() tea.Cmd {
+	file := m.diffView.file
+	if file == nil {
+		return nil
+	}
+	if !fileHasSource(file, git.SourceStaged) {
+		m.statusMsg = "No staged changes to unstage"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := file.Path
+	return func() tea.Msg {
+		err := git.UnstageFile(path)
+		return hunkApplyMsg{err: err}
+	}
+}
+
+// discardCurrentFile prompts for confirmation, then discards all changes in the current file.
+func (m *Model) discardCurrentFile() tea.Cmd {
+	file := m.diffView.file
+	if file == nil {
+		return nil
+	}
+	hasUnstaged := fileHasSource(file, git.SourceUnstaged)
+	hasStaged := fileHasSource(file, git.SourceStaged)
+	if !hasUnstaged && !hasStaged {
+		m.statusMsg = "No changes to discard"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	path := file.Path
+	status := file.Status
+	m.confirmDiscard = true
+	m.confirmMsg = "Discard all changes to " + path + "?\nThis cannot be undone."
+	m.pendingDiscardCmd = func() tea.Msg {
+		err := git.DiscardFile(path, status, hasStaged)
+		return hunkApplyMsg{err: err}
+	}
+	return nil
+}
+
+// fileHasSource returns true if any hunk in the file has the given source.
+func fileHasSource(f *git.FileDiff, source git.HunkSource) bool {
+	for _, h := range f.Hunks {
+		if h.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
 // exportComments copies comments to the clipboard or writes to a file.
 // Returns a status string describing what happened, or "" if there's nothing to export.
 func (m *Model) exportComments() string {
@@ -435,6 +627,67 @@ func (m *Model) exportComments() string {
 	}
 	_ = os.WriteFile(".revise-comments.md", []byte(text), 0644)
 	return "Saved to .revise-comments.md"
+}
+
+func (m Model) renderConfirmDialog() string {
+	content := m.confirmMsg + "\n\n" +
+		confirmKeyStyle.Render("y") + " confirm    " +
+		"any key to cancel"
+
+	return confirmStyle.Render(content)
+}
+
+// overlayCenter draws fg centered on top of bg, replacing the background characters.
+func overlayCenter(bg, fg string, width, height int) string {
+	bgLines := strings.Split(bg, "\n")
+	fgLines := strings.Split(fg, "\n")
+
+	fgH := len(fgLines)
+	fgW := 0
+	for _, l := range fgLines {
+		if w := ansi.StringWidth(l); w > fgW {
+			fgW = w
+		}
+	}
+
+	startY := (height - fgH) / 2
+	startX := (width - fgW) / 2
+	if startY < 0 {
+		startY = 0
+	}
+	if startX < 0 {
+		startX = 0
+	}
+
+	for i, fgLine := range fgLines {
+		row := startY + i
+		if row >= len(bgLines) {
+			break
+		}
+		bgLine := bgLines[row]
+		bgW := ansi.StringWidth(bgLine)
+
+		var left string
+		if startX > 0 && bgW > 0 {
+			left = ansi.Truncate(bgLine, startX, "")
+		}
+		// Pad left to startX if background is shorter
+		for ansi.StringWidth(left) < startX {
+			left += " "
+		}
+
+		fgLineW := ansi.StringWidth(fgLine)
+		rightStart := startX + fgLineW
+		var right string
+		if rightStart < bgW {
+			// Cut the right portion from the background
+			right = ansi.TruncateLeft(bgLine, rightStart, "")
+		}
+
+		bgLines[row] = left + fgLine + right
+	}
+
+	return strings.Join(bgLines, "\n")
 }
 
 func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
@@ -598,13 +851,20 @@ func (m Model) View() string {
 
 	statusBar := m.renderStatusBar()
 
+	var screen string
 	if m.fullscreen {
 		panels := m.diffView.render(true)
-		return lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
+		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
+	} else {
+		left := m.fileList.render(m.focus == focusFileList)
+		right := m.diffView.render(m.focus == focusDiffView)
+		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}
 
-	left := m.fileList.render(m.focus == focusFileList)
-	right := m.diffView.render(m.focus == focusDiffView)
-	panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-	return lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
+	if m.confirmDiscard {
+		screen = overlayCenter(screen, m.renderConfirmDialog(), m.width, m.height)
+	}
+
+	return screen
 }

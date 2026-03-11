@@ -27,9 +27,10 @@ var (
 	removedStyle      = lipgloss.NewStyle().Foreground(colorRed).Background(colorRemovedBg)
 	contextStyle      = lipgloss.NewStyle().Foreground(colorDim)
 	hunkStyle         = lipgloss.NewStyle().Foreground(colorCyan)
-	hunkBranchStyle   = lipgloss.NewStyle().Foreground(colorDim)
-	hunkStagedStyle   = lipgloss.NewStyle().Foreground(colorCyan)
-	hunkUnstagedStyle = lipgloss.NewStyle().Foreground(colorYellow)
+	hunkBranchStyle      = lipgloss.NewStyle().Foreground(colorDim)
+	hunkStagedStyle      = lipgloss.NewStyle().Foreground(colorCyan)
+	hunkUnstagedStyle    = lipgloss.NewStyle().Foreground(colorYellow)
+	hunkSourceTagStyle   = lipgloss.NewStyle().Foreground(colorDim).Italic(true)
 	fileStyle         = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
 
 	// Gutter styles
@@ -85,6 +86,13 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorCyan).
 			Padding(1, 2)
+
+	// Confirm dialog styles
+	confirmStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorRed).
+			Padding(1, 2)
+	confirmKeyStyle = lipgloss.NewStyle().Bold(true).Foreground(colorRed)
 )
 
 func init() {
@@ -96,6 +104,7 @@ func init() {
 		hunkBranchStyle = lipgloss.NewStyle()
 		hunkStagedStyle = lipgloss.NewStyle()
 		hunkUnstagedStyle = lipgloss.NewStyle()
+		hunkSourceTagStyle = lipgloss.NewStyle()
 		fileStyle = lipgloss.NewStyle().Bold(true)
 		selectedStyle = lipgloss.NewStyle().Bold(true)
 		unselectedStyle = lipgloss.NewStyle()
@@ -118,5 +127,7 @@ func init() {
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
 		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
+		confirmStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
+		confirmKeyStyle = lipgloss.NewStyle().Bold(true)
 	}
 }

@@ -373,21 +373,26 @@ func formatGutter(l git.Line) string {
 
 func renderHunkHeader(h git.Hunk) string {
 	header := hunkContext(h.Header)
-	if header == "" {
-		return ""
-	}
 
 	style := hunkStyle
+	var label string
 	switch h.Source {
 	case git.SourceBranch:
 		style = hunkBranchStyle
+		label = "branch"
 	case git.SourceStaged:
 		style = hunkStagedStyle
+		label = "staged"
 	case git.SourceUnstaged:
 		style = hunkUnstagedStyle
+		label = "unstaged"
 	}
 
-	return style.Render(header)
+	tag := hunkSourceTagStyle.Render("[" + label + "]")
+	if header == "" {
+		return tag
+	}
+	return tag + " " + style.Render(header)
 }
 
 func hunkContext(header string) string {
@@ -405,6 +410,35 @@ func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 		return cursorStyle.Render("▶")
 	}
 	return " "
+}
+
+// currentHunkIndex returns the index of the hunk containing the cursor line,
+// or -1 if the cursor is not on a navigable line.
+func (m *diffViewModel) currentHunkIndex() int {
+	if m.file == nil || !m.isNavigable(m.cursor) {
+		return -1
+	}
+
+	// Walk backwards from cursor to find which hunk contains this line.
+	// Hunk boundaries are marked by nil lineRefs (hunk headers / blank separators).
+	hunkIdx := -1
+	for i := m.cursor; i >= 0; i-- {
+		if m.lineRefs[i] == nil {
+			// Count nil→navigable transitions to determine hunk index.
+			break
+		}
+	}
+
+	// Count hunk starts up to and including cursor position.
+	starts := m.hunkStarts()
+	for i, start := range starts {
+		if start <= m.cursor {
+			hunkIdx = i
+		} else {
+			break
+		}
+	}
+	return hunkIdx
 }
 
 // inputBoxHeight is the number of rows the inline comment input box occupies.

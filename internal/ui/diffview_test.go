@@ -184,8 +184,8 @@ func TestCursorRef_OnCodeLine(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	// lines: [0: code, 1: blank] (no hunk context header)
-	m.cursor = 0
+	// lines: [0: source tag, 1: code, 2: blank]
+	m.goToFirstNavigable()
 	ref := m.cursorRef()
 	assert.NotNil(t, ref)
 	key := ref.commentKey("foo.go")
@@ -253,8 +253,41 @@ func TestBuildLines_NoFileHeader(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	assert.Contains(t, m.lines[0], "hello")
-	assert.NotContains(t, m.lines[0], "foo.go")
+	// No line should contain the file path (title is in the border, not inline)
+	for _, line := range m.lines {
+		assert.NotContains(t, line, "foo.go")
+	}
+}
+
+func TestRenderHunkHeader_ShowsSourceTag(t *testing.T) {
+	tests := []struct {
+		source git.HunkSource
+		tag    string
+	}{
+		{git.SourceBranch, "[branch]"},
+		{git.SourceStaged, "[staged]"},
+		{git.SourceUnstaged, "[unstaged]"},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.source), func(t *testing.T) {
+			h := git.Hunk{
+				Header: "@@ -1,3 +1,4 @@ func foo()",
+				Source: tt.source,
+			}
+			got := renderHunkHeader(h)
+			assert.Contains(t, got, tt.tag)
+			assert.Contains(t, got, "func foo()")
+		})
+	}
+}
+
+func TestRenderHunkHeader_EmptyContext_StillShowsTag(t *testing.T) {
+	h := git.Hunk{
+		Header: "@@ -1,1 +1,1 @@",
+		Source: git.SourceStaged,
+	}
+	got := renderHunkHeader(h)
+	assert.Contains(t, got, "[staged]")
 }
 
 func TestHunkContext_ExtractsTrailingContext(t *testing.T) {
@@ -437,6 +470,38 @@ func TestPrevHunk_FromFirstHunk_StaysAtTop(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
 	m.prevHunk()
 	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // still on first line
+}
+
+func TestCurrentHunkIndex_FirstHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	// Cursor starts on first navigable line of hunk 0
+	assert.Equal(t, 0, m.currentHunkIndex())
+}
+
+func TestCurrentHunkIndex_SecondHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.nextHunk()
+	assert.Equal(t, 1, m.currentHunkIndex())
+}
+
+func TestCurrentHunkIndex_ThirdHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.nextHunk()
+	m.nextHunk()
+	assert.Equal(t, 2, m.currentHunkIndex())
+}
+
+func TestCurrentHunkIndex_MiddleOfHunk(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	m.nextHunk()
+	m.moveCursorDown(2) // middle of hunk 1
+	assert.Equal(t, 1, m.currentHunkIndex())
+}
+
+func TestCurrentHunkIndex_NoFile(t *testing.T) {
+	m := newDiffViewModel()
+	m.height = 10
+	assert.Equal(t, -1, m.currentHunkIndex())
 }
 
 func TestPrevHunk_FromMiddleOfHunk_GoesToStartOfCurrentHunk(t *testing.T) {
