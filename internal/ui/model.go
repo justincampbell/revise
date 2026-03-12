@@ -791,22 +791,38 @@ func (m Model) renderModeSlider() string {
 		}
 		return modeInactiveStyle.Render(name)
 	}
-	sep := modeInactiveStyle.Render("·")
 
-	var parts []string
+	type label struct {
+		name   string
+		active bool
+	}
+	var labels []label
 
 	// Cumulative: broadest mode (ModeBranch) lights all,
 	// narrower modes drop components from the left.
 	if !m.onDefaultBranch {
-		parts = append(parts, render("Branch", m.mode == ModeBranch))
+		labels = append(labels, label{"Branch", m.mode == ModeBranch})
 	}
-	parts = append(parts,
-		render("Staged", m.mode == ModeBranch || m.mode == ModeStaged),
-		render("Unstaged", true),
+	labels = append(labels,
+		label{"Staged", m.mode == ModeBranch || m.mode == ModeStaged},
+		label{"Unstaged", true},
 	)
 
+	var result string
+	for i, l := range labels {
+		if i > 0 {
+			// Use + between two active labels, space otherwise
+			if labels[i-1].active && l.active {
+				result += modeActiveStyle.Render("+")
+			} else {
+				result += modeInactiveStyle.Render(" ")
+			}
+		}
+		result += render(l.name, l.active)
+	}
+
 	ctx := fmt.Sprintf("  +/-: context (%d)", m.contextLines)
-	return strings.Join(parts, sep) + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx)
+	return result + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx)
 }
 
 func (m Model) renderStatusBar() string {

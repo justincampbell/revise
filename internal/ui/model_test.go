@@ -388,6 +388,30 @@ func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
 	assert.Contains(t, slider, "Unstaged")
 }
 
+func TestModeSlider_BranchMode_PlusDelimiters(t *testing.T) {
+	m := makeModel("a.go") // feature branch, ModeBranch
+	slider := m.renderModeSlider()
+	// All active — should use + between all labels
+	assert.Contains(t, slider, "+")
+	assert.NotContains(t, slider, "·")
+}
+
+func TestModeSlider_StagedMode_MixedDelimiters(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeStaged
+	slider := m.renderModeSlider()
+	// Branch inactive, Staged+Unstaged active — + between Staged and Unstaged, space before Staged
+	assert.Contains(t, slider, "+")
+}
+
+func TestModeSlider_UnstagedMode_SpaceDelimiters(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeUnstaged
+	slider := m.renderModeSlider()
+	// Only Unstaged active — space delimiters between labels, no +
+	assert.Contains(t, slider, "Branch Staged Unstaged")
+}
+
 // --- Slider click tests ---
 
 func TestSliderModeAt_FeatureBranch_ClickBranch(t *testing.T) {
