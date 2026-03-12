@@ -436,7 +436,7 @@ func (m Model) updateConfirmDiscard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.confirmDiscard = false
 	m.confirmMsg = ""
 	switch msg.String() {
-	case "y", "Y":
+	case "y", "Y", "enter":
 		return m, m.pendingDiscardCmd
 	default:
 		m.pendingDiscardCmd = nil
@@ -631,7 +631,7 @@ func (m *Model) exportComments() string {
 
 func (m Model) renderConfirmDialog() string {
 	content := m.confirmMsg + "\n\n" +
-		confirmKeyStyle.Render("y") + " confirm    " +
+		confirmKeyStyle.Render("y") + "/" + confirmKeyStyle.Render("Enter") + " confirm    " +
 		"any key to cancel"
 
 	return confirmStyle.Render(content)
