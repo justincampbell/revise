@@ -744,6 +744,15 @@ func TestModelFileList_S_NoUnstaged_ShowsError(t *testing.T) {
 	assert.Contains(t, m.statusMsg, "No unstaged")
 }
 
+func TestModelFileList_ShiftS_StagesFile(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "S should stage file from file list")
+	assert.Empty(t, m.statusMsg)
+}
+
 func TestModelFileList_U_UnstagesFile(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	require.Equal(t, focusFileList, m.focus)
@@ -758,6 +767,15 @@ func TestModelFileList_U_NoStaged_ShowsError(t *testing.T) {
 	require.Equal(t, focusFileList, m.focus)
 	m = sendKey(m, "u")
 	assert.Contains(t, m.statusMsg, "No staged")
+}
+
+func TestModelFileList_ShiftU_UnstagesFile(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceStaged)
+	require.Equal(t, focusFileList, m.focus)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "U should unstage file from file list")
+	assert.Empty(t, m.statusMsg)
 }
 
 func TestModelFileList_D_PromptsConfirmation(t *testing.T) {

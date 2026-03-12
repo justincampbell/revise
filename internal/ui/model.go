@@ -343,11 +343,11 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.syncSelectedFile()
 		m.focus = focusDiffView
-	case "s":
+	case "s", "S":
 		if cmd := m.stageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
-	case "u":
+	case "u", "U":
 		if cmd := m.unstageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
