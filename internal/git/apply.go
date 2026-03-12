@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // HunkPatch reconstructs a unified diff patch for a single hunk,
@@ -73,20 +74,24 @@ func DiscardHunk(path string, status FileStatus, h Hunk) error {
 
 // StageFile stages an entire file.
 func StageFile(path string) error {
-	out, err := exec.Command("git", "add", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git add: %s\n%s", err, string(out))
-	}
-	return nil
+	return withRetry(func() error {
+		out, err := exec.Command("git", "add", "--", path).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git add: %s\n%s", err, string(out))
+		}
+		return nil
+	})
 }
 
 // UnstageFile unstages an entire file (keeps working tree changes).
 func UnstageFile(path string) error {
-	out, err := exec.Command("git", "reset", "HEAD", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git reset: %s\n%s", err, string(out))
-	}
-	return nil
+	return withRetry(func() error {
+		out, err := exec.Command("git", "reset", "HEAD", "--", path).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git reset: %s\n%s", err, string(out))
+		}
+		return nil
+	})
 }
 
 // DiscardFile discards all changes to a file.
@@ -104,21 +109,50 @@ func DiscardFile(path string, status FileStatus, staged bool) error {
 			return err
 		}
 	}
-	out, err := exec.Command("git", "checkout", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git checkout: %s\n%s", err, string(out))
+	return withRetry(func() error {
+		out, err := exec.Command("git", "checkout", "--", path).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git checkout: %s\n%s", err, string(out))
+		}
+		return nil
+	})
+}
+
+// isLockError returns true if the error is caused by a git index.lock contention.
+func isLockError(err error) bool {
+	if err == nil {
+		return false
 	}
-	return nil
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "index.lock") || strings.Contains(msg, "unable to create") && strings.Contains(msg, "lock")
+}
+
+// withRetry retries fn up to 5 times with backoff when it fails due to lock contention.
+func withRetry(fn func() error) error {
+	const maxRetries = 5
+	delay := 50 * time.Millisecond
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		err = fn()
+		if err == nil || !isLockError(err) {
+			return err
+		}
+		time.Sleep(delay)
+		delay *= 2
+	}
+	return err
 }
 
 // gitApply runs git apply with the given flags, piping patch to stdin.
 func gitApply(patch string, flags ...string) error {
-	args := append([]string{"apply"}, flags...)
-	cmd := exec.Command("git", args...)
-	cmd.Stdin = strings.NewReader(patch)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git apply: %s\n%s", err, string(out))
-	}
-	return nil
+	return withRetry(func() error {
+		args := append([]string{"apply"}, flags...)
+		cmd := exec.Command("git", args...)
+		cmd.Stdin = strings.NewReader(patch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git apply: %s\n%s", err, string(out))
+		}
+		return nil
+	})
 }

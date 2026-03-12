@@ -1,8 +1,12 @@
 package git
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHunkPatch(t *testing.T) {
@@ -199,6 +203,64 @@ func TestStageHunk_untrackedFile(t *testing.T) {
 	if strings.Contains(status, "??") {
 		t.Errorf("expected file to no longer be untracked, got:\n%s", status)
 	}
+}
+
+func TestIsLockError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil error", nil, false},
+		{"normal error", fmt.Errorf("some error"), false},
+		{"lock error", fmt.Errorf("git add: exit status 128\nfatal: Unable to create '/repo/.git/index.lock': File exists."), true},
+		{"lock error lowercase", fmt.Errorf("unable to create 'index.lock': File exists"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isLockError(tt.err); got != tt.want {
+				t.Errorf("isLockError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStageFile_RetryOnLock(t *testing.T) {
+	r := baseRepo(t)
+
+	r.WriteFile("base.go", "package main\n\n// retry test\nfunc base() {}\n")
+
+	// Create a lock file to simulate contention
+	gitDir := findGitDir(t)
+	lockPath := gitDir + "/index.lock"
+	if err := os.WriteFile(lockPath, []byte{}, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Remove the lock after a short delay to simulate transient contention
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		os.Remove(lockPath)
+	}()
+
+	err := StageFile("base.go")
+	if err != nil {
+		t.Fatalf("StageFile should have retried and succeeded: %v", err)
+	}
+
+	staged := r.StagedDiffRaw()
+	if !strings.Contains(staged, "retry test") {
+		t.Errorf("expected staged diff to contain 'retry test', got:\n%s", staged)
+	}
+}
+
+func findGitDir(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("git", "rev-parse", "--git-dir").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func TestStageFile(t *testing.T) {
