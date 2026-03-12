@@ -643,6 +643,18 @@ func TestModelDiscardKey_ConfirmWithY_ReturnsCmd(t *testing.T) {
 	assert.NotNil(t, cmd, "should return a command after confirmation")
 }
 
+func TestModelDiscardKey_ConfirmWithEnter(t *testing.T) {
+	m := makeModelWithSourcedHunk(git.SourceUnstaged)
+	m = sendKey(m, "l") // focus diff
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	require.True(t, m.confirmDiscard)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.confirmDiscard)
+	assert.NotNil(t, cmd, "Enter should confirm discard")
+}
+
 func TestModelDiscardKey_CancelWithOtherKey(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
