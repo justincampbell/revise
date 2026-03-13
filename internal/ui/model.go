@@ -187,6 +187,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		// Report issue opens GitHub new issue page
+		case "!":
+			const issueURL = "https://github.com/justincampbell/revise/issues/new"
+			m.statusMsg = "Opening " + issueURL
+			return m, tea.Batch(
+				func() tea.Msg {
+					_ = exec.Command("open", issueURL).Start()
+					return nil
+				},
+				tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
+			)
+
 		// Export works from any panel
 		case "e":
 			msg := m.exportComments()

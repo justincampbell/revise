@@ -505,6 +505,23 @@ func TestModelExport_NoCommentsNoStatus(t *testing.T) {
 	assert.Empty(t, m.statusMsg)
 }
 
+func TestModelReportIssue_SetsStatusAndReturnsCmd(t *testing.T) {
+	m := makeModel("a.go")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "Opening")
+	assert.NotNil(t, cmd, "should return a command to open the URL")
+}
+
+func TestModelReportIssue_WorksFromDiffView(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "Opening")
+	assert.NotNil(t, cmd, "should return a command to open the URL")
+}
+
 func TestModelComment_CommentInputBlocksOtherKeys(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
