@@ -46,6 +46,7 @@ var allBindings = []BindingGroup{
 	}},
 	{"Global", []Binding{
 		{"e", "Export comments to clipboard"},
+		{"!", "Report issue on GitHub"},
 	}},
 	{"Comment Input", []Binding{
 		{"Enter", "Save comment"},
