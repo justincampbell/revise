@@ -4,7 +4,7 @@ A terminal UI for reviewing local git changes and sending feedback to Claude Cod
 
 ## Project Overview
 
-`revise` is a Go TUI application built with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss). It provides a split-pane interface for reviewing git diffs: a file list on the left and a diff viewer on the right.
+`revise` is a Go TUI application built with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss). It provides a split-pane interface for reviewing git diffs: a file list on the left and a diff viewer on the right. It can also review arbitrary files with `revise <file>`.
 
 ## Tech Stack
 
@@ -68,6 +68,17 @@ make install  # go install
 make test     # go test ./...
 make clean    # remove binary
 ```
+
+### File Review Mode
+
+`revise <file>` opens a file in read-only review mode:
+- All lines shown as context (no diff coloring, no hunk headers)
+- Starts fullscreen with diff view focused
+- Comments (`c`/`Enter`/`d`) and export (`e`) work normally
+- Git-specific features disabled: stage/unstage/discard, mode cycling, context lines
+- Status bar shows the filename instead of mode slider
+- Help overlay (`?`) hides git-specific bindings
+- Constructed via `ui.NewFileReview(diff, filePath)` with a synthetic `git.Diff`
 
 ## Architecture
 
@@ -140,7 +151,7 @@ Three diff components displayed left-to-right: **Branch · Staged · Unstaged**.
 
 ### Keyboard Bindings
 
-All bindings are defined in `internal/ui/keys.go` (`allBindings`) and used to generate both the in-app help overlay (`?`) and the `--help` CLI output. This is the single source of truth — do not define bindings elsewhere.
+All bindings are defined in `internal/ui/keys.go` (`allBindings`) and used to generate both the in-app help overlay (`?`) and the `--help` CLI output. This is the single source of truth — do not define bindings elsewhere. Bindings have a `GitOnly` flag — when true, they are hidden in file review mode help and disabled in input handling.
 
 Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `case "esc":` in switch statements.
 

@@ -372,6 +372,11 @@ func formatGutter(l git.Line) string {
 }
 
 func renderHunkHeader(h git.Hunk) string {
+	// Empty header means no hunk header should be displayed (e.g. file review mode).
+	if h.Header == "" && h.Source == "" {
+		return ""
+	}
+
 	header := hunkContext(h.Header)
 
 	style := hunkStyle

@@ -55,6 +55,125 @@ func focusDiffAndMoveTo(m Model, n int) Model {
 	return m
 }
 
+// makeFileReviewModel creates a file review mode model with context lines.
+func makeFileReviewModel(lines []git.Line) Model {
+	diff := &git.Diff{
+		Files: []git.FileDiff{{
+			Path:   "test.md",
+			Status: git.StatusModified,
+			Hunks:  []git.Hunk{{Lines: lines}},
+		}},
+	}
+	m := NewFileReview(diff, "test.md")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return updated.(Model)
+}
+
+func TestFileReviewMode_StartsFullscreenWithDiffFocus(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	assert.True(t, m.fullscreen)
+	assert.Equal(t, focusDiffView, m.focus)
+	assert.True(t, m.fileReviewMode)
+}
+
+func TestFileReviewMode_TabIsNoop(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	mode := m.mode
+	m = sendSpecialKey(m, tea.KeyTab)
+	assert.Equal(t, mode, m.mode)
+}
+
+func TestFileReviewMode_PlusMinusAreNoops(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	ctx := m.contextLines
+	m = sendKey(m, "+")
+	assert.Equal(t, ctx, m.contextLines)
+	m = sendKey(m, "-")
+	assert.Equal(t, ctx, m.contextLines)
+}
+
+func TestFileReviewMode_StageKeyIsNoop(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.Nil(t, cmd)
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestFileReviewMode_UnstageKeyIsNoop(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	m = updated.(Model)
+	assert.Nil(t, cmd)
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestFileReviewMode_DiscardKeyIsNoop(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	m = updated.(Model)
+	assert.Nil(t, cmd)
+	assert.False(t, m.confirmDiscard)
+}
+
+func TestFileReviewMode_CommentStillWorks(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	require.NotNil(t, m.diffView.cursorRef())
+	m = sendKey(m, "c")
+	assert.True(t, m.commentInputActive)
+}
+
+func TestFileReviewMode_StatusBarShowsFilename(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	status := m.renderStatusBar()
+	assert.Contains(t, status, "test.md")
+	assert.NotContains(t, status, "Branch")
+	assert.NotContains(t, status, "Staged")
+}
+
+func TestFileReviewMode_HelpOmitsGitBindings(t *testing.T) {
+	groups := FileReviewBindingGroups()
+	for _, g := range groups {
+		for _, b := range g.Bindings {
+			assert.False(t, b.GitOnly, "help should not include git-only binding: %s", b.Key)
+		}
+	}
+	// Verify some git-only bindings are filtered out
+	allKeys := ""
+	for _, g := range groups {
+		for _, b := range g.Bindings {
+			allKeys += b.Key + " "
+		}
+	}
+	assert.NotContains(t, allKeys, "Tab/S-Tab")
+	assert.NotContains(t, allKeys, "+/-")
+}
+
+func TestFileReviewMode_NoHunkHeaderRendered(t *testing.T) {
+	// A hunk with empty header and no source should render no header line
+	h := git.Hunk{Lines: []git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	}}
+	header := renderHunkHeader(h)
+	assert.Empty(t, header)
+}
+
 func TestModelInitialFocus(t *testing.T) {
 	m := makeModel("a.go", "b.go")
 	assert.Equal(t, focusFileList, m.focus)

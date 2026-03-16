@@ -6,13 +6,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func renderHelp(width, height int) string {
+func renderHelp(width, height int, groups []BindingGroup) string {
 	var b strings.Builder
 
 	b.WriteString(fileStyle.Render("Keyboard Shortcuts"))
 	b.WriteString("\n")
 
-	for _, group := range allBindings {
+	for _, group := range groups {
 		b.WriteString("\n")
 		b.WriteString(helpDescStyle.Render(group.Name) + "\n")
 		for _, bind := range group.Bindings {

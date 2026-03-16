@@ -74,6 +74,36 @@ type Model struct {
 	confirmDiscard    bool    // waiting for confirmation to discard
 	confirmMsg        string  // message shown in the discard confirmation modal
 	pendingDiscardCmd tea.Cmd // the discard command to run on confirmation
+
+	fileReviewMode bool   // true when reviewing a file (not a git diff)
+	fileReviewPath string // filename shown in status bar
+}
+
+// NewFileReview creates a Model for reviewing a file (not a git diff).
+// It starts in fullscreen with focus on the diff view.
+func NewFileReview(diff *git.Diff, filePath string) Model {
+	fl := newFileListModel(diff.Files)
+	dv := newDiffViewModel()
+
+	c := make(comments)
+	dv.comments = c
+	fl.comments = c
+
+	if len(diff.Files) > 0 {
+		dv.setFile(&diff.Files[0])
+	}
+
+	return Model{
+		diff:           diff,
+		fileList:       fl,
+		diffView:       dv,
+		focus:          focusDiffView,
+		fullscreen:     true,
+		comments:       c,
+		mode:           ModeStaged,
+		fileReviewMode: true,
+		fileReviewPath: filePath,
+	}
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -183,9 +213,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "tab":
+			if m.fileReviewMode {
+				return m, nil
+			}
 			m.cycleMode(+1)
 			return m, m.loadDiff()
 		case "shift+tab":
+			if m.fileReviewMode {
+				return m, nil
+			}
 			m.cycleMode(-1)
 			return m, m.loadDiff()
 
@@ -204,9 +240,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Adjust context lines
 		case "+", "=":
+			if m.fileReviewMode {
+				return m, nil
+			}
 			m.contextLines++
 			return m, m.loadDiff()
 		case "-", "_":
+			if m.fileReviewMode {
+				return m, nil
+			}
 			if m.contextLines > 0 {
 				m.contextLines--
 				return m, m.loadDiff()
@@ -399,14 +441,23 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.syncSelectedFile()
 		m.focus = focusDiffView
 	case "s", "S":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.stageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
 	case "u", "U":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.unstageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
 	case "D":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.discardCurrentFile(); cmd != nil {
 			return m, cmd
 		}
@@ -439,22 +490,37 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		m.deleteCommentAtCursor()
 	case "s":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.stageCurrentHunk(); cmd != nil {
 			return m, cmd
 		}
 	case "u":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.unstageCurrentHunk(); cmd != nil {
 			return m, cmd
 		}
 	case "D":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.discardCurrentHunk(); cmd != nil {
 			return m, cmd
 		}
 	case "S":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.stageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
 	case "U":
+		if m.fileReviewMode {
+			return m, nil
+		}
 		if cmd := m.unstageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
@@ -930,7 +996,11 @@ func (m Model) View() string {
 	}
 
 	if m.showHelp {
-		return renderHelp(m.width, m.height)
+		groups := allBindings
+		if m.fileReviewMode {
+			groups = FileReviewBindingGroups()
+		}
+		return renderHelp(m.width, m.height, groups)
 	}
 
 	statusBar := m.renderStatusBar()
@@ -940,7 +1010,11 @@ func (m Model) View() string {
 		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	} else {
-		left := m.fileList.render(m.focus == focusFileList, m.renderModeSlider())
+		slider := m.renderModeSlider()
+		if m.fileReviewMode {
+			slider = m.fileReviewPath
+		}
+		left := m.fileList.render(m.focus == focusFileList, slider)
 		right := m.diffView.render(m.focus == focusDiffView, m.contextLines, m.hideWhitespace)
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -27,6 +28,23 @@ func main() {
 	if *versionFlag {
 		fmt.Println("revise", version)
 		os.Exit(0)
+	}
+
+	// File review mode: positional argument
+	if args := flag.Args(); len(args) > 0 {
+		filePath := args[0]
+		diff, err := buildFileDiff(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		m := ui.NewFileReview(diff, filePath)
+		p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		if _, err := p.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if !git.IsGitRepo() {
@@ -75,10 +93,43 @@ func main() {
 	}
 }
 
+// buildFileDiff reads a file and returns a synthetic Diff for file review mode.
+func buildFileDiff(filePath string) (*git.Diff, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []git.Line
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		lines = append(lines, git.Line{
+			Type:    git.LineContext,
+			Content: scanner.Text(),
+			OldNum:  lineNum,
+			NewNum:  lineNum,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return &git.Diff{
+		Files: []git.FileDiff{{
+			Path:   filePath,
+			Status: git.StatusModified,
+			Hunks:  []git.Hunk{{Lines: lines}},
+		}},
+	}, nil
+}
+
 func printHelp() {
 	fmt.Println(`revise - Review local git changes
 
-Usage: revise [flags]
+Usage: revise [flags] [file]
 
 Flags:
   --help      Show this help
