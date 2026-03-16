@@ -86,6 +86,19 @@ func RawDiffBetween(from, to string, contextLines int) (string, error) {
 	return string(out), nil
 }
 
+// RawDiffBetweenIgnoreWhitespace returns the raw unified diff between two refs, ignoring whitespace.
+func RawDiffBetweenIgnoreWhitespace(from, to string, contextLines int) (string, error) {
+	args := []string{"diff", "-w", fmt.Sprintf("-U%d", contextLines), from, to}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("git diff failed: %s", string(exitErr.Stderr))
+		}
+		return "", fmt.Errorf("git diff: %w", err)
+	}
+	return string(out), nil
+}
+
 // StagedDiff returns the raw diff of staged changes.
 func StagedDiff(contextLines int) (string, error) {
 	args := []string{"diff", fmt.Sprintf("-U%d", contextLines), "--cached"}
@@ -96,9 +109,29 @@ func StagedDiff(contextLines int) (string, error) {
 	return string(out), nil
 }
 
+// StagedDiffIgnoreWhitespace returns the raw diff of staged changes, ignoring whitespace.
+func StagedDiffIgnoreWhitespace(contextLines int) (string, error) {
+	args := []string{"diff", "-w", fmt.Sprintf("-U%d", contextLines), "--cached"}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("git diff --cached: %w", err)
+	}
+	return string(out), nil
+}
+
 // UnstagedDiff returns the raw diff of unstaged changes.
 func UnstagedDiff(contextLines int) (string, error) {
 	args := []string{"diff", fmt.Sprintf("-U%d", contextLines)}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return "", fmt.Errorf("git diff: %w", err)
+	}
+	return string(out), nil
+}
+
+// UnstagedDiffIgnoreWhitespace returns the raw diff of unstaged changes, ignoring whitespace.
+func UnstagedDiffIgnoreWhitespace(contextLines int) (string, error) {
+	args := []string{"diff", "-w", fmt.Sprintf("-U%d", contextLines)}
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("git diff: %w", err)
@@ -220,6 +253,54 @@ func resolveMergeBase() (string, error) {
 	return mergeBase, nil
 }
 
+// BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
+func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
+	if !hideWhitespace {
+		return BranchDiff(contextLines)
+	}
+
+	mergeBase, err := resolveMergeBase()
+	if err != nil {
+		return nil, err
+	}
+
+	head, err := CurrentRef()
+	if err != nil {
+		return nil, err
+	}
+
+	var raw string
+	if mergeBase == head {
+		branch, err := DefaultBranch()
+		if err != nil {
+			return nil, err
+		}
+		remote := RemoteName()
+		if remote == "" {
+			return nil, fmt.Errorf("no remote configured")
+		}
+		raw, err = RawDiffBetweenIgnoreWhitespace(head, remote+"/"+branch, contextLines)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		raw, err = RawDiffBetweenIgnoreWhitespace(mergeBase, "HEAD", contextLines)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceBranch)
+
+	wtDiff, err := WorkingTreeDiffOptions(contextLines, true)
+	if err != nil {
+		return nil, err
+	}
+	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
+	return diff, nil
+}
+
 // BranchDiff returns the merge-base diff merged with all working tree changes.
 // This is the broadest view — committed + staged + unstaged + untracked.
 // On the default branch behind the remote, it shows the remote's changes.
@@ -269,6 +350,23 @@ func BranchDiff(contextLines int) (*Diff, error) {
 	return diff, nil
 }
 
+// StagedOnlyDiffOptions returns only staged changes, optionally ignoring whitespace.
+func StagedOnlyDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
+	var raw string
+	var err error
+	if hideWhitespace {
+		raw, err = StagedDiffIgnoreWhitespace(contextLines)
+	} else {
+		raw, err = StagedDiff(contextLines)
+	}
+	if err != nil {
+		return nil, err
+	}
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceStaged)
+	return diff, nil
+}
+
 // StagedOnlyDiff returns only staged changes.
 func StagedOnlyDiff(contextLines int) (*Diff, error) {
 	raw, err := StagedDiff(contextLines)
@@ -277,6 +375,28 @@ func StagedOnlyDiff(contextLines int) (*Diff, error) {
 	}
 	diff := Parse(raw)
 	tagHunks(diff.Files, SourceStaged)
+	return diff, nil
+}
+
+// UnstagedOnlyDiffOptions returns unstaged changes + untracked files, optionally ignoring whitespace.
+func UnstagedOnlyDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
+	var raw string
+	var err error
+	if hideWhitespace {
+		raw, err = UnstagedDiffIgnoreWhitespace(contextLines)
+	} else {
+		raw, err = UnstagedDiff(contextLines)
+	}
+	if err != nil {
+		return nil, err
+	}
+	diff := Parse(raw)
+	tagHunks(diff.Files, SourceUnstaged)
+	untracked, err := UntrackedFiles()
+	if err != nil {
+		return nil, err
+	}
+	diff.Files = append(diff.Files, untracked...)
 	return diff, nil
 }
 
@@ -301,7 +421,12 @@ func UnstagedOnlyDiff(contextLines int) (*Diff, error) {
 
 // WorkingTreeDiff returns staged + unstaged + untracked changes.
 func WorkingTreeDiff(contextLines int) (*Diff, error) {
-	return getWorkingTreeDiff(contextLines)
+	return getWorkingTreeDiff(contextLines, false)
+}
+
+// WorkingTreeDiffOptions returns staged + unstaged + untracked changes, optionally ignoring whitespace.
+func WorkingTreeDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
+	return getWorkingTreeDiff(contextLines, hideWhitespace)
 }
 
 // GetDiff returns a parsed Diff for the current branch vs the default branch.
@@ -329,14 +454,27 @@ func GetDiff() (*Diff, error) {
 }
 
 // getWorkingTreeDiff returns staged + unstaged + untracked changes.
-func getWorkingTreeDiff(contextLines int) (*Diff, error) {
-	stagedRaw, err := StagedDiff(contextLines)
-	if err != nil {
-		return nil, err
-	}
-	unstagedRaw, err := UnstagedDiff(contextLines)
-	if err != nil {
-		return nil, err
+func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
+	var stagedRaw, unstagedRaw string
+	var err error
+	if hideWhitespace {
+		stagedRaw, err = StagedDiffIgnoreWhitespace(contextLines)
+		if err != nil {
+			return nil, err
+		}
+		unstagedRaw, err = UnstagedDiffIgnoreWhitespace(contextLines)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		stagedRaw, err = StagedDiff(contextLines)
+		if err != nil {
+			return nil, err
+		}
+		unstagedRaw, err = UnstagedDiff(contextLines)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	staged := Parse(stagedRaw)
