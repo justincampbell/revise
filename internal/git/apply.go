@@ -73,20 +73,24 @@ func DiscardHunk(path string, status FileStatus, h Hunk) error {
 
 // StageFile stages an entire file.
 func StageFile(path string) error {
-	out, err := exec.Command("git", "add", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git add: %s\n%s", err, string(out))
-	}
-	return nil
+	return retryOnLock(func() (string, error) {
+		out, err := exec.Command("git", "add", "--", path).CombinedOutput()
+		if err != nil {
+			return string(out), fmt.Errorf("git add: %s\n%s", err, string(out))
+		}
+		return "", nil
+	})
 }
 
 // UnstageFile unstages an entire file (keeps working tree changes).
 func UnstageFile(path string) error {
-	out, err := exec.Command("git", "reset", "HEAD", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git reset: %s\n%s", err, string(out))
-	}
-	return nil
+	return retryOnLock(func() (string, error) {
+		out, err := exec.Command("git", "reset", "HEAD", "--", path).CombinedOutput()
+		if err != nil {
+			return string(out), fmt.Errorf("git reset: %s\n%s", err, string(out))
+		}
+		return "", nil
+	})
 }
 
 // DiscardFile discards all changes to a file.
@@ -104,21 +108,25 @@ func DiscardFile(path string, status FileStatus, staged bool) error {
 			return err
 		}
 	}
-	out, err := exec.Command("git", "checkout", "--", path).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git checkout: %s\n%s", err, string(out))
-	}
-	return nil
+	return retryOnLock(func() (string, error) {
+		out, err := exec.Command("git", "checkout", "--", path).CombinedOutput()
+		if err != nil {
+			return string(out), fmt.Errorf("git checkout: %s\n%s", err, string(out))
+		}
+		return "", nil
+	})
 }
 
 // gitApply runs git apply with the given flags, piping patch to stdin.
 func gitApply(patch string, flags ...string) error {
-	args := append([]string{"apply"}, flags...)
-	cmd := exec.Command("git", args...)
-	cmd.Stdin = strings.NewReader(patch)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git apply: %s\n%s", err, string(out))
-	}
-	return nil
+	return retryOnLock(func() (string, error) {
+		args := append([]string{"apply"}, flags...)
+		cmd := exec.Command("git", args...)
+		cmd.Stdin = strings.NewReader(patch)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return string(out), fmt.Errorf("git apply: %s\n%s", err, string(out))
+		}
+		return "", nil
+	})
 }
