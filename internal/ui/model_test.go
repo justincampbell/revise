@@ -359,6 +359,61 @@ func TestNewModel_DefaultBranch_StartsOnStaged(t *testing.T) {
 	assert.Equal(t, ModeStaged, m.mode)
 }
 
+func TestDiffRefresh_UpdatesOnDefaultBranch(t *testing.T) {
+	// Start on default branch — Branch mode is not available
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+
+	require.True(t, m.onDefaultBranch)
+	require.Equal(t, ModeStaged, m.mode)
+	require.Equal(t, []DiffMode{ModeStaged, ModeUnstaged}, m.availableModes())
+
+	// Simulate a diff refresh that reports we're no longer on the default branch
+	// (e.g., user ran `git checkout -b feature` while the app was running)
+	updated, _ = m.Update(diffLoadedMsg{
+		diff:            &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		onDefaultBranch: false,
+	})
+	m = updated.(Model)
+
+	assert.False(t, m.onDefaultBranch)
+	assert.Equal(t, []DiffMode{ModeBranch, ModeStaged, ModeUnstaged}, m.availableModes())
+}
+
+func TestDiffRefresh_SwitchesToFeatureBranch_KeepsCurrentMode(t *testing.T) {
+	// Start on default branch in ModeStaged
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	require.Equal(t, ModeStaged, m.mode)
+
+	// Switch to feature branch — mode should stay ModeStaged (still valid)
+	updated, _ = m.Update(diffLoadedMsg{
+		diff:            &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		onDefaultBranch: false,
+	})
+	m = updated.(Model)
+
+	assert.Equal(t, ModeStaged, m.mode, "should keep current mode when it's still valid")
+}
+
+func TestDiffRefresh_SwitchesToDefaultBranch_ClampsMode(t *testing.T) {
+	// Start on feature branch in ModeBranch
+	m := makeModel("a.go")
+	require.Equal(t, ModeBranch, m.mode)
+
+	// Switch to default branch — ModeBranch is no longer available, should clamp to ModeStaged
+	updated, _ := m.Update(diffLoadedMsg{
+		diff:            &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		onDefaultBranch: true,
+	})
+	m = updated.(Model)
+
+	assert.True(t, m.onDefaultBranch)
+	assert.Equal(t, ModeStaged, m.mode, "should clamp to ModeStaged when Branch is no longer available")
+}
+
 // --- Mode slider rendering tests ---
 
 func TestModeSlider_FeatureBranch_BranchMode_AllLit(t *testing.T) {
