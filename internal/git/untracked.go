@@ -5,16 +5,42 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 )
 
+// untrackedCache caches untracked file diffs to avoid re-reading large files
+// on every context line change. The cache is invalidated when the untracked
+// file list changes (different paths) or after a short TTL.
+var untrackedCache struct {
+	mu       sync.Mutex
+	files    []FileDiff
+	pathsKey string // sorted paths joined, used to detect changes
+	time     time.Time
+}
+
+const untrackedCacheTTL = 2 * time.Second
+
 // UntrackedFiles returns synthetic FileDiff entries for untracked files.
+// Results are cached to avoid re-reading file contents when only context
+// lines change (the bottleneck identified in issue #35).
 func UntrackedFiles() ([]FileDiff, error) {
 	out, err := exec.Command("git", "ls-files", "--others", "--exclude-standard").Output()
 	if err != nil {
 		return nil, err
 	}
 
-	paths := strings.Split(strings.TrimSpace(string(out)), "\n")
+	rawPaths := strings.TrimSpace(string(out))
+
+	untrackedCache.mu.Lock()
+	defer untrackedCache.mu.Unlock()
+
+	now := time.Now()
+	if rawPaths == untrackedCache.pathsKey && now.Sub(untrackedCache.time) < untrackedCacheTTL {
+		return untrackedCache.files, nil
+	}
+
+	paths := strings.Split(rawPaths, "\n")
 	var files []FileDiff
 
 	for _, path := range paths {
@@ -59,5 +85,16 @@ func UntrackedFiles() ([]FileDiff, error) {
 		})
 	}
 
+	untrackedCache.files = files
+	untrackedCache.pathsKey = rawPaths
+	untrackedCache.time = now
+
 	return files, nil
+}
+
+// InvalidateUntrackedCache forces the next UntrackedFiles call to re-read files.
+func InvalidateUntrackedCache() {
+	untrackedCache.mu.Lock()
+	untrackedCache.time = time.Time{}
+	untrackedCache.mu.Unlock()
 }
