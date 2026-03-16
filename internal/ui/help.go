@@ -24,6 +24,19 @@ func renderHelp(width, height int) string {
 
 	content := b.String()
 
+	// Trim content to fit within terminal height if needed.
+	// Reserve space for help box border (2) + padding (2) + outer margin (2).
+	maxContentLines := height - 6
+	if maxContentLines < 5 {
+		maxContentLines = 5
+	}
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) > maxContentLines {
+		lines = lines[:maxContentLines]
+		lines = append(lines, helpDescStyle.Render("  (scroll down for more — resize terminal)"))
+		content = strings.Join(lines, "\n") + "\n"
+	}
+
 	return lipgloss.Place(
 		width, height,
 		lipgloss.Center, lipgloss.Center,

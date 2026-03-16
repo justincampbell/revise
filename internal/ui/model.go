@@ -340,7 +340,7 @@ func (m *Model) updateLayout() {
 
 	m.fileList.width = listW
 	m.fileList.height = panelH
-	m.diffView.width = m.width - listW - 3 // gap
+	m.diffView.width = m.width - listW - 3 // divider + borders
 	m.diffView.height = panelH
 }
 
@@ -702,6 +702,17 @@ func overlayCenter(bg, fg string, width, height int) string {
 	return strings.Join(bgLines, "\n")
 }
 
+// renderDivider renders a thin vertical line between the file list and diff panels.
+func (m Model) renderDivider() string {
+	h := m.height - 3 + 2 // panelH + border top/bottom
+	style := lipgloss.NewStyle().Foreground(colorBorder)
+	lines := make([]string, h)
+	for i := range lines {
+		lines[i] = style.Render("│")
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
 	if m.fullscreen {
 		return true
@@ -862,10 +873,10 @@ func (m Model) renderStatusBar() string {
 	count := len(m.comments)
 	if count > 0 {
 		return statusBarStyle.Width(m.width).Render(
-			slider + "  " + fmt.Sprintf("%d comment(s) — c: add/edit  d: delete  e: export", count),
+			slider + "  " + fmt.Sprintf("%d comment(s)  ?", count),
 		)
 	}
-	return statusBarStyle.Width(m.width).Render(slider + "  c: add comment  e: export  ?: help  q: quit")
+	return statusBarStyle.Width(m.width).Render(slider + "  ?")
 }
 
 func (m Model) View() string {
@@ -886,7 +897,8 @@ func (m Model) View() string {
 	} else {
 		left := m.fileList.render(m.focus == focusFileList)
 		right := m.diffView.render(m.focus == focusDiffView)
-		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		divider := m.renderDivider()
+		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, right)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}
 
