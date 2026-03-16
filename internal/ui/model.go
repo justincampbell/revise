@@ -33,9 +33,10 @@ type diffLoadedMsg struct {
 type DiffMode int
 
 const (
-	ModeBranch   DiffMode = iota // committed + staged + unstaged + untracked (broadest, feature branch only)
-	ModeStaged                   // staged + unstaged + untracked
-	ModeUnstaged                 // unstaged + untracked only (narrowest)
+	ModeBranch    DiffMode = iota // committed + staged + unstaged + untracked (broadest, feature branch only)
+	ModeStaged                    // staged + unstaged + untracked
+	ModeStagedOnly                // staged only (no unstaged or untracked)
+	ModeUnstaged                  // unstaged + untracked only (narrowest)
 )
 
 type focusPanel int
@@ -768,9 +769,9 @@ func (m Model) sliderModeAt(x int) DiffMode {
 // Order matches display: Branch · Staged · Unstaged (broadest → narrowest).
 func (m Model) availableModes() []DiffMode {
 	if m.onDefaultBranch {
-		return []DiffMode{ModeStaged, ModeUnstaged}
+		return []DiffMode{ModeStaged, ModeStagedOnly, ModeUnstaged}
 	}
-	return []DiffMode{ModeBranch, ModeStaged, ModeUnstaged}
+	return []DiffMode{ModeBranch, ModeStaged, ModeStagedOnly, ModeUnstaged}
 }
 
 // cycleMode advances the mode by direction (+1 or -1), wrapping around.
@@ -804,6 +805,8 @@ func (m *Model) loadDiff() tea.Cmd {
 			diff, err = git.BranchDiffOptions(ctx, hideWS)
 		case ModeStaged:
 			diff, err = git.WorkingTreeDiffOptions(ctx, hideWS)
+		case ModeStagedOnly:
+			diff, err = git.StagedOnlyDiffOptions(ctx, hideWS)
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
@@ -841,12 +844,13 @@ func (m Model) renderModeSlider() string {
 
 	// Cumulative: broadest mode (ModeBranch) lights all,
 	// narrower modes drop components from the left.
+	// ModeStagedOnly lights only Staged; ModeUnstaged lights only Unstaged.
 	if !m.onDefaultBranch {
 		labels = append(labels, label{"Branch", m.mode == ModeBranch})
 	}
 	labels = append(labels,
-		label{"Staged", m.mode == ModeBranch || m.mode == ModeStaged},
-		label{"Unstaged", true},
+		label{"Staged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeStagedOnly},
+		label{"Unstaged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeUnstaged},
 	)
 
 	var result string

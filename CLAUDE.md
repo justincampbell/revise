@@ -102,19 +102,20 @@ internal/
 
 ### Diff Strategy
 
-Three diff components displayed left-to-right: **Branch · Staged · Unstaged**. Modes are cumulative — narrower modes drop from the left, Unstaged is always included. Tab/Shift+Tab cycles through modes.
+Three diff components displayed left-to-right: **Branch · Staged · Unstaged**. Tab/Shift+Tab cycles through modes. Broader modes light more components; `ModeStagedOnly` and `ModeUnstaged` each light only their respective component.
 
 | Mode | Slider | What it shows |
 |------|--------|--------------|
-| **ModeBranch** | **Branch·Staged·Unstaged** | committed + staged + unstaged + untracked (broadest, default) — skipped on default branch |
-| **ModeStaged** | Branch·**Staged·Unstaged** | staged + unstaged + untracked |
-| **ModeUnstaged** | Branch·Staged·**Unstaged** | unstaged + untracked only (narrowest) |
+| **ModeBranch** | **Branch+Staged+Unstaged** | committed + staged + unstaged + untracked (broadest, default) — skipped on default branch |
+| **ModeStaged** | Branch **Staged+Unstaged** | staged + unstaged + untracked |
+| **ModeStagedOnly** | Branch **Staged** Unstaged | staged only (no unstaged or untracked) |
+| **ModeUnstaged** | Branch Staged **Unstaged** | unstaged + untracked only (narrowest) |
 
 - Default mode: ModeBranch on feature branches (broadest), ModeStaged on default branch
 - Default branch is auto-detected via `origin/main`, `origin/master`, then `git symbolic-ref refs/remotes/origin/HEAD`
 - Working tree changes for the same path replace branch diff entries (latest state wins)
 - `IsOnDefaultBranch()` checks if merge-base == HEAD
-- Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `UnstagedOnlyDiff()`, `StagedOnlyDiff()` (reserved for future use)
+- Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `StagedOnlyDiff()`, `UnstagedOnlyDiff()`
 - Untracked files are merged into "Unstaged" — no separate untracked mode
 
 ### UI Layout
