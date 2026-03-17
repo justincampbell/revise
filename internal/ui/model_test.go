@@ -429,13 +429,6 @@ func TestModeSlider_FeatureBranch_BranchMode_AllLit(t *testing.T) {
 	assert.Contains(t, slider, "Branch")
 	assert.Contains(t, slider, "Staged")
 	assert.Contains(t, slider, "Unstaged")
-	assert.Contains(t, slider, "Tab: switch")
-}
-
-func TestModeSlider_ShowsContextLineCount(t *testing.T) {
-	m := makeModel("a.go")
-	slider := m.renderModeSlider()
-	assert.Contains(t, slider, "+/-: context (3)")
 }
 
 func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
@@ -937,13 +930,6 @@ func TestModelW_TogglesHideWhitespace(t *testing.T) {
 	assert.True(t, m.hideWhitespace)
 	m = sendKey(m, "w")
 	assert.False(t, m.hideWhitespace)
-}
-
-func TestModeSlider_ShowsWhitespaceIndicator(t *testing.T) {
-	m := makeModel("a.go")
-	m.hideWhitespace = true
-	slider := m.renderModeSlider()
-	assert.Contains(t, slider, "w: whitespace hidden")
 }
 
 func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {

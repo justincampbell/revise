@@ -444,7 +444,7 @@ func (m *diffViewModel) currentHunkIndex() int {
 // inputBoxHeight is the number of rows the inline comment input box occupies.
 const inputBoxHeight = 3 // border top + content + border bottom
 
-func (m diffViewModel) render(focused bool) string {
+func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool) string {
 	viewH := m.viewHeight()
 	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
 	if maxWidth < 1 {
@@ -537,6 +537,19 @@ func (m diffViewModel) render(focused bool) string {
 		rendered = setBorderTitle(rendered, title, focused)
 	}
 	rendered = setBorderBottomCounts(rendered, added, removed, focused)
+	ctxText := fmt.Sprintf(" Context: %d ", contextLines)
+	ctxLabel := statusBarStyle.Render(ctxText)
+	if contextLines != git.DefaultContextLines {
+		ctxLabel = modeActiveStyle.Render(ctxText)
+	}
+	rendered = setBorderBottomLeft(rendered, ctxLabel, focused)
+	if hideWhitespace {
+		wsLabel := modeActiveStyle.Render(" Whitespace hidden ")
+		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	} else {
+		wsLabel := statusBarStyle.Render(" Whitespace ")
+		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	}
 	return rendered
 }
 
@@ -573,6 +586,107 @@ func setBorderTitle(rendered, title string, focused bool) string {
 
 	newTop := bc.Render("╭") + titleRendered + bc.Render(strings.Repeat("─", fillWidth)) + bc.Render("╮")
 	return newTop + rest
+}
+
+// setBorderTitleCentered overlays a centered pre-rendered title onto the top border.
+func setBorderTitleCentered(rendered, title string, focused bool) string {
+	nl := strings.IndexByte(rendered, '\n')
+	if nl < 0 {
+		return rendered
+	}
+	topLine := rendered[:nl]
+	rest := rendered[nl:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(topLine)
+	titleWidth := ansi.StringWidth(title)
+
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	fillWidth := totalWidth - 1 - titleWidth - 1 // minus ╭ and ╮
+	leftFill := fillWidth / 2
+	rightFill := fillWidth - leftFill
+
+	newTop := bc.Render("╭") + bc.Render(strings.Repeat("─", leftFill)) + title + bc.Render(strings.Repeat("─", rightFill)) + bc.Render("╮")
+	return newTop + rest
+}
+
+// setBorderBottomLeft overlays a left-aligned label onto an existing bottom border,
+// preserving content to the right (e.g. centered counts).
+func setBorderBottomLeft(rendered, title string, focused bool) string {
+	lastNl := strings.LastIndexByte(rendered, '\n')
+	if lastNl < 0 {
+		return rendered
+	}
+	rest := rendered[:lastNl+1]
+	bottomLine := rendered[lastNl+1:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(bottomLine)
+	titleWidth := ansi.StringWidth(title)
+
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	// Rebuild: ╰ + title + remainder of existing bottom line from that point on
+	rightStart := 1 + titleWidth // skip ╰ corner + title width
+	right := ansi.TruncateLeft(bottomLine, rightStart, "")
+	// If truncation left a gap, pad with border chars
+	rightWidth := ansi.StringWidth(right)
+	if rightWidth < totalWidth-rightStart {
+		right += bc.Render(strings.Repeat("─", totalWidth-rightStart-rightWidth))
+	}
+
+	newBottom := bc.Render("╰") + title + right
+	return rest + newBottom
+}
+
+// setBorderBottomRight overlays a right-aligned label onto an existing bottom border,
+// preserving content to the left (e.g. centered counts, left-aligned context).
+func setBorderBottomRight(rendered, title string, focused bool) string {
+	lastNl := strings.LastIndexByte(rendered, '\n')
+	if lastNl < 0 {
+		return rendered
+	}
+	rest := rendered[:lastNl+1]
+	bottomLine := rendered[lastNl+1:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(bottomLine)
+	titleWidth := ansi.StringWidth(title)
+
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	// Truncate existing bottom to make room for title + ╯
+	leftWidth := totalWidth - titleWidth - 1 // minus ╯
+	left := ansi.Truncate(bottomLine, leftWidth, "")
+	// Pad if truncation came up short
+	for ansi.StringWidth(left) < leftWidth {
+		left += bc.Render("─")
+	}
+
+	newBottom := left + title + bc.Render("╯")
+	return rest + newBottom
 }
 
 // setBorderBottomTitle overlays a centered title onto the bottom border line.
