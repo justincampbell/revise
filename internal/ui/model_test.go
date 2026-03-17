@@ -315,6 +315,8 @@ func TestCycleMode_ForwardOnFeatureBranch(t *testing.T) {
 	m.cycleMode(+1)
 	assert.Equal(t, ModeStaged, m.mode)
 	m.cycleMode(+1)
+	assert.Equal(t, ModeStagedOnly, m.mode)
+	m.cycleMode(+1)
 	assert.Equal(t, ModeUnstaged, m.mode)
 	m.cycleMode(+1)
 	assert.Equal(t, ModeBranch, m.mode) // wraps
@@ -325,6 +327,8 @@ func TestCycleMode_BackwardOnFeatureBranch(t *testing.T) {
 	m.cycleMode(-1)
 	assert.Equal(t, ModeUnstaged, m.mode) // wraps backward
 	m.cycleMode(-1)
+	assert.Equal(t, ModeStagedOnly, m.mode)
+	m.cycleMode(-1)
 	assert.Equal(t, ModeStaged, m.mode)
 }
 
@@ -334,6 +338,8 @@ func TestCycleMode_SkipsBranchOnDefaultBranch(t *testing.T) {
 	m = updated.(Model)
 
 	assert.Equal(t, ModeStaged, m.mode) // starts on broadest available
+	m.cycleMode(+1)
+	assert.Equal(t, ModeStagedOnly, m.mode)
 	m.cycleMode(+1)
 	assert.Equal(t, ModeUnstaged, m.mode)
 	m.cycleMode(+1)
@@ -367,7 +373,7 @@ func TestDiffRefresh_UpdatesOnDefaultBranch(t *testing.T) {
 
 	require.True(t, m.onDefaultBranch)
 	require.Equal(t, ModeStaged, m.mode)
-	require.Equal(t, []DiffMode{ModeStaged, ModeUnstaged}, m.availableModes())
+	require.Equal(t, []DiffMode{ModeStaged, ModeStagedOnly, ModeUnstaged}, m.availableModes())
 
 	// Simulate a diff refresh that reports we're no longer on the default branch
 	// (e.g., user ran `git checkout -b feature` while the app was running)
@@ -378,7 +384,7 @@ func TestDiffRefresh_UpdatesOnDefaultBranch(t *testing.T) {
 	m = updated.(Model)
 
 	assert.False(t, m.onDefaultBranch)
-	assert.Equal(t, []DiffMode{ModeBranch, ModeStaged, ModeUnstaged}, m.availableModes())
+	assert.Equal(t, []DiffMode{ModeBranch, ModeStaged, ModeStagedOnly, ModeUnstaged}, m.availableModes())
 }
 
 func TestDiffRefresh_SwitchesToFeatureBranch_KeepsCurrentMode(t *testing.T) {
@@ -457,6 +463,15 @@ func TestModeSlider_StagedMode_MixedDelimiters(t *testing.T) {
 	slider := m.renderModeSlider()
 	// Branch inactive, Staged+Unstaged active — + between Staged and Unstaged, space before Staged
 	assert.Contains(t, slider, "+")
+}
+
+func TestModeSlider_StagedOnlyMode_ShowsStagedActive(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeStagedOnly
+	slider := m.renderModeSlider()
+	// Only Staged label should be active
+	assert.Contains(t, slider, "Staged")
+	assert.Contains(t, slider, "Unstaged")
 }
 
 func TestModeSlider_UnstagedMode_SpaceDelimiters(t *testing.T) {
