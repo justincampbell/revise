@@ -22,8 +22,9 @@ type hunkApplyMsg struct {
 
 // diffLoadedMsg is sent when an async diff load completes.
 type diffLoadedMsg struct {
-	diff *git.Diff
-	err  error
+	diff            *git.Diff
+	err             error
+	onDefaultBranch bool
 }
 
 // DiffMode represents which diff view is active.
@@ -294,6 +295,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 		}
 		m.diff = msg.diff
+
+		// Update default-branch status so Branch mode becomes
+		// available (or unavailable) dynamically.
+		m.onDefaultBranch = msg.onDefaultBranch
+		// If the current mode is no longer valid, clamp it.
+		modes := m.availableModes()
+		modeValid := false
+		for _, am := range modes {
+			if am == m.mode {
+				modeValid = true
+				break
+			}
+		}
+		if !modeValid {
+			m.mode = modes[0]
+		}
+
 		selectedPath := ""
 		if f := m.fileList.selectedFile(); f != nil {
 			selectedPath = f.Path
@@ -775,6 +793,10 @@ func (m *Model) loadDiff() tea.Cmd {
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
 	return func() tea.Msg {
+		// Re-check whether we're on the default branch so the UI can
+		// enable/disable Branch mode dynamically (e.g. after git checkout -b).
+		onDefault, _ := git.IsOnDefaultBranch()
+
 		var diff *git.Diff
 		var err error
 		switch mode {
@@ -785,7 +807,7 @@ func (m *Model) loadDiff() tea.Cmd {
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
-		return diffLoadedMsg{diff: diff, err: err}
+		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault}
 	}
 }
 
