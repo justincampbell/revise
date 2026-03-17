@@ -656,6 +656,34 @@ func TestUntrackedFiles_TaggedAsUnstaged(t *testing.T) {
 	assert.Equal(t, SourceUnstaged, f.Hunks[0].Source)
 }
 
+// ============================================================================
+// Hide whitespace
+// ============================================================================
+
+func TestUnstagedDiff_HideWhitespace(t *testing.T) {
+	r := baseRepo(t)
+	// Add only whitespace changes
+	r.WriteFile("base.go", "package main\n\nfunc base() {  }\n")
+
+	raw, err := UnstagedDiff(DefaultContextLines)
+	require.NoError(t, err)
+	assert.NotEmpty(t, raw, "without -w, whitespace changes should appear")
+
+	rawW, err := UnstagedDiffIgnoreWhitespace(DefaultContextLines)
+	require.NoError(t, err)
+	assert.Empty(t, rawW, "with -w, whitespace-only changes should be hidden")
+}
+
+func TestWorkingTreeDiff_HideWhitespace(t *testing.T) {
+	r := baseRepo(t)
+	// Only whitespace change
+	r.WriteFile("base.go", "package main\n\nfunc base() {  }\n")
+
+	diff, err := WorkingTreeDiffOptions(DefaultContextLines, true)
+	require.NoError(t, err)
+	assert.Empty(t, diff.Files, "whitespace-only changes should be hidden with -w")
+}
+
 func TestGetDiff_FeatureBranch_RenamedFile(t *testing.T) {
 	r := NewTestRepo(t)
 	r.WriteFile("old.go", "package main\n\nfunc old() {}\n")

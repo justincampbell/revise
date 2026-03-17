@@ -858,6 +858,24 @@ func TestModelFileList_D_BranchOnlyFile_ShowsError(t *testing.T) {
 	assert.False(t, m.confirmDiscard)
 }
 
+// --- Hide whitespace tests ---
+
+func TestModelW_TogglesHideWhitespace(t *testing.T) {
+	m := makeModel("a.go")
+	assert.False(t, m.hideWhitespace)
+	m = sendKey(m, "w")
+	assert.True(t, m.hideWhitespace)
+	m = sendKey(m, "w")
+	assert.False(t, m.hideWhitespace)
+}
+
+func TestModeSlider_ShowsWhitespaceIndicator(t *testing.T) {
+	m := makeModel("a.go")
+	m.hideWhitespace = true
+	slider := m.renderModeSlider()
+	assert.Contains(t, slider, "w: whitespace hidden")
+}
+
 func TestRenderStatusBar_FileListNoPaneTotals(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "a", NewNum: 1},

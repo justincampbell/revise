@@ -60,6 +60,7 @@ type Model struct {
 	mode            DiffMode
 	onDefaultBranch bool
 	contextLines    int
+	hideWhitespace  bool
 
 	comments           comments
 	commentInputActive bool
@@ -175,6 +176,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "N":
 			m.prevFile()
 			return m, nil
+
+		// Toggle hide whitespace
+		case "w":
+			m.hideWhitespace = !m.hideWhitespace
+			return m, m.loadDiff()
 
 		// Adjust context lines
 		case "+", "=":
@@ -767,16 +773,17 @@ func (m *Model) cycleMode(direction int) {
 func (m *Model) loadDiff() tea.Cmd {
 	mode := m.mode
 	ctx := m.contextLines
+	hideWS := m.hideWhitespace
 	return func() tea.Msg {
 		var diff *git.Diff
 		var err error
 		switch mode {
 		case ModeBranch:
-			diff, err = git.BranchDiff(ctx)
+			diff, err = git.BranchDiffOptions(ctx, hideWS)
 		case ModeStaged:
-			diff, err = git.WorkingTreeDiff(ctx)
+			diff, err = git.WorkingTreeDiffOptions(ctx, hideWS)
 		case ModeUnstaged:
-			diff, err = git.UnstagedOnlyDiff(ctx)
+			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
 		return diffLoadedMsg{diff: diff, err: err}
 	}
@@ -834,7 +841,11 @@ func (m Model) renderModeSlider() string {
 	}
 
 	ctx := fmt.Sprintf("  +/-: context (%d)", m.contextLines)
-	return result + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx)
+	extra := ""
+	if m.hideWhitespace {
+		extra = "  " + modeActiveStyle.Render("w: whitespace hidden")
+	}
+	return result + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx) + extra
 }
 
 func (m Model) renderStatusBar() string {
