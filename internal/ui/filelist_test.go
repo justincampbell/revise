@@ -85,33 +85,20 @@ func TestTruncate_VerySmallMax(t *testing.T) {
 	assert.Equal(t, "ab", truncate("abcdef", 2))
 }
 
-func TestFileList_TitleInBorder(t *testing.T) {
+func TestFileList_ModeSliderInBorder(t *testing.T) {
 	m := newFileListModel(makeFiles("a.go", "b.go", "c.go"))
 	m.width = 30
 	m.height = 10
-	rendered := m.render(true)
-	assert.Contains(t, rendered, "Files (1/3)")
+	rendered := m.render(true, "Staged+Unstaged")
+	assert.Contains(t, rendered, "Staged+Unstaged")
 }
 
-func TestFileList_RenderShowsCenteredFooterTotals(t *testing.T) {
-	m := newFileListModel([]git.FileDiff{
-		{
-			Path:   "a.go",
-			Status: git.StatusModified,
-			Hunks: []git.Hunk{{
-				Header: "@@ -1,1 +1,2 @@",
-				Lines: []git.Line{
-					{Type: git.LineAdded, Content: "a", NewNum: 1},
-					{Type: git.LineRemoved, Content: "b", OldNum: 1},
-					{Type: git.LineAdded, Content: "c", NewNum: 2},
-				},
-			}},
-		},
-	})
+func TestFileList_NoContextInFooter(t *testing.T) {
+	m := newFileListModel(makeFiles("a.go"))
 	m.width = 40
 	m.height = 8
-	rendered := m.render(true)
-	assert.Contains(t, rendered, "+2/-1")
+	rendered := m.render(true, "Staged")
+	assert.NotContains(t, rendered, "Context")
 }
 
 func TestFileTotals(t *testing.T) {

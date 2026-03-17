@@ -85,7 +85,7 @@ func fileTotals(f git.FileDiff) (added, removed int) {
 	return added, removed
 }
 
-func (m fileListModel) render(focused bool) string {
+func (m fileListModel) render(focused bool, modeSlider string) string {
 	style := panelBorder
 	if focused {
 		style = focusedBorder
@@ -93,7 +93,7 @@ func (m fileListModel) render(focused bool) string {
 
 	if len(m.files) == 0 {
 		rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render("No changes")
-		rendered = setBorderTitle(rendered, " Files ", focused)
+		rendered = setBorderTitleCentered(rendered, modeSlider, focused)
 		return rendered
 	}
 
@@ -128,12 +128,9 @@ func (m fileListModel) render(focused bool) string {
 		}
 	}
 
-	added, removed := m.totals()
 	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
 
-	title := fmt.Sprintf(" Files (%d/%d) ", m.cursor+1, len(m.files))
-	rendered = setBorderTitle(rendered, title, focused)
-	rendered = setBorderBottomCounts(rendered, added, removed, focused)
+	rendered = setBorderTitleCentered(rendered, modeSlider, focused)
 	return rendered
 }
 

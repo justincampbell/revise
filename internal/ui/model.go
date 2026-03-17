@@ -866,23 +866,16 @@ func (m Model) renderModeSlider() string {
 		result += render(l.name, l.active)
 	}
 
-	ctx := fmt.Sprintf("  +/-: context (%d)", m.contextLines)
-	extra := ""
-	if m.hideWhitespace {
-		extra = "  " + modeActiveStyle.Render("w: whitespace hidden")
-	}
-	return result + modeInactiveStyle.Render("  Tab: switch") + modeInactiveStyle.Render(ctx) + extra
+	return result
 }
 
 func (m Model) renderStatusBar() string {
-	slider := m.renderModeSlider()
-
 	if m.commentInputActive {
-		return statusBarStyle.Width(m.width).Render(slider + "  Enter: save  Esc: cancel")
+		return statusBarStyle.Width(m.width).Render("Enter: save  Esc: cancel")
 	}
 
 	if m.statusMsg != "" {
-		return statusBarStyle.Width(m.width).Render(slider + "  " + m.statusMsg)
+		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
 
 	// Show comment text when cursor is on a commented line
@@ -891,18 +884,16 @@ func (m Model) renderStatusBar() string {
 		if ref != nil && m.diffView.file != nil {
 			key := ref.commentKey(m.diffView.file.Path)
 			if text, ok := m.comments[key]; ok {
-				return statusBarStyle.Width(m.width).Render(slider + "  ◆ " + text)
+				return statusBarStyle.Width(m.width).Render("◆ " + text)
 			}
 		}
 	}
 
 	count := len(m.comments)
 	if count > 0 {
-		return statusBarStyle.Width(m.width).Render(
-			slider + "  " + fmt.Sprintf("%d comment(s) — c: add/edit  d: delete  e: export", count),
-		)
+		return statusBarStyle.Width(m.width).Render(fmt.Sprintf("%d comment(s)  ?", count))
 	}
-	return statusBarStyle.Width(m.width).Render(slider + "  c: add comment  e: export  ?: help  q: quit")
+	return statusBarStyle.Width(m.width).Render("?")
 }
 
 func (m Model) View() string {
@@ -918,11 +909,11 @@ func (m Model) View() string {
 
 	var screen string
 	if m.fullscreen {
-		panels := m.diffView.render(true)
+		panels := m.diffView.render(true, m.contextLines)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	} else {
-		left := m.fileList.render(m.focus == focusFileList)
-		right := m.diffView.render(m.focus == focusDiffView)
+		left := m.fileList.render(m.focus == focusFileList, m.renderModeSlider())
+		right := m.diffView.render(m.focus == focusDiffView, m.contextLines)
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}
