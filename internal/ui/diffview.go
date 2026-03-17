@@ -444,7 +444,7 @@ func (m *diffViewModel) currentHunkIndex() int {
 // inputBoxHeight is the number of rows the inline comment input box occupies.
 const inputBoxHeight = 3 // border top + content + border bottom
 
-func (m diffViewModel) render(focused bool, contextLines int) string {
+func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool) string {
 	viewH := m.viewHeight()
 	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
 	if maxWidth < 1 {
@@ -537,8 +537,19 @@ func (m diffViewModel) render(focused bool, contextLines int) string {
 		rendered = setBorderTitle(rendered, title, focused)
 	}
 	rendered = setBorderBottomCounts(rendered, added, removed, focused)
-	ctxLabel := statusBarStyle.Render(fmt.Sprintf(" Context: %d ", contextLines))
+	ctxText := fmt.Sprintf(" Context: %d ", contextLines)
+	ctxLabel := statusBarStyle.Render(ctxText)
+	if contextLines != git.DefaultContextLines {
+		ctxLabel = modeActiveStyle.Render(ctxText)
+	}
 	rendered = setBorderBottomLeft(rendered, ctxLabel, focused)
+	if hideWhitespace {
+		wsLabel := modeActiveStyle.Render(" Whitespace hidden ")
+		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	} else {
+		wsLabel := statusBarStyle.Render(" Whitespace ")
+		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	}
 	return rendered
 }
 
@@ -640,6 +651,41 @@ func setBorderBottomLeft(rendered, title string, focused bool) string {
 	}
 
 	newBottom := bc.Render("╰") + title + right
+	return rest + newBottom
+}
+
+// setBorderBottomRight overlays a right-aligned label onto an existing bottom border,
+// preserving content to the left (e.g. centered counts, left-aligned context).
+func setBorderBottomRight(rendered, title string, focused bool) string {
+	lastNl := strings.LastIndexByte(rendered, '\n')
+	if lastNl < 0 {
+		return rendered
+	}
+	rest := rendered[:lastNl+1]
+	bottomLine := rendered[lastNl+1:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(bottomLine)
+	titleWidth := ansi.StringWidth(title)
+
+	if titleWidth+2 > totalWidth {
+		return rendered
+	}
+
+	// Truncate existing bottom to make room for title + ╯
+	leftWidth := totalWidth - titleWidth - 1 // minus ╯
+	left := ansi.Truncate(bottomLine, leftWidth, "")
+	// Pad if truncation came up short
+	for ansi.StringWidth(left) < leftWidth {
+		left += bc.Render("─")
+	}
+
+	newBottom := left + title + bc.Render("╯")
 	return rest + newBottom
 }
 

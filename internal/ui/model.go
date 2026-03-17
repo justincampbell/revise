@@ -365,7 +365,7 @@ func (m *Model) updateLayout() {
 
 	m.fileList.width = listW
 	m.fileList.height = panelH
-	m.diffView.width = m.width - listW - 3 // gap
+	m.diffView.width = m.width - listW - 5 // file list borders (2) + gap (1) + diff borders (2)
 	m.diffView.height = panelH
 }
 
@@ -909,11 +909,11 @@ func (m Model) View() string {
 
 	var screen string
 	if m.fullscreen {
-		panels := m.diffView.render(true, m.contextLines)
+		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	} else {
 		left := m.fileList.render(m.focus == focusFileList, m.renderModeSlider())
-		right := m.diffView.render(m.focus == focusDiffView, m.contextLines)
+		right := m.diffView.render(m.focus == focusDiffView, m.contextLines, m.hideWhitespace)
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}

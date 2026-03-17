@@ -317,7 +317,7 @@ func TestDiffView_TitleInBorder(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	rendered := m.render(true, 3)
+	rendered := m.render(true, 3, false)
 	assert.Contains(t, rendered, "foo.go")
 }
 
@@ -334,7 +334,7 @@ func TestDiffView_RenamedTitleInBorder(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	rendered := m.render(true, 3)
+	rendered := m.render(true, 3, false)
 	assert.Contains(t, rendered, "old.go → new.go")
 }
 
@@ -354,7 +354,7 @@ func TestDiffView_RenderShowsCenteredFooterTotals(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	rendered := m.render(true, 3)
+	rendered := m.render(true, 3, false)
 	assert.Contains(t, rendered, "+2/-1")
 }
 
