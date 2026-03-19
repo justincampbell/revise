@@ -63,8 +63,14 @@ var (
 	// Comment count badge in file list
 	commentCountStyle = lipgloss.NewStyle().Foreground(colorYellow)
 
+	// Colors - comment background
+	colorCommentBg = lipgloss.Color("#2d2400")
+
 	// Inline comment display (persisted annotation below a code line)
-	commentDisplayStyle = lipgloss.NewStyle().Foreground(colorYellow).Italic(true)
+	commentDisplayStyle = lipgloss.NewStyle().Foreground(colorYellow).Italic(true).Background(colorCommentBg)
+
+	// Comment gutter indicator
+	commentGutterStyle = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
 
 	// Inline comment input box
 	commentInputStyle = lipgloss.NewStyle().
@@ -120,6 +126,7 @@ func init() {
 		cursorStyle = lipgloss.NewStyle().Bold(true)
 		commentCountStyle = lipgloss.NewStyle()
 		commentDisplayStyle = lipgloss.NewStyle()
+		commentGutterStyle = lipgloss.NewStyle().Bold(true)
 		commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 		modeActiveStyle = lipgloss.NewStyle().Bold(true)
 		modeInactiveStyle = lipgloss.NewStyle()

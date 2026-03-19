@@ -98,10 +98,11 @@ func (m *diffViewModel) buildLines() {
 			add(renderDiffLine(line), ref)
 
 			// If this code line has a saved comment, add a display line below it.
+			// Store raw text — rendering with gutter + full-width happens in render().
 			key := ref.commentKey(m.file.Path)
 			if text, ok := m.comments[key]; ok {
 				displayRef := &lineRef{isCommentDisplay: true}
-				add(commentDisplayStyle.Render("  ╰ "+text), displayRef)
+				add(text, displayRef)
 			}
 		}
 		add("", nil)
@@ -419,6 +420,27 @@ func hunkContext(header string) string {
 	return strings.TrimSpace(parts[2])
 }
 
+// renderCommentDisplayLine renders a comment annotation line with a gutter
+// indicator and full-width highlighted background.
+func (m diffViewModel) renderCommentDisplayLine(text string, maxWidth int) string {
+	gutter := commentGutterStyle.Render("    │ ")
+	gutterWidth := ansi.StringWidth(gutter)
+	contentWidth := maxWidth - gutterWidth
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	display := text
+	if ansi.StringWidth(display) > contentWidth {
+		display = ansi.Truncate(display, contentWidth, "")
+	}
+	// Pad to fill the remaining width with the background color.
+	pad := contentWidth - ansi.StringWidth(display)
+	if pad > 0 {
+		display = display + strings.Repeat(" ", pad)
+	}
+	return " " + gutter + commentDisplayStyle.Render(display)
+}
+
 // linePrefix returns the 1-character cursor indicator for a display line.
 // The cursor is only shown when the diff pane is focused.
 func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
@@ -469,6 +491,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 
 	renderLine := func(absIdx int) string {
 		line := m.lines[absIdx]
+		if m.isCommentDisplayLine(absIdx) {
+			return m.renderCommentDisplayLine(line, maxWidth)
+		}
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
 		}

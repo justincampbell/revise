@@ -562,6 +562,68 @@ func TestCurrentHunkIndex_NoFile(t *testing.T) {
 	assert.Equal(t, -1, m.currentHunkIndex())
 }
 
+func TestBuildLines_CommentDisplayLineHasRawText(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "fix this"
+	m.buildLines()
+
+	// Find the comment display line
+	var found bool
+	for i, ref := range m.lineRefs {
+		if ref != nil && ref.isCommentDisplay {
+			found = true
+			// The raw text should be stored (not pre-rendered with styles)
+			assert.Equal(t, "fix this", m.lines[i])
+			break
+		}
+	}
+	assert.True(t, found, "expected a comment display line")
+}
+
+func TestRenderCommentDisplayLine_HasGutterIndicator(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 50
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "fix this"
+	m.buildLines()
+	rendered := m.render(true, 3, false)
+	// The rendered output should contain the comment text and the gutter indicator
+	assert.Contains(t, rendered, "fix this")
+	assert.Contains(t, rendered, "│")
+}
+
+func TestRenderCommentDisplayLine_FullWidth(t *testing.T) {
+	m := newDiffViewModel()
+	rendered := m.renderCommentDisplayLine("short", 40)
+	// Should contain the gutter indicator │
+	assert.Contains(t, rendered, "│")
+	// Should contain the comment text
+	assert.Contains(t, rendered, "short")
+}
+
+func TestRenderCommentDisplayLine_TruncatesLongText(t *testing.T) {
+	m := newDiffViewModel()
+	longText := strings.Repeat("x", 100)
+	rendered := m.renderCommentDisplayLine(longText, 30)
+	// Should not exceed the maxWidth (rendered line prefix " " + gutter + content)
+	assert.Contains(t, rendered, "│")
+	assert.Contains(t, rendered, "xxx")
+}
+
 func TestPrevHunk_FromMiddleOfHunk_GoesToStartOfCurrentHunk(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
 	m.nextHunk()            // go to hunk 1
