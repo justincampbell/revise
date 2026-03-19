@@ -93,7 +93,7 @@ internal/
     styles.go                  # all Lipgloss styles, NO_COLOR support
     help.go                    # help overlay
     model_test.go              # model key routing tests
-    filelist_test.go           # navigation and truncate tests
+    filelist_test.go           # navigation, truncate, and tree view tests
     diffview_test.go           # scroll logic and gutter format tests
     help_test.go               # padRight unicode tests
 ```
@@ -144,6 +144,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `n` / `N` | Next / prev file |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
 | `+`/`-` | More/fewer context lines |
+| `t` | Toggle tree view in file list |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list (exits fullscreen if needed) |
 | `?` | Toggle help overlay |
@@ -160,6 +161,16 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `s` / `S` | Stage hunk / file (file list: `s` stages file) |
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
 | `D` | Discard hunk / file (with `y` confirmation) |
+
+### File List Tree View
+
+- Toggle with `t` key (works from either panel)
+- Groups files by directory with indentation; directories shown as `dir/` with dim style
+- Cursor navigates files only (directory headers are skipped)
+- `buildTreeRows()` creates a flat list of `treeRow` structs from files, emitting directory headers when the directory path changes
+- Tree state (`treeView` bool) is preserved across diff refreshes
+- Mouse clicks on directory headers are ignored; clicks on file rows select the file
+- Default is flat view (tree off)
 
 ### Mouse Support
 
