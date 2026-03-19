@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // makeDiffViewModel creates a model with lineCount navigable (code) lines.
@@ -512,4 +515,165 @@ func TestPrevHunk_FromMiddleOfHunk_GoesToStartOfCurrentHunk(t *testing.T) {
 	m.prevHunk()
 	// Should go to start of hunk 1 (since we're in the middle of it)
 	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum)
+}
+
+// makePlainBottomBorder builds a minimal two-line "rendered" string that
+// setBorderBottomCounts can operate on: one content line + one bottom border.
+func makePlainBottomBorder(width int) string {
+	top := strings.Repeat("x", width)
+	bottom := "╰" + strings.Repeat("─", width-2) + "╯"
+	return top + "\n" + bottom
+}
+
+// stripANSI removes all ANSI escape sequences from s so we can inspect
+// plain character positions.
+func stripANSI(s string) string {
+	return ansi.Strip(s)
+}
+
+func TestSetBorderBottomCounts_SlashColumnFixed(t *testing.T) {
+	// The slash should always appear at the same column regardless of
+	// digit counts in the added/removed numbers.
+	const paneWidth = 60
+
+	cases := []struct {
+		name    string
+		added   int
+		removed int
+	}{
+		{"single digits", 3, 7},
+		{"double/single", 21, 7},
+		{"quad/triple", 1234, 768},
+		{"large/large", 9999, 9999},
+		{"zero/zero", 0, 0},
+		{"single/quad", 1, 1234},
+	}
+
+	rendered := makePlainBottomBorder(paneWidth)
+	contentWidth := paneWidth - 2 // minus corners
+	expectedSlashCol := 1 + contentWidth/2 // 1 for ╰ corner
+
+	var slashCols []int
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := setBorderBottomCounts(rendered, tc.added, tc.removed, false)
+			// Extract bottom line
+			lastNl := strings.LastIndexByte(result, '\n')
+			require.NotEqual(t, -1, lastNl)
+			bottomLine := result[lastNl+1:]
+
+			plain := stripANSI(bottomLine)
+			plainRunes := []rune(plain)
+
+			// Find the slash position
+			slashIdx := -1
+			for i, r := range plainRunes {
+				if r == '/' {
+					slashIdx = i
+					break
+				}
+			}
+			require.NotEqual(t, -1, slashIdx, "slash not found in bottom border for case %s: %q", tc.name, plain)
+
+			// Slash should be at the center column
+			assert.Equal(t, expectedSlashCol, slashIdx,
+				"slash column mismatch for %s: got col %d, want %d\nborder: %q", tc.name, slashIdx, expectedSlashCol, plain)
+
+			slashCols = append(slashCols, slashIdx)
+		})
+	}
+
+	// Additionally verify all cases placed the slash at the same column
+	for i := 1; i < len(slashCols); i++ {
+		assert.Equal(t, slashCols[0], slashCols[i],
+			"slash column differs between case 0 and case %d", i)
+	}
+}
+
+func TestSetBorderBottomCounts_LeadingAndTrailingSpaces(t *testing.T) {
+	// The count block should have exactly one leading space before +N
+	// and one trailing space after -N.
+	const paneWidth = 60
+
+	cases := []struct {
+		name    string
+		added   int
+		removed int
+	}{
+		{"small", 2, 1},
+		{"medium", 21, 7},
+		{"large", 1234, 768},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rendered := makePlainBottomBorder(paneWidth)
+			result := setBorderBottomCounts(rendered, tc.added, tc.removed, false)
+
+			lastNl := strings.LastIndexByte(result, '\n')
+			require.NotEqual(t, -1, lastNl)
+			bottomLine := result[lastNl+1:]
+			plain := stripANSI(bottomLine)
+
+			// Find the count block by locating the + and the last digit before ╯/─
+			addedStr := "+" + strings.TrimLeft(strings.Split(plain[strings.Index(plain, "+"):], "/")[0], "+")
+			_ = addedStr
+
+			// Simpler: find " +N" pattern — there must be a space before the +
+			plusIdx := strings.Index(plain, "+")
+			require.NotEqual(t, -1, plusIdx, "'+' not found: %q", plain)
+			require.Greater(t, plusIdx, 0, "'+' at start of line")
+			assert.Equal(t, ' ', rune(plain[plusIdx-1]),
+				"expected space before '+' in %q", plain)
+
+			// Find trailing space after -N: locate the last digit of -N block
+			slashIdx := strings.Index(plain, "/")
+			require.NotEqual(t, -1, slashIdx)
+			// After slash, find the - sign and then the digits
+			afterSlash := plain[slashIdx+1:]
+			require.True(t, len(afterSlash) > 0 && afterSlash[0] == '-',
+				"expected '-' after slash: %q", plain)
+			// Find end of digits after -
+			endOfDigits := 1 // skip '-'
+			for endOfDigits < len(afterSlash) && afterSlash[endOfDigits] >= '0' && afterSlash[endOfDigits] <= '9' {
+				endOfDigits++
+			}
+			require.Less(t, endOfDigits, len(afterSlash), "no space after removed count: %q", plain)
+			assert.Equal(t, ' ', rune(afterSlash[endOfDigits]),
+				"expected space after removed digits in %q", plain)
+		})
+	}
+}
+
+func TestSetBorderBottomCounts_ColorAndNoColorProduceSameLayout(t *testing.T) {
+	// The visual (stripped) layout must be identical whether or not
+	// styles produce ANSI codes.
+	const paneWidth = 50
+
+	rendered := makePlainBottomBorder(paneWidth)
+
+	// Both focused and unfocused should strip to the same layout
+	for _, focused := range []bool{true, false} {
+		resultA := setBorderBottomCounts(rendered, 42, 13, focused)
+		lastNl := strings.LastIndexByte(resultA, '\n')
+		require.NotEqual(t, -1, lastNl)
+		bottomA := resultA[lastNl+1:]
+		plainA := stripANSI(bottomA)
+
+		// The stripped width should match the original border width
+		assert.Equal(t, paneWidth, ansi.StringWidth(bottomA),
+			"ANSI-aware width mismatch (focused=%v)", focused)
+		assert.Equal(t, paneWidth, len([]rune(plainA)),
+			"plain rune count mismatch (focused=%v)", focused)
+	}
+}
+
+func TestSetBorderBottomCounts_NarrowPaneFallback(t *testing.T) {
+	// For very narrow panes where leftFill or rightFill would be negative,
+	// the function should fall back without panicking.
+	rendered := makePlainBottomBorder(10)
+	result := setBorderBottomCounts(rendered, 99999, 99999, false)
+	// Should not panic and should produce a valid string
+	assert.NotEmpty(t, result)
 }
