@@ -139,6 +139,15 @@ func UnstagedDiffIgnoreWhitespace(contextLines int) (string, error) {
 	return string(out), nil
 }
 
+// RepoRoot returns the absolute path to the top-level directory of the git repository.
+func RepoRoot() (string, error) {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // IsGitRepo checks if the current directory is inside a git repository.
 func IsGitRepo() bool {
 	err := exec.Command("git", "rev-parse", "--is-inside-work-tree").Run()

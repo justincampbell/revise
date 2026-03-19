@@ -85,6 +85,9 @@ internal/
     diff_test.go               # mergeFileDiffs unit tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
+  comments/
+    store.go                   # JSON persistence for comments (Save/Load/StorePath)
+    store_test.go              # persistence unit tests
   ui/
     model.go                   # root Bubbletea model, layout, input routing
     filelist.go                # left panel: file list

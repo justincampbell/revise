@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	commentstore "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 )
 
@@ -65,6 +66,7 @@ type Model struct {
 	hideWhitespace  bool
 
 	comments           comments
+	storePath          string // path to JSON file for comment persistence
 	commentInputActive bool
 	commentTarget      commentKey
 	statusMsg          string
@@ -75,10 +77,25 @@ type Model struct {
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
+	return NewWithStorePath(diff, onDefaultBranch, "")
+}
+
+// NewWithStorePath creates a Model with comment persistence at the given path.
+// If storePath is non-empty, comments are loaded from it on startup and saved
+// automatically on every add/edit/delete.
+func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string) Model {
 	fl := newFileListModel(diff.Files)
 	dv := newDiffViewModel()
 
 	c := make(comments)
+
+	// Load persisted comments if a store path is configured.
+	if storePath != "" {
+		if loaded, err := commentstore.Load(storePath); err == nil {
+			c = commentsFromStringMap(loaded)
+		}
+	}
+
 	dv.comments = c
 	fl.comments = c
 
@@ -97,6 +114,7 @@ func New(diff *git.Diff, onDefaultBranch bool) Model {
 		diffView:        dv,
 		focus:           focusFileList,
 		comments:        c,
+		storePath:       storePath,
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
 		contextLines:    git.DefaultContextLines,
@@ -453,6 +471,7 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			delete(m.comments, m.commentTarget)
 		}
+		m.saveComments()
 		m.commentInputActive = false
 		m.diffView.commentInputActive = false
 		m.diffView.textInput.Blur()
@@ -479,6 +498,14 @@ func (m Model) updateConfirmDiscard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingDiscardCmd = nil
 		return m, nil
 	}
+}
+
+// saveComments persists comments to the configured store path (if any).
+func (m *Model) saveComments() {
+	if m.storePath == "" {
+		return
+	}
+	_ = commentstore.Save(m.storePath, m.comments.toStringMap())
 }
 
 func (m *Model) startCommentInput() {
@@ -514,6 +541,7 @@ func (m *Model) deleteCommentAtCursor() {
 	}
 	key := ref.commentKey(m.diffView.file.Path)
 	delete(m.comments, key)
+	m.saveComments()
 	m.diffView.rebuildLinesPreservingCursor()
 }
 
