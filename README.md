@@ -2,16 +2,27 @@
 
 A terminal UI for reviewing local git changes and sending feedback to [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-## Requirements
+<!-- TODO: Add demo video/gif -->
 
-- Go 1.25+
-- git
+`revise` gives you a split-pane interface for browsing git diffs in the terminal — file list on the left, diff on the right. Add inline comments, stage or discard individual hunks, and cycle between branch, staged, and unstaged views. It's designed for reviewing your own changes before committing or sharing them with an AI assistant.
 
 ## Installation
+
+### Homebrew
+
+```sh
+brew install justincampbell/tap/revise
+```
+
+### Go
 
 ```sh
 go install github.com/justincampbell/revise@latest
 ```
+
+### Binary releases
+
+Download a prebuilt binary from the [GitHub Releases](https://github.com/justincampbell/revise/releases) page.
 
 ## Usage
 
@@ -21,10 +32,8 @@ Run from within a git repository:
 revise
 ```
 
-Shows a split-pane view with a file list on the left and diff on the right.
-
-- **Feature branch**: shows all changes vs merge base (as if opening a PR)
-- **Default branch**: shows staged, unstaged, and untracked changes
+- On a **feature branch**, revise shows all changes compared to the merge base (as if opening a PR).
+- On the **default branch**, it shows staged, unstaged, and untracked changes.
 
 ### Diff Modes
 
@@ -32,56 +41,72 @@ Cycle through modes with `Tab` / `Shift+Tab`:
 
 | Mode | What it shows |
 |------|--------------|
-| **Branch** | committed + staged + unstaged + untracked (broadest, default on feature branches) |
-| **Staged** | staged + unstaged + untracked |
-| **Unstaged** | unstaged + untracked only (narrowest) |
-
-### Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `←` / `h` | Focus file list |
-| `→` / `l` | Focus diff view |
-| `j` / `k`, `↑` / `↓` | Navigate / scroll |
-| `Enter` | Select file / open comment input |
-| `n` / `N` | Next / prev file |
-| `g` / `G` | Top / bottom of diff |
-| `}` / `{` | Next / prev hunk |
-| `f` | Toggle fullscreen diff |
-| `Tab` / `Shift+Tab` | Cycle diff mode |
-| `+` / `-` | More / fewer context lines |
-| `c` / `Enter` | Add/edit comment on diff line |
-| `d` | Delete comment |
-| `e` | Export comments |
-| `s` / `S` | Stage hunk / file |
-| `u` / `U` | Unstage hunk / file |
-| `D` | Discard hunk / file (with confirmation) |
-| `Esc` | Back to file list |
-| `?` | Toggle help |
-| `q` / `Ctrl+C` | Quit |
+| **Branch** | Committed + staged + unstaged + untracked (broadest; default on feature branches) |
+| **Staged** | Staged + unstaged + untracked |
+| **Unstaged** | Unstaged + untracked only (narrowest) |
 
 ### Features
 
-- **Diff review** — split-pane file list + diff viewer with syntax-highlighted diffs
-- **Comments** — add inline comments on diff lines, export for AI feedback
-- **Staging** — stage/unstage/discard individual hunks or entire files
-- **MCP integration** — embedded MCP server for Claude Code review loops
-- **Mouse support** — click to select files, scroll to navigate
-- **NO_COLOR** — respects the `NO_COLOR` environment variable
+- **Diff review** -- split-pane file list and diff viewer with color-coded diffs
+- **Inline comments** -- add comments on any diff line, export for AI feedback
+- **Hunk staging** -- stage, unstage, or discard individual hunks or entire files
+- **Mouse support** -- click to select files, scroll to navigate
+- **NO_COLOR** -- respects the [`NO_COLOR`](https://no-color.org) environment variable
 
-## Development
+## Key Bindings
 
-```sh
-make build   # build binary
-make test    # run tests
-make install # go install
-make clean   # remove binary
-```
+Press `?` inside revise to see the help overlay.
+
+### General
+
+| Key | Action |
+|-----|--------|
+| `←` (`h`) | Focus file list |
+| `→` (`l`) | Focus diff view |
+| `n` / `N` | Next / prev file |
+| `Tab` / `Shift+Tab` | Cycle diff mode |
+| `f` | Toggle fullscreen diff |
+| `Esc` | Back to file list |
+| `?` | Toggle help |
+| `q` | Quit |
+
+### File List
+
+| Key | Action |
+|-----|--------|
+| `j` / `k`, `↑` / `↓` | Navigate files |
+| `Enter` | Select file and focus diff |
+| `s` | Stage file |
+| `u` | Unstage file |
+| `D` | Discard file |
+
+### Diff View
+
+| Key | Action |
+|-----|--------|
+| `j` / `k`, `↑` / `↓` | Move cursor |
+| `}` / `{` (`]` / `[`) | Next / prev hunk |
+| `+` / `-` | More / fewer context lines |
+| `w` | Toggle hide whitespace |
+| `g` / `G` | Top / bottom |
+| `Fn+↓` / `Fn+↑` | Page down / up |
+| `Enter` / `c` | Add/edit comment on line |
+| `d` | Delete comment on line |
+| `s` / `S` | Stage hunk / file |
+| `u` / `U` | Unstage hunk / file |
+| `D` | Discard hunk |
+
+### Global
+
+| Key | Action |
+|-----|--------|
+| `e` | Export comments to clipboard |
+| `!` | Report issue on GitHub |
 
 ## Inspiration
 
-- [difit](https://github.com/yoshiko-pg/difit) — browser-based local diff viewer with comment/copy-prompt features
-- [gitui](https://github.com/extrawurst/gitui) — fast terminal UI for git
+- [difit](https://github.com/yoshiko-pg/difit) -- browser-based local diff viewer with comment/copy-prompt features
+- [gitui](https://github.com/extrawurst/gitui) -- fast terminal UI for git
 
 ## License
 
