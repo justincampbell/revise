@@ -1044,6 +1044,105 @@ func TestModelComment_PersistsOnDelete(t *testing.T) {
 	assert.Empty(t, m2.comments)
 }
 
+// --- Clear all comments tests ---
+
+func TestModelClearComments_C_WithComments_PromptsConfirmation(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m = sendKey(m, "C")
+	assert.True(t, m.confirmClear)
+	assert.Contains(t, m.confirmMsg, "1 comment")
+}
+
+func TestModelClearComments_C_WithNoComments_DoesNothing(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = sendKey(m, "C")
+	assert.False(t, m.confirmClear)
+}
+
+func TestModelClearComments_ConfirmWithY_ClearsComments(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m.comments[commentKey{file: "foo.go", lineNum: 2}] = "another"
+	m = sendKey(m, "C")
+	require.True(t, m.confirmClear)
+	m = sendKey(m, "y")
+	assert.False(t, m.confirmClear)
+	assert.Empty(t, m.comments)
+}
+
+func TestModelClearComments_ConfirmWithEnter_ClearsComments(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m = sendKey(m, "C")
+	require.True(t, m.confirmClear)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.confirmClear)
+	assert.Empty(t, m.comments)
+}
+
+func TestModelClearComments_CancelWithOtherKey(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m = sendKey(m, "C")
+	require.True(t, m.confirmClear)
+	m = sendKey(m, "n")
+	assert.False(t, m.confirmClear)
+	assert.Len(t, m.comments, 1)
+}
+
+func TestModelClearComments_PluralMessage(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a"
+	m.comments[commentKey{file: "foo.go", lineNum: 2}] = "b"
+	m = sendKey(m, "C")
+	assert.Contains(t, m.confirmMsg, "2 comments")
+}
+
+func TestModelClearComments_Persists(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	}
+	m, storePath := makeModelWithStore(t, "foo.go", lines)
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m.saveComments()
+
+	m = sendKey(m, "C")
+	require.True(t, m.confirmClear)
+	m = sendKey(m, "y")
+
+	// Reload from store — should be empty
+	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+		Path:   "foo.go",
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
+	}}}, false, storePath)
+	assert.Empty(t, m2.comments)
+}
+
+func TestModelClearComments_WorksFromDiffView(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "C")
+	assert.True(t, m.confirmClear)
+}
+
 func TestModelComment_NoStorePathDoesNotPersist(t *testing.T) {
 	// With empty storePath, comments should still work in memory but not persist
 	m := makeModelWithDiff("foo.go", []git.Line{
