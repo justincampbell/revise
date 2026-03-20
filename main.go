@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
 )
@@ -55,7 +56,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := ui.New(diff, onDefaultBranch)
+	// Compute the store path for comment persistence.
+	var storePath string
+	if repoRoot, err := git.RepoRoot(); err == nil {
+		branch := git.CurrentBranchName()
+		if branch == "" {
+			branch = "HEAD"
+		}
+		storePath = comments.StorePath(repoRoot, branch)
+	}
+
+	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {

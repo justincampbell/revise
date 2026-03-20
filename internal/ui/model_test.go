@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -973,4 +974,88 @@ func TestRenderStatusBar_DiffNoPaneTotals(t *testing.T) {
 	m.focus = focusDiffView
 	status := m.renderStatusBar()
 	assert.NotContains(t, status, "a.go +1/-1")
+}
+
+// --- Comment persistence tests ---
+
+// makeModelWithStore creates a model with diff lines and a temp store path.
+func makeModelWithStore(t *testing.T, filePath string, lines []git.Line) (Model, string) {
+	t.Helper()
+	storePath := filepath.Join(t.TempDir(), "comments.json")
+	hunk := git.Hunk{
+		Header: "@@ -1,1 +1,1 @@",
+		Lines:  lines,
+	}
+	files := []git.FileDiff{{
+		Path:   filePath,
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{hunk},
+	}}
+	m := NewWithStorePath(&git.Diff{Files: files}, false, storePath)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return updated.(Model), storePath
+}
+
+func TestModelComment_PersistsOnSave(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	}
+	m, storePath := makeModelWithStore(t, "foo.go", lines)
+
+	// Add a comment
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	// Create a new model from the same store — should load the comment
+	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+		Path:   "foo.go",
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
+	}}}, false, storePath)
+	updated2, _ := m2.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m2 = updated2.(Model)
+
+	assert.Equal(t, "hi", m2.comments[commentKey{file: "foo.go", lineNum: 1}])
+}
+
+func TestModelComment_PersistsOnDelete(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	}
+	m, storePath := makeModelWithStore(t, "foo.go", lines)
+
+	// Add a comment
+	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "to delete"
+	m.saveComments()
+
+	// Delete the comment
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "d")
+
+	// Create a new model — comment should be gone
+	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+		Path:   "foo.go",
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
+	}}}, false, storePath)
+	assert.Empty(t, m2.comments)
+}
+
+func TestModelComment_NoStorePathDoesNotPersist(t *testing.T) {
+	// With empty storePath, comments should still work in memory but not persist
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
+	// No panic, no error — just works in memory
 }

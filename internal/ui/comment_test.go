@@ -6,6 +6,7 @@ import (
 
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatExport_Empty(t *testing.T) {
@@ -74,4 +75,59 @@ func TestFormatExport_ExcludesFilesWithNoComments(t *testing.T) {
 	result := formatExport(files, c)
 	assert.Contains(t, result, "## a.go")
 	assert.NotContains(t, result, "## b.go")
+}
+
+// --- commentKey encode/decode tests ---
+
+func TestCommentKey_EncodeRoundTrip(t *testing.T) {
+	key := commentKey{file: "foo.go", lineNum: 42, isOld: false}
+	encoded := key.encode()
+	decoded, ok := decodeCommentKey(encoded)
+	require.True(t, ok)
+	assert.Equal(t, key, decoded)
+}
+
+func TestCommentKey_EncodeRoundTrip_OldLine(t *testing.T) {
+	key := commentKey{file: "bar.go", lineNum: 7, isOld: true}
+	encoded := key.encode()
+	decoded, ok := decodeCommentKey(encoded)
+	require.True(t, ok)
+	assert.Equal(t, key, decoded)
+}
+
+func TestDecodeCommentKey_InvalidFormat(t *testing.T) {
+	_, ok := decodeCommentKey("invalid")
+	assert.False(t, ok)
+}
+
+func TestDecodeCommentKey_InvalidLineNum(t *testing.T) {
+	_, ok := decodeCommentKey("file.go:abc:false")
+	assert.False(t, ok)
+}
+
+func TestDecodeCommentKey_InvalidBool(t *testing.T) {
+	_, ok := decodeCommentKey("file.go:1:notbool")
+	assert.False(t, ok)
+}
+
+func TestComments_ToStringMap_RoundTrip(t *testing.T) {
+	c := make(comments)
+	c[commentKey{file: "a.go", lineNum: 1, isOld: false}] = "fix"
+	c[commentKey{file: "b.go", lineNum: 5, isOld: true}] = "why?"
+
+	m := c.toStringMap()
+	assert.Len(t, m, 2)
+
+	restored := commentsFromStringMap(m)
+	assert.Equal(t, c, restored)
+}
+
+func TestCommentsFromStringMap_SkipsInvalidKeys(t *testing.T) {
+	m := map[string]string{
+		"valid.go:1:false": "ok",
+		"invalid":          "skip",
+	}
+	c := commentsFromStringMap(m)
+	assert.Len(t, c, 1)
+	assert.Equal(t, "ok", c[commentKey{file: "valid.go", lineNum: 1, isOld: false}])
 }

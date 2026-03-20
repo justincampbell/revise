@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/justincampbell/revise/internal/git"
@@ -14,7 +15,51 @@ type commentKey struct {
 	isOld   bool // true for removed lines (keyed by old line number)
 }
 
+// encode returns a string representation of the key for serialization.
+func (k commentKey) encode() string {
+	return fmt.Sprintf("%s:%d:%t", k.file, k.lineNum, k.isOld)
+}
+
+// decodeCommentKey parses a string produced by commentKey.encode().
+// Returns the zero value and false if parsing fails.
+func decodeCommentKey(s string) (commentKey, bool) {
+	parts := strings.SplitN(s, ":", 3)
+	if len(parts) != 3 {
+		return commentKey{}, false
+	}
+	lineNum, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return commentKey{}, false
+	}
+	isOld, err := strconv.ParseBool(parts[2])
+	if err != nil {
+		return commentKey{}, false
+	}
+	return commentKey{file: parts[0], lineNum: lineNum, isOld: isOld}, true
+}
+
 type comments map[commentKey]string
+
+// toStringMap converts comments to a serializable string-keyed map.
+func (c comments) toStringMap() map[string]string {
+	m := make(map[string]string, len(c))
+	for k, v := range c {
+		m[k.encode()] = v
+	}
+	return m
+}
+
+// commentsFromStringMap converts a string-keyed map back to comments.
+// Invalid keys are silently skipped.
+func commentsFromStringMap(m map[string]string) comments {
+	c := make(comments, len(m))
+	for k, v := range m {
+		if key, ok := decodeCommentKey(k); ok {
+			c[key] = v
+		}
+	}
+	return c
+}
 
 func (c comments) isEmpty() bool {
 	return len(c) == 0
