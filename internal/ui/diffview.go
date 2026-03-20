@@ -40,6 +40,7 @@ type diffViewModel struct {
 	comments comments
 
 	commentInputActive bool
+	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
 	textInput          textinput.Model
 }
 
@@ -479,7 +480,28 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		renderedLines = append(renderedLines, "No changes to display")
 	}
 
-	if m.commentInputActive && len(m.lines) > 0 {
+	if m.commentInputActive && m.fileCommentInput && len(m.lines) > 0 {
+		// File-level comment: input box appears before any code lines.
+		inputWidth := m.width - 4
+		if inputWidth < 10 {
+			inputWidth = 10
+		}
+		m.textInput.Width = inputWidth - 4
+		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
+		renderedLines = append(renderedLines, inputBox)
+
+		codeBelow := viewH - inputBoxHeight
+		if codeBelow < 0 {
+			codeBelow = 0
+		}
+		end := codeBelow
+		if end > len(m.lines) {
+			end = len(m.lines)
+		}
+		for absIdx := 0; absIdx < end; absIdx++ {
+			renderedLines = append(renderedLines, renderLine(absIdx))
+		}
+	} else if m.commentInputActive && len(m.lines) > 0 {
 		codeAbove := m.cursor - m.offset + 1
 		if codeAbove < 0 {
 			codeAbove = 0

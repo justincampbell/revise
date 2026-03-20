@@ -303,6 +303,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.commentInputActive {
 						m.commentInputActive = false
 						m.diffView.commentInputActive = false
+						m.diffView.fileCommentInput = false
 						m.diffView.textInput.Blur()
 					}
 					if absIdx >= 0 && absIdx < len(m.diffView.lines) {
@@ -497,11 +498,13 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.saveComments()
 		m.commentInputActive = false
 		m.diffView.commentInputActive = false
+		m.diffView.fileCommentInput = false
 		m.diffView.textInput.Blur()
 		m.diffView.rebuildLinesPreservingCursor()
 	case "esc":
 		m.commentInputActive = false
 		m.diffView.commentInputActive = false
+		m.diffView.fileCommentInput = false
 		m.diffView.textInput.Blur()
 	default:
 		var cmd tea.Cmd
@@ -579,15 +582,13 @@ func (m *Model) startFileComment() {
 	key := commentKey{file: f.Path, lineNum: 0}
 	m.commentTarget = key
 
-	// Move cursor to top so the input box appears at the top of the diff
-	m.diffView.goToTop()
-
 	m.diffView.textInput.SetValue(m.comments[key])
 	m.diffView.textInput.CursorEnd()
 	m.diffView.textInput.Focus()
 
 	m.commentInputActive = true
 	m.diffView.commentInputActive = true
+	m.diffView.fileCommentInput = true
 }
 
 func (m *Model) deleteFileComment() {
