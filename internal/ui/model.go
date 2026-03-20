@@ -937,7 +937,7 @@ func (m Model) View() string {
 
 	var screen string
 	if m.fullscreen {
-		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace)
+		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace, m.renderModeSlider())
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	} else {
 		left := m.fileList.render(m.focus == focusFileList, m.renderModeSlider())
