@@ -449,15 +449,15 @@ func TestNextHunk_FromMiddleOfHunk(t *testing.T) {
 	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum) // first line of hunk 1
 }
 
-func TestNextHunk_FromLastHunk_StaysAtBottom(t *testing.T) {
+func TestNextHunk_FromLastHunk_JumpsToEnd(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
 	// Go to last hunk
 	m.nextHunk()
 	m.nextHunk()
 	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum) // first line of hunk 2
 	m.nextHunk()
-	// Should stay on last hunk's first line (no more hunks)
-	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum)
+	// Should jump to the last navigable line (past the last hunk)
+	assert.Equal(t, 23, m.lineRefs[m.cursor].newNum)
 }
 
 func TestPrevHunk_MovesToFirstLineOfPrevHunk(t *testing.T) {
@@ -473,6 +473,26 @@ func TestPrevHunk_FromFirstHunk_StaysAtTop(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
 	m.prevHunk()
 	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // still on first line
+}
+
+func TestNextHunk_FromLastHunk_JumpsPastToLastLine(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	// Go to last hunk
+	m.nextHunk()
+	m.nextHunk()
+	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum) // first line of hunk 2
+	m.nextHunk()
+	// Should jump to the last navigable line (past the last hunk)
+	assert.Equal(t, 23, m.lineRefs[m.cursor].newNum) // added3, last navigable line
+}
+
+func TestPrevHunk_FromFirstLineOfFirstHunk_JumpsToTop(t *testing.T) {
+	m := makeDiffViewModelWithHunks()
+	// Cursor is already on first navigable line (first line of first hunk)
+	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum)
+	// prevHunk should be a no-op since we're already at the start of the first hunk
+	m.prevHunk()
+	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum)
 }
 
 func TestCurrentHunkIndex_FirstHunk(t *testing.T) {

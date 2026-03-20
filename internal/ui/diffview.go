@@ -282,6 +282,7 @@ func (m *diffViewModel) hunkStarts() []int {
 }
 
 // nextHunk moves the cursor to the first navigable line of the next hunk.
+// If already in the last hunk, jumps to the last navigable line.
 func (m *diffViewModel) nextHunk() {
 	starts := m.hunkStarts()
 	for _, idx := range starts {
@@ -293,6 +294,12 @@ func (m *diffViewModel) nextHunk() {
 			}
 			return
 		}
+	}
+	// No next hunk found — jump to last navigable line (past the last hunk).
+	m.goToLastNavigable()
+	viewH := m.viewHeight()
+	if m.cursor >= m.offset+viewH {
+		m.offset = m.cursor - viewH + 1
 	}
 }
 
