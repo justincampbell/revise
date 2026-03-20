@@ -28,6 +28,8 @@ var allBindings = []BindingGroup{
 	{"File List", []Binding{
 		{"j/k, ↑/↓", "Navigate files"},
 		{"Enter", "Select file and focus diff"},
+		{"c", "Add/edit file comment"},
+		{"d", "Delete file comment"},
 		{"s", "Stage file"},
 		{"u", "Unstage file"},
 		{"D", "Discard file"},

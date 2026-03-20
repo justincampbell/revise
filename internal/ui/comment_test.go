@@ -131,3 +131,45 @@ func TestCommentsFromStringMap_SkipsInvalidKeys(t *testing.T) {
 	assert.Len(t, c, 1)
 	assert.Equal(t, "ok", c[commentKey{file: "valid.go", lineNum: 1, isOld: false}])
 }
+
+func TestCommentKey_FileLevelComment_EncodeRoundTrip(t *testing.T) {
+	key := commentKey{file: "foo.go", lineNum: 0, isOld: false}
+	encoded := key.encode()
+	decoded, ok := decodeCommentKey(encoded)
+	require.True(t, ok)
+	assert.Equal(t, key, decoded)
+}
+
+func TestFormatExport_FileLevelComment(t *testing.T) {
+	files := []git.FileDiff{{Path: "foo.go"}}
+	c := comments{
+		{file: "foo.go", lineNum: 0}:  "file comment",
+		{file: "foo.go", lineNum: 10}: "line comment",
+	}
+	result := formatExport(files, c)
+	assert.Contains(t, result, "## foo.go")
+	assert.Contains(t, result, "File comment: file comment")
+	assert.Contains(t, result, "Line 10: line comment")
+}
+
+func TestFormatExport_FileLevelComment_AppearsFirst(t *testing.T) {
+	files := []git.FileDiff{{Path: "foo.go"}}
+	c := comments{
+		{file: "foo.go", lineNum: 0}:  "file comment",
+		{file: "foo.go", lineNum: 10}: "line comment",
+	}
+	result := formatExport(files, c)
+	fileIdx := strings.Index(result, "File comment:")
+	lineIdx := strings.Index(result, "Line 10:")
+	assert.Greater(t, fileIdx, -1)
+	assert.Greater(t, lineIdx, -1)
+	assert.Less(t, fileIdx, lineIdx, "file-level comment should appear before line comments")
+}
+
+func TestCountForFile_IncludesFileLevel(t *testing.T) {
+	c := comments{
+		{file: "a.go", lineNum: 0}: "file comment",
+		{file: "a.go", lineNum: 1}: "line comment",
+	}
+	assert.Equal(t, 2, c.countForFile("a.go"))
+}

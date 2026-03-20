@@ -1157,3 +1157,105 @@ func TestModelComment_NoStorePathDoesNotPersist(t *testing.T) {
 	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
 	// No panic, no error — just works in memory
 }
+
+// --- File-level comment tests ---
+
+func TestModelFileList_C_EntersCommentMode(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "c")
+	assert.True(t, m.commentInputActive)
+	assert.Equal(t, commentKey{file: "foo.go", lineNum: 0}, m.commentTarget)
+}
+
+func TestModelFileList_C_TypeAndSave(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.commentInputActive)
+	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 0}])
+}
+
+func TestModelFileList_C_PreFillsExisting(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 0}] = "existing"
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "c")
+	assert.True(t, m.commentInputActive)
+	assert.Equal(t, "existing", m.diffView.textInput.Value())
+}
+
+func TestModelFileList_C_NoFiles_DoesNothing(t *testing.T) {
+	m := New(&git.Diff{Files: nil}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	m = sendKey(m, "c")
+	assert.False(t, m.commentInputActive)
+}
+
+func TestModelFileList_D_DeletesFileComment(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m.comments[commentKey{file: "foo.go", lineNum: 0}] = "to delete"
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "d")
+	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 0}]
+	assert.False(t, exists)
+}
+
+func TestModelFileList_D_NoComment_DoesNothing(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	require.Equal(t, focusFileList, m.focus)
+	// Should not panic or set status
+	m = sendKey(m, "d")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelFileList_C_Esc_Cancels(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = sendKey(m, "c")
+	require.True(t, m.commentInputActive)
+	m = sendSpecialKey(m, tea.KeyEsc)
+	assert.False(t, m.commentInputActive)
+}
+
+func TestModelFileComment_Persists(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	}
+	m, storePath := makeModelWithStore(t, "foo.go", lines)
+
+	// Add a file-level comment from file list
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "c")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	// Create a new model from the same store — should load the file comment
+	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+		Path:   "foo.go",
+		Status: git.StatusModified,
+		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
+	}}}, false, storePath)
+	updated2, _ := m2.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m2 = updated2.(Model)
+
+	assert.Equal(t, "hi", m2.comments[commentKey{file: "foo.go", lineNum: 0}])
+}

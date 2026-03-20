@@ -303,6 +303,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.commentInputActive {
 						m.commentInputActive = false
 						m.diffView.commentInputActive = false
+						m.diffView.fileCommentInput = false
 						m.diffView.textInput.Blur()
 					}
 					if absIdx >= 0 && absIdx < len(m.diffView.lines) {
@@ -429,6 +430,10 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if cmd := m.discardCurrentFile(); cmd != nil {
 			return m, cmd
 		}
+	case "c":
+		m.startFileComment()
+	case "d":
+		m.deleteFileComment()
 	}
 	return m, nil
 }
@@ -493,11 +498,13 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.saveComments()
 		m.commentInputActive = false
 		m.diffView.commentInputActive = false
+		m.diffView.fileCommentInput = false
 		m.diffView.textInput.Blur()
 		m.diffView.rebuildLinesPreservingCursor()
 	case "esc":
 		m.commentInputActive = false
 		m.diffView.commentInputActive = false
+		m.diffView.fileCommentInput = false
 		m.diffView.textInput.Blur()
 	default:
 		var cmd tea.Cmd
@@ -565,6 +572,36 @@ func (m *Model) startCommentInput() {
 
 	m.commentInputActive = true
 	m.diffView.commentInputActive = true
+}
+
+func (m *Model) startFileComment() {
+	f := m.fileList.selectedFile()
+	if f == nil {
+		return
+	}
+	key := commentKey{file: f.Path, lineNum: 0}
+	m.commentTarget = key
+
+	m.diffView.textInput.SetValue(m.comments[key])
+	m.diffView.textInput.CursorEnd()
+	m.diffView.textInput.Focus()
+
+	m.commentInputActive = true
+	m.diffView.commentInputActive = true
+	m.diffView.fileCommentInput = true
+}
+
+func (m *Model) deleteFileComment() {
+	f := m.fileList.selectedFile()
+	if f == nil {
+		return
+	}
+	key := commentKey{file: f.Path, lineNum: 0}
+	if _, ok := m.comments[key]; ok {
+		delete(m.comments, key)
+		m.saveComments()
+		m.diffView.rebuildLinesPreservingCursor()
+	}
 }
 
 func (m *Model) deleteCommentAtCursor() {
