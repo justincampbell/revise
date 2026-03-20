@@ -77,7 +77,8 @@ internal/
   git/
     types.go                   # Diff, FileDiff, Hunk, Line types
     diff.go                    # GetDiff, branch detection, merge-base logic
-    apply.go                   # stage/unstage/discard hunks via git apply
+    apply.go                   # stage/unstage/discard hunks via git apply (with lock retry)
+    retry.go                   # retryOnLock helper for index.lock contention
     parse.go                   # unified diff parser
     untracked.go               # untracked file detection
     parse_test.go              # parser unit tests
@@ -94,10 +95,13 @@ internal/
     diffview.go                # right panel: diff renderer + scroll
     keys.go                    # keyboard binding definitions (single source of truth)
     styles.go                  # all Lipgloss styles, NO_COLOR support
+    comment.go                 # comment types, serialization for persistence
+    comment_test.go            # comment encode/decode tests
     help.go                    # help overlay
     model_test.go              # model key routing tests
     filelist_test.go           # navigation and truncate tests
     diffview_test.go           # scroll logic and gutter format tests
+    border_snapshot_test.go    # golden tests for pane border composition
     help_test.go               # padRight unicode tests
 ```
 
@@ -117,7 +121,7 @@ Three diff components displayed left-to-right: **Branch · Staged · Unstaged**.
 - Default mode: ModeBranch on feature branches (broadest), ModeStaged on default branch
 - Default branch is auto-detected via `origin/main`, `origin/master`, then `git symbolic-ref refs/remotes/origin/HEAD`
 - Working tree changes for the same path replace branch diff entries (latest state wins)
-- `IsOnDefaultBranch()` checks if merge-base == HEAD
+- `IsOnDefaultBranch()` checks if merge-base == HEAD; re-evaluated on every diff refresh so Branch mode appears dynamically after `git checkout -b`
 - Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `StagedOnlyDiff()`, `UnstagedOnlyDiff()`
 - Untracked files are merged into "Unstaged" — no separate untracked mode
 
@@ -162,6 +166,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `d` | Delete comment on current diff line |
 | `s` / `S` | Stage hunk / file (file list: `s` stages file) |
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
+| `w` | Toggle hide whitespace changes |
 | `D` | Discard hunk / file (with `y` confirmation) |
 
 ### Mouse Support
@@ -169,6 +174,17 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 - Scroll wheel up/down: scrolls whichever panel the cursor is over
 - Left click on file list: selects the file at that row (accounts for border + header offset)
 - Panel detection uses X position relative to file list width
+
+### Comment Persistence
+
+Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256(repoRoot + ":" + branchName)[:16]`. Auto-saved on every add/edit/delete, loaded on startup. The `internal/comments/` package handles storage; `internal/ui/comment.go` handles serialization between the internal `commentKey` struct and string-keyed JSON.
+
+### Diff Panel Footer
+
+The diff panel bottom border shows three overlaid elements:
+- **Left**: "Context: N" (dim when default 3, cyan when changed)
+- **Center**: "+A/-R" change counts with slash anchored to pane center
+- **Right**: "Whitespace" (dim) or "Whitespace hidden" (cyan when `w` toggled)
 
 ### Diff Parsing
 
