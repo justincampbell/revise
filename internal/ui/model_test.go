@@ -607,11 +607,10 @@ func TestModelNextHunk_Key(t *testing.T) {
 		{Type: git.LineAdded, Content: "b", NewNum: 2},
 	})
 	m = sendKey(m, "l") // focus diff
-	startCursor := m.diffView.cursor
-	// } should move to next hunk (or stay if only one)
+	// } should jump to last navigable line when no next hunk
 	m = sendKey(m, "}")
-	// With single hunk, cursor stays same
-	assert.Equal(t, startCursor, m.diffView.cursor)
+	// With single hunk, cursor moves to the last navigable line
+	assert.Equal(t, 2, m.diffView.lineRefs[m.diffView.cursor].newNum)
 }
 
 func TestModelPrevHunk_Key(t *testing.T) {
