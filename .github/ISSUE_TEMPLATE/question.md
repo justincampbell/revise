@@ -1,5 +1,0 @@
----
-name: Question
-labels: question
----
-

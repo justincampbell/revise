@@ -1,0 +1,28 @@
+name: Bug Report
+description: Report a bug
+labels: ["bug"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: revise --version or commit SHA
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, terminal
