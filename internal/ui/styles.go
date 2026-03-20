@@ -87,6 +87,9 @@ var (
 			BorderForeground(colorCyan).
 			Padding(1, 2)
 
+	// Search match highlight
+	searchMatchStyle = lipgloss.NewStyle().Background(lipgloss.Color("#4a3800")).Foreground(colorYellow)
+
 	// Confirm dialog styles
 	confirmStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -127,6 +130,7 @@ func init() {
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
 		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
+		searchMatchStyle = lipgloss.NewStyle().Bold(true)
 		confirmStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 		confirmKeyStyle = lipgloss.NewStyle().Bold(true)
 	}

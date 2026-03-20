@@ -168,6 +168,8 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `s` / `S` | Stage hunk / file (file list: `s` stages file) |
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
 | `w` | Toggle hide whitespace changes |
+| `/` | Search in diff view |
+| `n` / `N` | Next/prev search match (when search active in diff), otherwise next/prev file |
 | `D` | Discard hunk / file (with `y` confirmation) |
 
 ### Mouse Support

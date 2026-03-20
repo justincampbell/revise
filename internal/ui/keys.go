@@ -39,6 +39,8 @@ var allBindings = []BindingGroup{
 		{"w", "Toggle hide whitespace"},
 		{"g/G", "Top/bottom"},
 		{"Fn+↓/↑", "Page down/up"},
+		{"/", "Search in diff"},
+		{"n/N", "Next/prev match (or file)"},
 		{"Enter/c", "Add/edit comment on line"},
 		{"d", "Delete comment on line"},
 		{"s/S", "Stage hunk/file"},
@@ -52,6 +54,10 @@ var allBindings = []BindingGroup{
 	}},
 	{"Comment Input", []Binding{
 		{"Enter", "Save comment"},
+		{"Esc", "Cancel"},
+	}},
+	{"Search Input", []Binding{
+		{"Enter", "Search / clear search"},
 		{"Esc", "Cancel"},
 	}},
 }

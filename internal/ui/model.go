@@ -76,6 +76,11 @@ type Model struct {
 	pendingDiscardCmd tea.Cmd // the discard command to run on confirmation
 
 	confirmClear bool // waiting for confirmation to clear all comments
+
+	searchInputActive bool
+	searchQuery       string
+	searchMatches     []int // indices into diffView.lines that match
+	searchMatchIdx    int   // current match index
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -130,6 +135,10 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.searchInputActive {
+			return m.updateSearchInput(msg)
+		}
+
 		if m.commentInputActive {
 			return m.updateCommentInput(msg)
 		}
@@ -185,6 +194,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.fullscreen = false
 				m.updateLayout()
 			}
+			m.clearSearch()
 			m.focus = focusFileList
 			return m, nil
 
@@ -195,12 +205,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cycleMode(-1)
 			return m, m.loadDiff()
 
-		// File list navigation (always works)
+		// n/N: search match navigation when search results exist and diff focused,
+		// otherwise file navigation
 		case "n":
-			m.nextFile()
+			if m.focus == focusDiffView && len(m.searchMatches) > 0 {
+				m.nextSearchMatch()
+			} else {
+				m.nextFile()
+			}
 			return m, nil
 		case "N":
-			m.prevFile()
+			if m.focus == focusDiffView && len(m.searchMatches) > 0 {
+				m.prevSearchMatch()
+			} else {
+				m.prevFile()
+			}
 			return m, nil
 
 		// Toggle hide whitespace
@@ -477,6 +496,9 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if cmd := m.unstageCurrentFile(); cmd != nil {
 			return m, cmd
 		}
+	case "/":
+		m.startSearchInput()
+		return m, nil
 	}
 	return m, nil
 }
@@ -576,6 +598,96 @@ func (m *Model) deleteCommentAtCursor() {
 	delete(m.comments, key)
 	m.saveComments()
 	m.diffView.rebuildLinesPreservingCursor()
+}
+
+// startSearchInput opens the search input in the diff view.
+func (m *Model) startSearchInput() {
+	m.diffView.searchInput.SetValue("")
+	m.diffView.searchInput.Focus()
+	m.searchInputActive = true
+}
+
+func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		query := strings.TrimSpace(m.diffView.searchInput.Value())
+		m.searchInputActive = false
+		m.diffView.searchInput.Blur()
+		if query == "" {
+			m.clearSearch()
+		} else {
+			m.searchQuery = query
+			m.executeSearch()
+			if len(m.searchMatches) > 0 {
+				m.searchMatchIdx = 0
+				m.jumpToSearchMatch()
+			}
+		}
+	case "esc":
+		m.searchInputActive = false
+		m.diffView.searchInput.Blur()
+	default:
+		var cmd tea.Cmd
+		m.diffView.searchInput, cmd = m.diffView.searchInput.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+// executeSearch finds all line indices in diffView.lines that contain the search query.
+func (m *Model) executeSearch() {
+	m.searchMatches = nil
+	if m.searchQuery == "" {
+		return
+	}
+	query := strings.ToLower(m.searchQuery)
+	for i, line := range m.diffView.lines {
+		if m.diffView.isNavigable(i) && strings.Contains(strings.ToLower(line), query) {
+			m.searchMatches = append(m.searchMatches, i)
+		}
+	}
+}
+
+// nextSearchMatch advances to the next search match, wrapping around.
+func (m *Model) nextSearchMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchMatchIdx = (m.searchMatchIdx + 1) % len(m.searchMatches)
+	m.jumpToSearchMatch()
+}
+
+// prevSearchMatch goes back to the previous search match, wrapping around.
+func (m *Model) prevSearchMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchMatchIdx = (m.searchMatchIdx - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	m.jumpToSearchMatch()
+}
+
+// jumpToSearchMatch moves the diff view cursor to the current search match.
+func (m *Model) jumpToSearchMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	idx := m.searchMatches[m.searchMatchIdx]
+	m.diffView.cursor = idx
+	// Scroll to make cursor visible
+	viewH := m.diffView.viewHeight()
+	if m.diffView.cursor < m.diffView.offset {
+		m.diffView.offset = m.diffView.cursor
+	}
+	if m.diffView.cursor >= m.diffView.offset+viewH {
+		m.diffView.offset = m.diffView.cursor - viewH + 1
+	}
+}
+
+// clearSearch resets all search state.
+func (m *Model) clearSearch() {
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchMatchIdx = 0
 }
 
 // stageCurrentHunk stages the hunk at the cursor. Only works on unstaged hunks.
@@ -931,12 +1043,22 @@ func (m Model) renderModeSlider() string {
 }
 
 func (m Model) renderStatusBar() string {
+	if m.searchInputActive {
+		return statusBarStyle.Width(m.width).Render("/" + m.diffView.searchInput.View())
+	}
+
 	if m.commentInputActive {
 		return statusBarStyle.Width(m.width).Render("Enter: save  Esc: cancel")
 	}
 
 	if m.statusMsg != "" {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
+	}
+
+	// Show search match info
+	if m.focus == focusDiffView && m.searchQuery != "" && len(m.searchMatches) > 0 {
+		return statusBarStyle.Width(m.width).Render(
+			fmt.Sprintf("/%s  [%d/%d]", m.searchQuery, m.searchMatchIdx+1, len(m.searchMatches)))
 	}
 
 	// Show comment text when cursor is on a commented line

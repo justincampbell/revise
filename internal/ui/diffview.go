@@ -41,15 +41,23 @@ type diffViewModel struct {
 
 	commentInputActive bool
 	textInput          textinput.Model
+
+	searchInput textinput.Model
 }
 
 func newDiffViewModel() diffViewModel {
 	ti := textinput.New()
 	ti.Placeholder = "Add a comment…"
 	ti.CharLimit = 500
+
+	si := textinput.New()
+	si.Placeholder = "Search…"
+	si.CharLimit = 200
+
 	return diffViewModel{
-		comments:  make(comments),
-		textInput: ti,
+		comments:    make(comments),
+		textInput:   ti,
+		searchInput: si,
 	}
 }
 
@@ -347,6 +355,16 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 		nextIdx++ // this display line was skipped in the render
 	}
 	return nextIdx + (clickY - codeAbove - inputBoxHeight)
+}
+
+// isSearchMatch reports whether the given line index is in the search matches set.
+func (m diffViewModel) isSearchMatch(idx int, matches []int) bool {
+	for _, mi := range matches {
+		if mi == idx {
+			return true
+		}
+	}
+	return false
 }
 
 func (m diffViewModel) renderLines() []string {

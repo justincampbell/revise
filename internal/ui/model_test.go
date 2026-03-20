@@ -1143,6 +1143,237 @@ func TestModelClearComments_WorksFromDiffView(t *testing.T) {
 	assert.True(t, m.confirmClear)
 }
 
+// --- Search tests ---
+
+func TestModelSearch_SlashInDiffView_OpensSearchInput(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+		{Type: git.LineAdded, Content: "foo bar", NewNum: 2},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	assert.True(t, m.searchInputActive)
+}
+
+func TestModelSearch_SlashInFileList_DoesNotOpenSearch(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+	})
+	require.Equal(t, focusFileList, m.focus)
+	m = sendKey(m, "/")
+	assert.False(t, m.searchInputActive)
+}
+
+func TestModelSearch_Esc_CancelsSearch(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	require.True(t, m.searchInputActive)
+	m = sendSpecialKey(m, tea.KeyEsc)
+	assert.False(t, m.searchInputActive)
+}
+
+func TestModelSearch_EnterConfirmsAndFindsMatches(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+		{Type: git.LineAdded, Content: "foo bar", NewNum: 2},
+		{Type: git.LineAdded, Content: "hello again", NewNum: 3},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.searchInputActive)
+	assert.Equal(t, "hello", m.searchQuery)
+	assert.Equal(t, 2, len(m.searchMatches), "should find 2 matches")
+}
+
+func TestModelSearch_EnterEmpty_ClearsSearch(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	// Press enter with empty query
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.False(t, m.searchInputActive)
+	assert.Empty(t, m.searchQuery)
+	assert.Empty(t, m.searchMatches)
+}
+
+func TestModelSearch_JumpsToFirstMatch(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineContext, Content: "no match here", OldNum: 1, NewNum: 1},
+		{Type: git.LineAdded, Content: "hello world", NewNum: 2},
+		{Type: git.LineAdded, Content: "hello again", NewNum: 3},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	// Cursor should be on the first match line
+	ref := m.diffView.cursorRef()
+	require.NotNil(t, ref)
+	assert.Equal(t, 2, ref.newNum, "should jump to first match at line 2")
+}
+
+func TestModelSearch_NKey_NextMatch_WhenSearchActive(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+		{Type: git.LineAdded, Content: "foo bar", NewNum: 2},
+		{Type: git.LineAdded, Content: "hello again", NewNum: 3},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	require.Equal(t, 0, m.searchMatchIdx)
+	// Press n to go to next match
+	m = sendKey(m, "n")
+	assert.Equal(t, 1, m.searchMatchIdx)
+	ref := m.diffView.cursorRef()
+	require.NotNil(t, ref)
+	assert.Equal(t, 3, ref.newNum, "should jump to second match at line 3")
+}
+
+func TestModelSearch_ShiftNKey_PrevMatch_WhenSearchActive(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+		{Type: git.LineAdded, Content: "foo bar", NewNum: 2},
+		{Type: git.LineAdded, Content: "hello again", NewNum: 3},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	// Move to next match first
+	m = sendKey(m, "n")
+	require.Equal(t, 1, m.searchMatchIdx)
+	// Press N to go back
+	m = sendKey(m, "N")
+	assert.Equal(t, 0, m.searchMatchIdx)
+}
+
+func TestModelSearch_NKey_Wraps(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+		{Type: git.LineAdded, Content: "hello again", NewNum: 2},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	m = sendKey(m, "n") // go to second match
+	m = sendKey(m, "n") // wrap to first
+	assert.Equal(t, 0, m.searchMatchIdx)
+}
+
+func TestModelSearch_NKey_NoMatches_FallsBackToFileNavigation(t *testing.T) {
+	m := makeModel("a.go", "b.go", "c.go")
+	m = sendKey(m, "l") // focus diff
+	// No search active, n should do file navigation
+	m = sendKey(m, "n")
+	assert.Equal(t, 1, m.fileList.cursor)
+}
+
+func TestModelSearch_InputBlocksOtherKeys(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	require.True(t, m.searchInputActive)
+	// Pressing "q" should add to input, not quit
+	m = sendKey(m, "q")
+	assert.True(t, m.searchInputActive)
+	assert.Equal(t, "q", m.diffView.searchInput.Value())
+}
+
+func TestModelSearch_CaseInsensitive(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "Hello World", NewNum: 1},
+		{Type: git.LineAdded, Content: "HELLO again", NewNum: 2},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.Equal(t, 2, len(m.searchMatches), "search should be case-insensitive")
+}
+
+func TestModelSearch_ClearedOnNewFile(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "e")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "o")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	require.NotEmpty(t, m.searchMatches)
+	// Clear search by pressing Esc, then slash with empty
+	m = sendKey(m, "/")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	assert.Empty(t, m.searchQuery)
+	assert.Empty(t, m.searchMatches)
+}
+
+func TestModelSearch_EscInDiffView_ClearsSearchAndGoesToFileList(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello world", NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "/")
+	m = sendKey(m, "h")
+	m = sendKey(m, "i")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	require.NotEmpty(t, m.searchQuery)
+	// Esc should clear search state and go to file list
+	m = sendSpecialKey(m, tea.KeyEsc)
+	assert.Empty(t, m.searchQuery)
+	assert.Empty(t, m.searchMatches)
+	assert.Equal(t, focusFileList, m.focus)
+}
+
 func TestModelComment_NoStorePathDoesNotPersist(t *testing.T) {
 	// With empty storePath, comments should still work in memory but not persist
 	m := makeModelWithDiff("foo.go", []git.Line{
