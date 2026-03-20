@@ -74,6 +74,8 @@ type Model struct {
 	confirmDiscard    bool    // waiting for confirmation to discard
 	confirmMsg        string  // message shown in the discard confirmation modal
 	pendingDiscardCmd tea.Cmd // the discard command to run on confirmation
+
+	confirmClear bool // waiting for confirmation to clear all comments
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -134,6 +136,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.confirmDiscard {
 			return m.updateConfirmDiscard(msg)
+		}
+
+		if m.confirmClear {
+			return m.updateConfirmClear(msg)
 		}
 
 		if m.showHelp {
@@ -224,6 +230,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 				tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
 			)
+
+		// Clear all comments
+		case "C":
+			if len(m.comments) > 0 {
+				n := len(m.comments)
+				noun := "comments"
+				if n == 1 {
+					noun = "comment"
+				}
+				m.confirmClear = true
+				m.confirmMsg = fmt.Sprintf("Clear all %d %s?", n, noun)
+			}
+			return m, nil
 
 		// Export works from any panel
 		case "e":
@@ -484,6 +503,20 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.diffView.textInput, cmd = m.diffView.textInput.Update(msg)
 		return m, cmd
+	}
+	return m, nil
+}
+
+func (m Model) updateConfirmClear(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.confirmClear = false
+	m.confirmMsg = ""
+	switch msg.String() {
+	case "y", "Y", "enter":
+		for k := range m.comments {
+			delete(m.comments, k)
+		}
+		m.saveComments()
+		m.diffView.rebuildLinesPreservingCursor()
 	}
 	return m, nil
 }
@@ -946,7 +979,7 @@ func (m Model) View() string {
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	}
 
-	if m.confirmDiscard {
+	if m.confirmDiscard || m.confirmClear {
 		screen = overlayCenter(screen, m.renderConfirmDialog(), m.width, m.height)
 	}
 

@@ -164,6 +164,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `Fn+↑` | Page up |
 | `c` / `Enter` | Add/edit comment on current diff line |
 | `d` | Delete comment on current diff line |
+| `C` | Clear all comments (with confirmation) |
 | `s` / `S` | Stage hunk / file (file list: `s` stages file) |
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
 | `w` | Toggle hide whitespace changes |
