@@ -451,7 +451,7 @@ func (m *diffViewModel) currentHunkIndex() int {
 // inputBoxHeight is the number of rows the inline comment input box occupies.
 const inputBoxHeight = 3 // border top + content + border bottom
 
-func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool) string {
+func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool, modeSlider ...string) string {
 	viewH := m.viewHeight()
 	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
 	if maxWidth < 1 {
@@ -540,7 +540,15 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 			title = " " + m.file.OldPath + " → " + m.file.Path + " "
 		}
 	}
-	if title != "" {
+	slider := ""
+	if len(modeSlider) > 0 {
+		slider = modeSlider[0]
+	}
+	if slider != "" && title != "" {
+		rendered = setBorderTitleLeftAndCenter(rendered, title, slider, focused)
+	} else if slider != "" {
+		rendered = setBorderTitleCentered(rendered, slider, focused)
+	} else if title != "" {
 		rendered = setBorderTitle(rendered, title, focused)
 	}
 	rendered = setBorderBottomCounts(rendered, added, removed, focused)
@@ -592,6 +600,51 @@ func setBorderTitle(rendered, title string, focused bool) string {
 	}
 
 	newTop := bc.Render("╭") + titleRendered + bc.Render(strings.Repeat("─", fillWidth)) + bc.Render("╮")
+	return newTop + rest
+}
+
+// setBorderTitleLeftAndCenter builds a top border with a left-aligned title and a centered title.
+// If they would overlap, only the left title is shown.
+func setBorderTitleLeftAndCenter(rendered, leftTitle, centerTitle string, focused bool) string {
+	nl := strings.IndexByte(rendered, '\n')
+	if nl < 0 {
+		return rendered
+	}
+	topLine := rendered[:nl]
+	rest := rendered[nl:]
+
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorCyan
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	totalWidth := ansi.StringWidth(topLine)
+	leftRendered := fileStyle.Render(leftTitle)
+	leftWidth := ansi.StringWidth(leftRendered)
+	centerWidth := ansi.StringWidth(centerTitle)
+
+	// Center position calculation
+	innerWidth := totalWidth - 2 // minus ╭ and ╮
+	centerStart := (innerWidth - centerWidth) / 2
+	centerEnd := centerStart + centerWidth
+
+	// Left title occupies positions 0..leftWidth-1 (after ╭)
+	// If left title would overlap center, fall back to left-only
+	if leftWidth >= centerStart || centerEnd > innerWidth {
+		return setBorderTitle(rendered, leftTitle, focused)
+	}
+
+	// Build: ╭ + leftTitle + fill + centerTitle + fill + ╮
+	gapBeforeCenter := centerStart - leftWidth
+	gapAfterCenter := innerWidth - centerEnd
+
+	newTop := bc.Render("╭") +
+		leftRendered +
+		bc.Render(strings.Repeat("─", gapBeforeCenter)) +
+		centerTitle +
+		bc.Render(strings.Repeat("─", gapAfterCenter)) +
+		bc.Render("╮")
 	return newTop + rest
 }
 

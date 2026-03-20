@@ -324,6 +324,41 @@ func TestDiffView_TitleInBorder(t *testing.T) {
 	assert.Contains(t, rendered, "foo.go")
 }
 
+func TestDiffView_ModeSliderInBorder(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 60
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	rendered := m.render(true, 3, false, "Branch+Staged+Unstaged")
+	assert.Contains(t, rendered, "Branch+Staged+Unstaged")
+	assert.Contains(t, rendered, "foo.go", "file title should still appear")
+}
+
+func TestDiffView_EmptyModeSliderOmitted(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 60
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hello", NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	// Empty mode slider should not change the border
+	rendered := m.render(true, 3, false, "")
+	assert.Contains(t, rendered, "foo.go")
+	assert.NotContains(t, rendered, "Branch")
+}
+
 func TestDiffView_RenamedTitleInBorder(t *testing.T) {
 	m := newDiffViewModel()
 	m.width = 60
