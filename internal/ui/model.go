@@ -215,7 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Report issue opens GitHub new issue page
 		case "!":
-			const issueURL = "https://github.com/justincampbell/revise/issues/new"
+			const issueURL = "https://github.com/justincampbell/revise/issues/new/choose"
 			m.statusMsg = "Opening " + issueURL
 			return m, tea.Batch(
 				func() tea.Msg {
