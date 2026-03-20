@@ -1053,7 +1053,7 @@ func TestModelClearComments_C_WithComments_PromptsConfirmation(t *testing.T) {
 	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
 	m = sendKey(m, "C")
 	assert.True(t, m.confirmClear)
-	assert.Contains(t, m.confirmMsg, "Clear all 1 comment")
+	assert.Contains(t, m.confirmMsg, "1 comment")
 }
 
 func TestModelClearComments_C_WithNoComments_DoesNothing(t *testing.T) {
@@ -1109,7 +1109,7 @@ func TestModelClearComments_PluralMessage(t *testing.T) {
 	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a"
 	m.comments[commentKey{file: "foo.go", lineNum: 2}] = "b"
 	m = sendKey(m, "C")
-	assert.Contains(t, m.confirmMsg, "Clear all 2 comments")
+	assert.Contains(t, m.confirmMsg, "2 comments")
 }
 
 func TestModelClearComments_Persists(t *testing.T) {

@@ -240,7 +240,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					noun = "comment"
 				}
 				m.confirmClear = true
-				m.confirmMsg = fmt.Sprintf("Clear all %d %s?", n, noun)
+				m.confirmMsg = fmt.Sprintf("Clear all comments? (%d %s)", n, noun)
 			}
 			return m, nil
 
