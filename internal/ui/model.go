@@ -579,6 +579,9 @@ func (m *Model) startFileComment() {
 	key := commentKey{file: f.Path, lineNum: 0}
 	m.commentTarget = key
 
+	// Move cursor to top so the input box appears at the top of the diff
+	m.diffView.goToTop()
+
 	m.diffView.textInput.SetValue(m.comments[key])
 	m.diffView.textInput.CursorEnd()
 	m.diffView.textInput.Focus()
