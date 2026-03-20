@@ -76,6 +76,14 @@ func (m *diffViewModel) buildLines() {
 		m.lineRefs = append(m.lineRefs, ref)
 	}
 
+	// Show file-level comment (lineNum == 0) at the top if one exists.
+	fileKey := commentKey{file: m.file.Path, lineNum: 0}
+	if text, ok := m.comments[fileKey]; ok {
+		displayRef := &lineRef{isCommentDisplay: true}
+		add(commentDisplayStyle.Render("  ◆ "+text), displayRef)
+		add("", nil) // blank separator
+	}
+
 	for _, hunk := range m.file.Hunks {
 		if header := renderHunkHeader(hunk); header != "" {
 			add(header, nil)

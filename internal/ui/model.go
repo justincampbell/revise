@@ -429,6 +429,10 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if cmd := m.discardCurrentFile(); cmd != nil {
 			return m, cmd
 		}
+	case "c":
+		m.startFileComment()
+	case "d":
+		m.deleteFileComment()
 	}
 	return m, nil
 }
@@ -565,6 +569,35 @@ func (m *Model) startCommentInput() {
 
 	m.commentInputActive = true
 	m.diffView.commentInputActive = true
+}
+
+func (m *Model) startFileComment() {
+	f := m.fileList.selectedFile()
+	if f == nil {
+		return
+	}
+	key := commentKey{file: f.Path, lineNum: 0}
+	m.commentTarget = key
+
+	m.diffView.textInput.SetValue(m.comments[key])
+	m.diffView.textInput.CursorEnd()
+	m.diffView.textInput.Focus()
+
+	m.commentInputActive = true
+	m.diffView.commentInputActive = true
+}
+
+func (m *Model) deleteFileComment() {
+	f := m.fileList.selectedFile()
+	if f == nil {
+		return
+	}
+	key := commentKey{file: f.Path, lineNum: 0}
+	if _, ok := m.comments[key]; ok {
+		delete(m.comments, key)
+		m.saveComments()
+		m.diffView.rebuildLinesPreservingCursor()
+	}
 }
 
 func (m *Model) deleteCommentAtCursor() {

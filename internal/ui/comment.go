@@ -106,7 +106,9 @@ func formatExport(files []git.FileDiff, c comments) string {
 
 		sb.WriteString(fmt.Sprintf("\n## %s\n\n", f.Path))
 		for _, lc := range fileComments {
-			if lc.isOld {
+			if lc.lineNum == 0 {
+				sb.WriteString(fmt.Sprintf("File comment: %s\n", lc.text))
+			} else if lc.isOld {
 				sb.WriteString(fmt.Sprintf("Line %d (removed): %s\n", lc.lineNum, lc.text))
 			} else {
 				sb.WriteString(fmt.Sprintf("Line %d: %s\n", lc.lineNum, lc.text))

@@ -162,8 +162,8 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `g` / `G` | Top / bottom of diff |
 | `Fn+↓` / `Space` | Page down |
 | `Fn+↑` | Page up |
-| `c` / `Enter` | Add/edit comment on current diff line |
-| `d` | Delete comment on current diff line |
+| `c` | Add/edit file comment (file list) / Add/edit comment on line (diff) |
+| `d` | Delete file comment (file list) / Delete comment on line (diff) |
 | `C` | Clear all comments (with confirmation) |
 | `s` / `S` | Stage hunk / file (file list: `s` stages file) |
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
@@ -179,6 +179,8 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 ### Comment Persistence
 
 Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256(repoRoot + ":" + branchName)[:16]`. Auto-saved on every add/edit/delete, loaded on startup. The `internal/comments/` package handles storage; `internal/ui/comment.go` handles serialization between the internal `commentKey` struct and string-keyed JSON.
+
+File-level comments use `lineNum: 0` in the `commentKey` struct (diff line numbers are always >= 1). They are displayed at the top of the diff view before hunks, and exported as "File comment: ..." in the export format.
 
 ### Diff Panel Footer
 
