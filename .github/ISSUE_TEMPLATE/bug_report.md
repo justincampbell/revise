@@ -1,12 +1,7 @@
 ---
 name: Bug Report
-about: Report a bug in revise
 labels: bug
 ---
-
-## Description
-
-A clear description of the bug.
 
 ## Steps to Reproduce
 
