@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- File-level comments with `c`/`d` on file list (#73)
+- `C` key to clear all comments with confirmation (#74)
+- Mode slider visible in fullscreen diff view (#76)
+- GitHub issue templates (#77)
+- `}` jumps past last hunk to end of diff (#78)
 - Persist comments to temp file so they survive restarts (#11)
 - Staged-only diff mode inserted between Staged and Unstaged in the mode cycle (#56)
 - Toggle to hide whitespace-only changes with `w` key (#18)
