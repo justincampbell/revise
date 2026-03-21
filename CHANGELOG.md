@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Include line contents in comment export (#85)
 - File-level comments with `c`/`d` on file list (#73)
 - `C` key to clear all comments with confirmation (#74)
 - Mode slider visible in fullscreen diff view (#76)
