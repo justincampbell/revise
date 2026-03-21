@@ -15,13 +15,20 @@ func TestFormatExport_Empty(t *testing.T) {
 }
 
 func TestFormatExport_SingleComment(t *testing.T) {
-	files := []git.FileDiff{{Path: "foo.go"}}
+	files := []git.FileDiff{{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "hello world", NewNum: 10},
+			},
+		}},
+	}}
 	c := comments{
 		{file: "foo.go", lineNum: 10}: "fix this",
 	}
 	result := formatExport(files, c)
 	assert.Contains(t, result, "## foo.go")
-	assert.Contains(t, result, "Line 10: fix this")
+	assert.Contains(t, result, "10: `hello world`\n> fix this")
 }
 
 func TestFormatExport_MultipleFiles_OrderedByDiff(t *testing.T) {
@@ -48,8 +55,8 @@ func TestFormatExport_LinesOrderedAscending(t *testing.T) {
 		{file: "foo.go", lineNum: 5}:  "earlier",
 	}
 	result := formatExport(files, c)
-	earlierIdx := strings.Index(result, "Line 5:")
-	laterIdx := strings.Index(result, "Line 20:")
+	earlierIdx := strings.Index(result, "5:")
+	laterIdx := strings.Index(result, "20:")
 	assert.Less(t, earlierIdx, laterIdx)
 }
 
@@ -75,6 +82,31 @@ func TestFormatExport_ExcludesFilesWithNoComments(t *testing.T) {
 	result := formatExport(files, c)
 	assert.Contains(t, result, "## a.go")
 	assert.NotContains(t, result, "## b.go")
+}
+
+func TestFormatExport_RemovedLineIncludesContent(t *testing.T) {
+	files := []git.FileDiff{{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineRemoved, Content: "old code", OldNum: 5},
+			},
+		}},
+	}}
+	c := comments{
+		{file: "foo.go", lineNum: 5, isOld: true}: "why was this removed?",
+	}
+	result := formatExport(files, c)
+	assert.Contains(t, result, "5 (removed): `old code`\n> why was this removed?")
+}
+
+func TestFormatExport_LineContentNotFound(t *testing.T) {
+	files := []git.FileDiff{{Path: "foo.go"}}
+	c := comments{
+		{file: "foo.go", lineNum: 99}: "orphaned comment",
+	}
+	result := formatExport(files, c)
+	assert.Contains(t, result, "99:\n> orphaned comment")
 }
 
 // --- commentKey encode/decode tests ---
@@ -141,15 +173,22 @@ func TestCommentKey_FileLevelComment_EncodeRoundTrip(t *testing.T) {
 }
 
 func TestFormatExport_FileLevelComment(t *testing.T) {
-	files := []git.FileDiff{{Path: "foo.go"}}
+	files := []git.FileDiff{{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "some code", NewNum: 10},
+			},
+		}},
+	}}
 	c := comments{
 		{file: "foo.go", lineNum: 0}:  "file comment",
 		{file: "foo.go", lineNum: 10}: "line comment",
 	}
 	result := formatExport(files, c)
 	assert.Contains(t, result, "## foo.go")
-	assert.Contains(t, result, "File comment: file comment")
-	assert.Contains(t, result, "Line 10: line comment")
+	assert.Contains(t, result, "> file comment")
+	assert.Contains(t, result, "10: `some code`\n> line comment")
 }
 
 func TestFormatExport_FileLevelComment_AppearsFirst(t *testing.T) {
@@ -159,8 +198,8 @@ func TestFormatExport_FileLevelComment_AppearsFirst(t *testing.T) {
 		{file: "foo.go", lineNum: 10}: "line comment",
 	}
 	result := formatExport(files, c)
-	fileIdx := strings.Index(result, "File comment:")
-	lineIdx := strings.Index(result, "Line 10:")
+	fileIdx := strings.Index(result, "> file comment")
+	lineIdx := strings.Index(result, "10:")
 	assert.Greater(t, fileIdx, -1)
 	assert.Greater(t, lineIdx, -1)
 	assert.Less(t, fileIdx, lineIdx, "file-level comment should appear before line comments")

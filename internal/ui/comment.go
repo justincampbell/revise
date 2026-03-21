@@ -75,6 +75,21 @@ func (c comments) countForFile(path string) int {
 	return n
 }
 
+// findLineContent looks up the content of a line in a file's hunks.
+func findLineContent(f git.FileDiff, lineNum int, isOld bool) string {
+	for _, h := range f.Hunks {
+		for _, l := range h.Lines {
+			if isOld && l.OldNum == lineNum && (l.Type == git.LineRemoved || l.Type == git.LineContext) {
+				return l.Content
+			}
+			if !isOld && l.NewNum == lineNum && (l.Type == git.LineAdded || l.Type == git.LineContext) {
+				return l.Content
+			}
+		}
+	}
+	return ""
+}
+
 // formatExport formats all comments for export in a readable format suitable for Claude Code.
 // Files are listed in the order they appear in the diff.
 func formatExport(files []git.FileDiff, c comments) string {
@@ -107,11 +122,19 @@ func formatExport(files []git.FileDiff, c comments) string {
 		sb.WriteString(fmt.Sprintf("\n## %s\n\n", f.Path))
 		for _, lc := range fileComments {
 			if lc.lineNum == 0 {
-				sb.WriteString(fmt.Sprintf("File comment: %s\n", lc.text))
-			} else if lc.isOld {
-				sb.WriteString(fmt.Sprintf("Line %d (removed): %s\n", lc.lineNum, lc.text))
+				sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
 			} else {
-				sb.WriteString(fmt.Sprintf("Line %d: %s\n", lc.lineNum, lc.text))
+				content := findLineContent(f, lc.lineNum, lc.isOld)
+				if lc.isOld && content != "" {
+					sb.WriteString(fmt.Sprintf("%d (removed): `%s`\n", lc.lineNum, content))
+				} else if lc.isOld {
+					sb.WriteString(fmt.Sprintf("%d (removed):\n", lc.lineNum))
+				} else if content != "" {
+					sb.WriteString(fmt.Sprintf("%d: `%s`\n", lc.lineNum, content))
+				} else {
+					sb.WriteString(fmt.Sprintf("%d:\n", lc.lineNum))
+				}
+				sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
 			}
 		}
 	}
