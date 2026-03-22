@@ -701,3 +701,68 @@ func TestGetDiff_FeatureBranch_RenamedFile(t *testing.T) {
 	assert.Equal(t, "new.go", diff.Files[0].Path)
 	assert.Equal(t, "old.go", diff.Files[0].OldPath)
 }
+
+// ============================================================================
+// StatusFingerprint
+// ============================================================================
+
+func TestStatusFingerprint_ChangesOnNewFile(t *testing.T) {
+	r := baseRepo(t)
+	r.Chdir()
+
+	fp1, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	r.WriteFile("new.go", "package new\n")
+
+	fp2, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	assert.NotEqual(t, fp1, fp2)
+}
+
+func TestStatusFingerprint_ChangesOnStagedFile(t *testing.T) {
+	r := baseRepo(t)
+	r.Chdir()
+
+	fp1, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* changed */ }\n")
+	r.Add("base.go")
+
+	fp2, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	assert.NotEqual(t, fp1, fp2)
+}
+
+func TestStatusFingerprint_ChangesOnContentEdit(t *testing.T) {
+	r := baseRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* v1 */ }\n")
+	r.Chdir()
+
+	fp1, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	// Edit the same already-modified file again
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* v2 */ }\n")
+
+	fp2, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	assert.NotEqual(t, fp1, fp2, "content edits to already-modified files should change fingerprint")
+}
+
+func TestStatusFingerprint_StableWhenUnchanged(t *testing.T) {
+	r := baseRepo(t)
+	r.Chdir()
+
+	fp1, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	fp2, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	assert.Equal(t, fp1, fp2)
+}

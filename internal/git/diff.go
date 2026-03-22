@@ -2,6 +2,7 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -63,6 +64,34 @@ func MergeBase(branch string) (string, error) {
 		return "", fmt.Errorf("finding merge-base with %s: %w", branch, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// StatusFingerprint returns a string that changes whenever the working tree
+// or index changes. It combines `git status --porcelain` (file-level status
+// including untracked) with mtimes of dirty working tree files for
+// content-level sensitivity.
+func StatusFingerprint() (string, error) {
+	status, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		return "", fmt.Errorf("git status: %w", err)
+	}
+
+	var sb strings.Builder
+	sb.Write(status)
+
+	// Include mtimes of dirty working tree files so that content edits
+	// to already-modified files are detected.
+	for _, line := range strings.Split(strings.TrimRight(string(status), "\n"), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		path := line[3:]
+		if info, err := os.Stat(path); err == nil {
+			fmt.Fprintf(&sb, "\n%s:%d", path, info.ModTime().UnixNano())
+		}
+	}
+
+	return sb.String(), nil
 }
 
 // DefaultContextLines is the default number of context lines in unified diffs.
