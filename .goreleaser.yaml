@@ -1,0 +1,37 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+brews:
+  - repository:
+      owner: justincampbell
+      name: homebrew-tap
+    homepage: https://github.com/justincampbell/revise
+    description: A terminal UI for reviewing local git changes and sending feedback to Claude Code
+    license: MIT
