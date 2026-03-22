@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -1258,4 +1259,62 @@ func TestModelFileComment_Persists(t *testing.T) {
 	m2 = updated2.(Model)
 
 	assert.Equal(t, "hi", m2.comments[commentKey{file: "foo.go", lineNum: 0}])
+}
+
+func TestInit_ReturnsPollTickCmd(t *testing.T) {
+	m := makeModel("a.go")
+	cmd := m.Init()
+	assert.NotNil(t, cmd, "Init should return a poll tick command")
+}
+
+func TestPollResult_SameFingerprint_NoReload(t *testing.T) {
+	m := makeModel("a.go")
+	m.lastFingerprint = "M a.go\n"
+
+	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	m = updated.(Model)
+	assert.Nil(t, cmd, "same fingerprint should not trigger a reload")
+}
+
+func TestPollResult_DifferentFingerprint_TriggersReload(t *testing.T) {
+	m := makeModel("a.go")
+	m.lastFingerprint = "M a.go\n"
+
+	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n?? new.go\n"})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "different fingerprint should trigger a reload")
+	assert.Equal(t, "M a.go\n?? new.go\n", m.lastFingerprint)
+}
+
+func TestPollRefresh_PreservesCursorPosition(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineContext, Content: "line1", OldNum: 1, NewNum: 1},
+		{Type: git.LineContext, Content: "line2", OldNum: 2, NewNum: 2},
+		{Type: git.LineAdded, Content: "line3", NewNum: 3},
+		{Type: git.LineContext, Content: "line4", OldNum: 3, NewNum: 4},
+	}
+	m := makeModelWithDiff("foo.go", lines)
+	// Move cursor down a few times
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "j")
+	m = sendKey(m, "j")
+	savedCursor := m.diffView.cursor
+	savedOffset := m.diffView.offset
+
+	// Simulate a poll-triggered refresh
+	updated, _ := m.Update(diffLoadedMsg{
+		diff:     m.diff,
+		fromPoll: true,
+	})
+	m = updated.(Model)
+	assert.Equal(t, savedCursor, m.diffView.cursor, "poll refresh should preserve cursor")
+	assert.Equal(t, savedOffset, m.diffView.offset, "poll refresh should preserve offset")
+}
+
+func TestPollResult_Error_NoReload(t *testing.T) {
+	m := makeModel("a.go")
+	m.lastFingerprint = "M a.go\n"
+
+	_, cmd := m.Update(pollResultMsg{err: fmt.Errorf("git error")})
+	assert.Nil(t, cmd, "error should not trigger a reload")
 }

@@ -16,6 +16,17 @@ import (
 
 type clearStatusMsg struct{}
 
+// pollTickMsg triggers a periodic check for working tree changes.
+type pollTickMsg struct{}
+
+// pollResultMsg carries the result of a fingerprint check.
+type pollResultMsg struct {
+	fingerprint string
+	err         error
+}
+
+const pollInterval = 2 * time.Second
+
 // hunkApplyMsg is sent when an async hunk stage/unstage/discard completes.
 type hunkApplyMsg struct {
 	err error
@@ -26,6 +37,7 @@ type diffLoadedMsg struct {
 	diff            *git.Diff
 	err             error
 	onDefaultBranch bool
+	fromPoll        bool // true when triggered by auto-refresh polling
 }
 
 // DiffMode represents which diff view is active.
@@ -76,6 +88,8 @@ type Model struct {
 	pendingDiscardCmd tea.Cmd // the discard command to run on confirmation
 
 	confirmClear bool // waiting for confirmation to clear all comments
+
+	lastFingerprint string // last seen git status fingerprint for auto-refresh
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -110,6 +124,10 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string) Mo
 		mode = ModeStaged
 	}
 
+	// Capture initial fingerprint so the first poll tick doesn't
+	// trigger an unnecessary reload.
+	initialFP, _ := git.StatusFingerprint()
+
 	return Model{
 		diff:            diff,
 		fileList:        fl,
@@ -120,11 +138,12 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string) Mo
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
 		contextLines:    git.DefaultContextLines,
+		lastFingerprint: initialFP,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -367,9 +386,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		m.syncSelectedFile()
-		m.diffView.offset = 0
-		m.diffView.goToTop()
+		if msg.fromPoll {
+			// Preserve scroll position on auto-refresh.
+			savedCursor := m.diffView.cursor
+			savedOffset := m.diffView.offset
+			m.syncSelectedFile()
+			m.diffView.cursor = savedCursor
+			m.diffView.offset = savedOffset
+		} else {
+			m.syncSelectedFile()
+			m.diffView.offset = 0
+			m.diffView.goToTop()
+		}
 		return m, nil
 
 	case hunkApplyMsg:
@@ -381,6 +409,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case clearStatusMsg:
 		m.statusMsg = ""
+		return m, nil
+
+	case pollTickMsg:
+		// Schedule the next tick and check fingerprint concurrently.
+		return m, tea.Batch(
+			tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
+			func() tea.Msg {
+				fp, err := git.StatusFingerprint()
+				return pollResultMsg{fingerprint: fp, err: err}
+			},
+		)
+
+	case pollResultMsg:
+		if msg.err != nil {
+			return m, nil
+		}
+		if msg.fingerprint != m.lastFingerprint {
+			m.lastFingerprint = msg.fingerprint
+			return m, m.loadDiffFromPoll()
+		}
 		return m, nil
 	}
 
@@ -888,6 +936,16 @@ func (m *Model) cycleMode(direction int) {
 
 // loadDiff returns a command that fetches the diff for the current mode.
 func (m *Model) loadDiff() tea.Cmd {
+	return m.loadDiffWithOptions(false)
+}
+
+// loadDiffFromPoll returns a loadDiff command tagged as originating from polling,
+// so the UI can preserve scroll position.
+func (m *Model) loadDiffFromPoll() tea.Cmd {
+	return m.loadDiffWithOptions(true)
+}
+
+func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 	mode := m.mode
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
@@ -908,7 +966,7 @@ func (m *Model) loadDiff() tea.Cmd {
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
-		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault}
+		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, fromPoll: fromPoll}
 	}
 }
 
