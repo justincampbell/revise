@@ -21,6 +21,9 @@ archives:
       - README.md
       - LICENSE
 
+snapshot:
+  version_template: "dev-{{.ShortCommit}}"
+
 changelog:
   sort: asc
   filters:

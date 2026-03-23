@@ -991,7 +991,7 @@ func makeModelWithStore(t *testing.T, filePath string, lines []git.Line) (Model,
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{hunk},
 	}}
-	m := NewWithStorePath(&git.Diff{Files: files}, false, storePath)
+	m := NewWithStorePath(&git.Diff{Files: files}, false, storePath, "")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	return updated.(Model), storePath
 }
@@ -1015,7 +1015,7 @@ func TestModelComment_PersistsOnSave(t *testing.T) {
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
-	}}}, false, storePath)
+	}}}, false, storePath, "")
 	updated2, _ := m2.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m2 = updated2.(Model)
 
@@ -1041,7 +1041,7 @@ func TestModelComment_PersistsOnDelete(t *testing.T) {
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
-	}}}, false, storePath)
+	}}}, false, storePath, "")
 	assert.Empty(t, m2.comments)
 }
 
@@ -1130,7 +1130,7 @@ func TestModelClearComments_Persists(t *testing.T) {
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
-	}}}, false, storePath)
+	}}}, false, storePath, "")
 	assert.Empty(t, m2.comments)
 }
 
@@ -1254,7 +1254,7 @@ func TestModelFileComment_Persists(t *testing.T) {
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
-	}}}, false, storePath)
+	}}}, false, storePath, "")
 	updated2, _ := m2.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m2 = updated2.(Model)
 

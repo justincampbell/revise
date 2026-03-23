@@ -89,6 +89,9 @@ internal/
   comments/
     store.go                   # JSON persistence for comments (Save/Load/StorePath)
     store_test.go              # persistence unit tests
+  update/
+    update.go                  # self-update via go-selfupdate (CheckForUpdate, ApplyUpdate)
+    update_test.go             # integration tests (skipped in short mode)
   ui/
     model.go                   # root Bubbletea model, layout, input routing
     filelist.go                # left panel: file list
@@ -169,6 +172,7 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 | `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
 | `w` | Toggle hide whitespace changes |
 | `D` | Discard hunk / file (with `y` confirmation) |
+| `Ctrl+U` | Apply available update |
 
 ### Mouse Support
 

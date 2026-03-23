@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
+	"github.com/justincampbell/revise/internal/update"
 )
 
 type clearStatusMsg struct{}
@@ -30,6 +31,18 @@ const pollInterval = 2 * time.Second
 // hunkApplyMsg is sent when an async hunk stage/unstage/discard completes.
 type hunkApplyMsg struct {
 	err error
+}
+
+// updateCheckMsg carries the result of a background update check.
+type updateCheckMsg struct {
+	info *update.UpdateInfo
+	err  error
+}
+
+// updateAppliedMsg is sent when an update download+install completes.
+type updateAppliedMsg struct {
+	newVersion string
+	err        error
 }
 
 // diffLoadedMsg is sent when an async diff load completes.
@@ -90,16 +103,20 @@ type Model struct {
 	confirmClear bool // waiting for confirmation to clear all comments
 
 	lastFingerprint string // last seen git status fingerprint for auto-refresh
+
+	currentVersion string              // version string from build
+	updateInfo     *update.UpdateInfo  // populated after update check
+	updating       bool                // true while downloading update
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
-	return NewWithStorePath(diff, onDefaultBranch, "")
+	return NewWithStorePath(diff, onDefaultBranch, "", "")
 }
 
 // NewWithStorePath creates a Model with comment persistence at the given path.
 // If storePath is non-empty, comments are loaded from it on startup and saved
 // automatically on every add/edit/delete.
-func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string) Model {
+func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, version string) Model {
 	fl := newFileListModel(diff.Files)
 	dv := newDiffViewModel()
 
@@ -139,11 +156,22 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string) Mo
 		onDefaultBranch: onDefaultBranch,
 		contextLines:    git.DefaultContextLines,
 		lastFingerprint: initialFP,
+		currentVersion:  version,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+	cmds := []tea.Cmd{
+		tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
+	}
+	if m.currentVersion != "" {
+		ver := m.currentVersion
+		cmds = append(cmds, func() tea.Msg {
+			info, err := update.CheckForUpdate(ver, false)
+			return updateCheckMsg{info: info, err: err}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -262,6 +290,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmMsg = fmt.Sprintf("Clear all comments? (%d %s)", n, noun)
 			}
 			return m, nil
+
+		// Apply update
+		case "ctrl+u":
+			if m.updating {
+				m.statusMsg = "Update in progress..."
+				return m, nil
+			}
+			if m.updateInfo == nil || !m.updateInfo.IsNewer {
+				m.statusMsg = "No update available"
+				return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+			}
+			m.updating = true
+			m.statusMsg = "Downloading update..."
+			return m, func() tea.Msg {
+				err := update.ApplyUpdate()
+				ver := ""
+				if m.updateInfo != nil {
+					ver = m.updateInfo.LatestVersion
+				}
+				return updateAppliedMsg{newVersion: ver, err: err}
+			}
 
 		// Export works from any panel
 		case "e":
@@ -420,6 +469,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return pollResultMsg{fingerprint: fp, err: err}
 			},
 		)
+
+	case updateCheckMsg:
+		if msg.err == nil && msg.info != nil && msg.info.IsNewer {
+			m.updateInfo = msg.info
+			m.statusMsg = fmt.Sprintf("Update available: %s → %s (Ctrl+U to update)", msg.info.CurrentVersion, msg.info.LatestVersion)
+		}
+		return m, nil
+
+	case updateAppliedMsg:
+		m.updating = false
+		if msg.err != nil {
+			m.statusMsg = "Update failed: " + msg.err.Error()
+			return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		m.statusMsg = fmt.Sprintf("Updated to %s — restart revise to use the new version", msg.newVersion)
+		return m, nil
 
 	case pollResultMsg:
 		if msg.err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
+	"github.com/justincampbell/revise/internal/update"
 )
 
 var version = "dev"
@@ -27,6 +28,16 @@ func main() {
 	if *versionFlag {
 		fmt.Println("revise", version)
 		os.Exit(0)
+	}
+
+	// Subcommand routing — before git repo checks.
+	args := flag.Args()
+	if len(args) > 0 {
+		switch args[0] {
+		case "update":
+			runUpdate(args[1:])
+			return
+		}
 	}
 
 	if !git.IsGitRepo() {
@@ -66,7 +77,7 @@ func main() {
 		storePath = comments.StorePath(repoRoot, branch)
 	}
 
-	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath)
+	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
@@ -75,14 +86,43 @@ func main() {
 	}
 }
 
+func runUpdate(args []string) {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	pre := fs.Bool("pre", false, "Include pre-release (dev) builds")
+	fs.Parse(args)
+
+	fmt.Printf("Current version: %s\n", version)
+	fmt.Println("Checking for updates...")
+
+	info, err := update.CheckForUpdate(version, *pre)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if info == nil || !info.IsNewer {
+		fmt.Printf("Already up to date (%s)\n", version)
+		return
+	}
+
+	fmt.Printf("Updating to %s...\n", info.LatestVersion)
+	if err := update.ApplyUpdate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Updated to %s\n", info.LatestVersion)
+}
+
 func printHelp() {
 	fmt.Println(`revise - Review local git changes
 
-Usage: revise [flags]
+Usage: revise [flags] [command]
 
 Flags:
   --help      Show this help
-  --version   Show version`)
+  --version   Show version
+
+Commands:
+  update [--pre]  Update to the latest version`)
 
 	for _, group := range ui.BindingGroups() {
 		fmt.Printf("\n%s:\n", group.Name)

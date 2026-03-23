@@ -50,6 +50,7 @@ var allBindings = []BindingGroup{
 	{"Global", []Binding{
 		{"e", "Export comments to clipboard"},
 		{"C", "Clear all comments"},
+		{"Ctrl+U", "Apply available update"},
 		{"!", "Report issue on GitHub"},
 	}},
 	{"Comment Input", []Binding{
