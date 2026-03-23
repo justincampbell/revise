@@ -39,6 +39,6 @@ jobs:
 
           **Commit:** ${{ github.sha }}
           **Built:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            dist/*.tar.gz dist/*.zip dist/checksums.txt
+            dist/*.tar.gz dist/*.zip dist/*checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
