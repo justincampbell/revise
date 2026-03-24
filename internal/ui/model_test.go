@@ -922,6 +922,35 @@ func TestModelFileList_D_BranchOnlyFile_ShowsError(t *testing.T) {
 	assert.False(t, m.confirmDiscard)
 }
 
+// --- Tree view toggle tests ---
+
+func TestModelT_TogglesTreeView(t *testing.T) {
+	m := makeModel("internal/a.go", "internal/b.go")
+	assert.False(t, m.fileList.treeView)
+	m = sendKey(m, "t")
+	assert.True(t, m.fileList.treeView)
+	m = sendKey(m, "t")
+	assert.False(t, m.fileList.treeView)
+}
+
+func TestModelT_TreeViewPreservesCursor(t *testing.T) {
+	m := makeModel("internal/a.go", "internal/b.go", "main.go")
+	m.fileList.cursor = 1 // select internal/b.go
+	m = sendKey(m, "t")   // toggle tree view
+	assert.True(t, m.fileList.treeView)
+	assert.Equal(t, 1, m.fileList.cursor) // still on file index 1
+	f := m.fileList.selectedFile()
+	require.NotNil(t, f)
+	assert.Equal(t, "internal/b.go", f.Path)
+}
+
+func TestModelT_WorksFromDiffView(t *testing.T) {
+	m := makeModel("internal/a.go")
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "t")
+	assert.True(t, m.fileList.treeView)
+}
+
 // --- Hide whitespace tests ---
 
 func TestModelW_TogglesHideWhitespace(t *testing.T) {

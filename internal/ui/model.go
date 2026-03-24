@@ -219,6 +219,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.focus = focusFileList
 			return m, nil
 
+		case "t":
+			m.fileList.toggleTreeView()
+			return m, nil
+
 		case "f":
 			m.fullscreen = !m.fullscreen
 			if m.fullscreen {
@@ -355,10 +359,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.mouseFocusDiff(msg) {
 				// border (1) = 1 line before file entries
 				if !m.commentInputActive {
-					idx := msg.Y - 1 + m.fileList.offset
-					if idx >= 0 && idx < len(m.fileList.files) {
-						m.fileList.cursor = idx
-						m.syncSelectedFile()
+					clickRow := msg.Y - 1 + m.fileList.offset
+					if m.fileList.treeView && len(m.fileList.treeRows) > 0 {
+						if clickRow >= 0 && clickRow < len(m.fileList.treeRows) {
+							row := m.fileList.treeRows[clickRow]
+							if !row.isDir && row.fileIdx >= 0 && row.fileIdx < len(m.fileList.files) {
+								m.fileList.cursor = row.fileIdx
+								m.syncSelectedFile()
+							}
+						}
+					} else {
+						if clickRow >= 0 && clickRow < len(m.fileList.files) {
+							m.fileList.cursor = clickRow
+							m.syncSelectedFile()
+						}
 					}
 				}
 			} else {
@@ -423,8 +437,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if f := m.fileList.selectedFile(); f != nil {
 			selectedPath = f.Path
 		}
+		wasTreeView := m.fileList.treeView
 		m.fileList = newFileListModel(m.diff.Files)
 		m.fileList.comments = m.comments
+		if wasTreeView {
+			m.fileList.treeView = true
+			m.fileList.rebuildTreeRows()
+		}
 		m.updateLayout()
 		// Re-select the same file if it still exists
 		if selectedPath != "" {
