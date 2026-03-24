@@ -93,12 +93,14 @@ var (
 	statusBarStyle = lipgloss.NewStyle().Foreground(colorDim)
 
 	// Help styles
-	helpKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
-	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim)
-	helpStyle     = lipgloss.NewStyle().
+	helpKeyStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
+	helpTextStyle  = lipgloss.NewStyle().Foreground(colorWhite)
+	helpGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(colorWhite)
+	helpDescStyle  = lipgloss.NewStyle().Foreground(colorDim)
+	helpStyle      = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorCyan).
-			Padding(1, 2)
+			BorderForeground(colorYellow).
+			Padding(1, 2, 0)
 
 	// Confirm dialog styles
 	confirmStyle = lipgloss.NewStyle().
@@ -143,8 +145,10 @@ func init() {
 		modeInactiveStyle = lipgloss.NewStyle()
 		statusBarStyle = lipgloss.NewStyle()
 		helpKeyStyle = lipgloss.NewStyle().Bold(true)
+		helpTextStyle = lipgloss.NewStyle()
+		helpGroupStyle = lipgloss.NewStyle().Bold(true)
 		helpDescStyle = lipgloss.NewStyle()
-		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
+		helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2, 0)
 		confirmStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 		confirmKeyStyle = lipgloss.NewStyle().Bold(true)
 	}

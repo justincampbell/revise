@@ -176,6 +176,44 @@ func TestModelHelpDismissedByAnyKey(t *testing.T) {
 	assert.False(t, m.showHelp)
 }
 
+func TestModelHelpMouseScrollDown(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "?")
+	require.True(t, m.showHelp)
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	m = updated.(Model)
+	assert.Equal(t, 1, m.helpScroll)
+}
+
+func TestModelHelpMouseScrollUp(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "?")
+	m.helpScroll = 5
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	m = updated.(Model)
+	assert.Equal(t, 4, m.helpScroll)
+}
+
+func TestModelHelpMouseScrollUpAtZero(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "?")
+	require.Equal(t, 0, m.helpScroll)
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	m = updated.(Model)
+	assert.Equal(t, 0, m.helpScroll)
+}
+
+func TestModelHelpOverlayShowsBackground(t *testing.T) {
+	m := makeModel("a.go")
+	m = sendKey(m, "?")
+	require.True(t, m.showHelp)
+	view := m.View()
+	// The help overlay should contain help content
+	assert.Contains(t, view, "Keyboard Shortcuts")
+	// The background (file list) should still be visible around the overlay
+	assert.Contains(t, view, "a.go")
+}
+
 // --- Comment tests ---
 
 func TestModelComment_CursorStartsOnFirstCodeLine(t *testing.T) {
