@@ -108,19 +108,20 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 	for i := m.offset; i < end; i++ {
 		f := m.files[i]
 		status := statusIndicator(f.Status)
+		staging := stagingIndicator(fileStagingSources(f))
 		count := m.comments.countForFile(f.Path)
 		countSuffix := ""
 		if count > 0 {
 			countSuffix = fmt.Sprintf(" (%d)", count)
 		}
-		name := truncate(f.Path, m.width-5-len(countSuffix))
+		name := truncate(f.Path, m.width-6-len(countSuffix))
 
 		if i == m.cursor {
 			prefix := "▸ "
-			b.WriteString(selectedStyle.Render(prefix+status+" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(selectedStyle.Render(prefix+status+staging+" "+name) + commentCountStyle.Render(countSuffix))
 		} else {
 			prefix := "  "
-			b.WriteString(unselectedStyle.Render(prefix+status+" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(unselectedStyle.Render(prefix+status+staging+" "+name) + commentCountStyle.Render(countSuffix))
 		}
 
 		if i < end-1 {
@@ -132,6 +133,37 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 
 	rendered = setBorderTitleCentered(rendered, modeSlider, focused)
 	return rendered
+}
+
+type stagingSources struct {
+	branch   bool
+	staged   bool
+	unstaged bool
+}
+
+func fileStagingSources(f git.FileDiff) stagingSources {
+	var s stagingSources
+	for _, h := range f.Hunks {
+		switch h.Source {
+		case git.SourceBranch:
+			s.branch = true
+		case git.SourceStaged:
+			s.staged = true
+		case git.SourceUnstaged:
+			s.unstaged = true
+		}
+	}
+	return s
+}
+
+func stagingIndicator(s stagingSources) string {
+	if s.staged && s.unstaged {
+		return statusModified.Render("±") // partially staged
+	}
+	if s.staged {
+		return statusAdded.Render("✓") // fully staged
+	}
+	return " "
 }
 
 func statusIndicator(s git.FileStatus) string {

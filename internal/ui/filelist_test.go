@@ -119,6 +119,55 @@ func TestFileTotals(t *testing.T) {
 	assert.Equal(t, 1, removed)
 }
 
+func TestFileStagingSources(t *testing.T) {
+	tests := []struct {
+		name    string
+		hunks   []git.Hunk
+		want    stagingSources
+	}{
+		{
+			name:  "staged only",
+			hunks: []git.Hunk{{Source: git.SourceStaged}},
+			want:  stagingSources{staged: true},
+		},
+		{
+			name:  "unstaged only",
+			hunks: []git.Hunk{{Source: git.SourceUnstaged}},
+			want:  stagingSources{unstaged: true},
+		},
+		{
+			name:  "branch only",
+			hunks: []git.Hunk{{Source: git.SourceBranch}},
+			want:  stagingSources{branch: true},
+		},
+		{
+			name: "partially staged",
+			hunks: []git.Hunk{
+				{Source: git.SourceStaged},
+				{Source: git.SourceUnstaged},
+			},
+			want: stagingSources{staged: true, unstaged: true},
+		},
+		{
+			name: "all sources",
+			hunks: []git.Hunk{
+				{Source: git.SourceBranch},
+				{Source: git.SourceStaged},
+				{Source: git.SourceUnstaged},
+			},
+			want: stagingSources{branch: true, staged: true, unstaged: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := git.FileDiff{Hunks: tt.hunks}
+			got := fileStagingSources(f)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestFileListTotals(t *testing.T) {
 	m := newFileListModel([]git.FileDiff{
 		{
