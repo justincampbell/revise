@@ -35,6 +35,7 @@ brews:
   - repository:
       owner: justincampbell
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/justincampbell/revise
     description: A terminal UI for reviewing local git changes and sending feedback to Claude Code
     license: MIT
