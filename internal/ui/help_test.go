@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,17 @@ func TestPadRight_UnicodeArrow(t *testing.T) {
 	// "← (h)" is 6 runes but more bytes; should pad to 14 runes
 	got := padRight("← (h)", 14)
 	assert.Equal(t, 14, len([]rune(got)))
+}
+
+func TestRenderHelp_ScrollIndicatorsAreSeparateLines(t *testing.T) {
+	// At scroll=0, first visible content line should NOT be corrupted by an indicator
+	result := renderHelp(60, 20, 0)
+	lines := strings.Split(result, "\n")
+	for _, line := range lines {
+		// No line should contain both "↑" and "Keyboard Shortcuts"
+		assert.False(t, strings.Contains(line, "↑") && strings.Contains(line, "Keyboard"),
+			"scroll indicator should not be prepended to content line")
+	}
 }
 
 func TestPluralize(t *testing.T) {

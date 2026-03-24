@@ -193,7 +193,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showHelp {
 			switch msg.String() {
 			case "j", "down":
-				m.helpScroll++
+				if m.helpScroll < helpMaxScroll(m.height) {
+					m.helpScroll++
+				}
 				return m, nil
 			case "k", "up":
 				if m.helpScroll > 0 {
@@ -341,6 +343,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDiffView(msg)
 
 	case tea.MouseMsg:
+		if m.showHelp {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				if m.helpScroll > 0 {
+					m.helpScroll--
+				}
+			case tea.MouseButtonWheelDown:
+				if m.helpScroll < helpMaxScroll(m.height) {
+					m.helpScroll++
+				}
+			}
+			return m, nil
+		}
+
 		switch msg.Button {
 		case tea.MouseButtonWheelUp:
 			if m.mouseFocusDiff(msg) {
@@ -1131,10 +1147,6 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
-	if m.showHelp {
-		return renderHelp(m.width, m.height, m.helpScroll)
-	}
-
 	statusBar := m.renderStatusBar()
 
 	var screen string
@@ -1150,6 +1162,10 @@ func (m Model) View() string {
 
 	if m.confirmDiscard || m.confirmClear {
 		screen = overlayCenter(screen, m.renderConfirmDialog(), m.width, m.height)
+	}
+
+	if m.showHelp {
+		screen = overlayCenter(screen, renderHelp(m.width, m.height, m.helpScroll), m.width, m.height)
 	}
 
 	return screen
