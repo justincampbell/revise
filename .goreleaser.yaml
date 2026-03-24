@@ -25,6 +25,7 @@ snapshot:
   version_template: "dev-{{.ShortCommit}}"
 
 changelog:
+  use: github
   sort: asc
   filters:
     exclude:
