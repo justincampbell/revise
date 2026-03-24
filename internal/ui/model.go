@@ -165,7 +165,7 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
 	}
-	if m.currentVersion != "" {
+	if m.currentVersion != "" && update.IsSemver(m.currentVersion) {
 		ver := m.currentVersion
 		cmds = append(cmds, func() tea.Msg {
 			info, err := update.CheckForUpdate(ver, false)
@@ -488,6 +488,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateInfo = msg.info
 			m.statusMsg = fmt.Sprintf("Update available: %s → %s (", msg.info.CurrentVersion, msg.info.LatestVersion) +
 				helpKeyStyle.Render("Ctrl+U") + statusBarStyle.Render(" to update)")
+			return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 		}
 		return m, nil
 
@@ -498,7 +499,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 		}
 		m.statusMsg = fmt.Sprintf("Updated to %s — restart revise to use the new version", msg.newVersion)
-		return m, nil
+		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 
 	case pollResultMsg:
 		if msg.err != nil {

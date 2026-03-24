@@ -8,14 +8,14 @@ import (
 )
 
 func TestIsSemver(t *testing.T) {
-	assert.True(t, isSemver("1.0.0"))
-	assert.True(t, isSemver("v1.0.0"))
-	assert.True(t, isSemver("0.1.0"))
-	assert.True(t, isSemver("1.2.3-beta"))
-	assert.False(t, isSemver("dev"))
-	assert.False(t, isSemver("dev-abc1234"))
-	assert.False(t, isSemver(""))
-	assert.False(t, isSemver("latest"))
+	assert.True(t, IsSemver("1.0.0"))
+	assert.True(t, IsSemver("v1.0.0"))
+	assert.True(t, IsSemver("0.1.0"))
+	assert.True(t, IsSemver("1.2.3-beta"))
+	assert.False(t, IsSemver("dev"))
+	assert.False(t, IsSemver("dev-abc1234"))
+	assert.False(t, IsSemver(""))
+	assert.False(t, IsSemver("latest"))
 }
 
 func TestCheckForUpdate_DevVersion(t *testing.T) {
