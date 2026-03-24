@@ -15,6 +15,7 @@ type fileListModel struct {
 	width    int
 	offset   int // scroll offset
 	comments comments
+	marks    marks
 }
 
 func newFileListModel(files []git.FileDiff) fileListModel {
@@ -109,10 +110,15 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 	for i := m.offset; i < end; i++ {
 		f := m.files[i]
 		status := statusIndicator(f.Status, fileStagingSources(f))
-		count := m.comments.countForFile(f.Path)
+		commentCount := m.comments.countForFile(f.Path)
+		markCount := m.marks.countForFile(f.Path)
 		countSuffix := ""
-		if count > 0 {
-			countSuffix = fmt.Sprintf(" (%d)", count)
+		if commentCount > 0 && markCount > 0 {
+			countSuffix = fmt.Sprintf(" (%d💬 %d◆)", commentCount, markCount)
+		} else if commentCount > 0 {
+			countSuffix = fmt.Sprintf(" (%d)", commentCount)
+		} else if markCount > 0 {
+			countSuffix = fmt.Sprintf(" (%d◆)", markCount)
 		}
 		name := truncate(f.Path, m.width-5-len(countSuffix))
 

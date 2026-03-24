@@ -41,6 +41,8 @@ type themeColors struct {
 	dimGreen  lipgloss.Color
 	dimRed    lipgloss.Color
 	dimYellow lipgloss.Color
+
+	markBg lipgloss.Color
 }
 
 func paletteFor(t Theme) themeColors {
@@ -59,6 +61,7 @@ func paletteFor(t Theme) themeColors {
 			dimGreen:  lipgloss.Color("#166534"),
 			dimRed:    lipgloss.Color("#9f1239"),
 			dimYellow: lipgloss.Color("#92400e"),
+			markBg:    lipgloss.Color("#1e3a5f"),
 		}
 	case ThemeDarkDaltonized:
 		return themeColors{
@@ -74,6 +77,7 @@ func paletteFor(t Theme) themeColors {
 			dimGreen:  lipgloss.Color("#1e3a5f"),
 			dimRed:    lipgloss.Color("#7f1d1d"),
 			dimYellow: lipgloss.Color("#854d0e"),
+			markBg:    lipgloss.Color("#1e3a5f"),
 		}
 	case ThemeLightDaltonized:
 		return themeColors{
@@ -89,6 +93,7 @@ func paletteFor(t Theme) themeColors {
 			dimGreen:  lipgloss.Color("#1e40af"),
 			dimRed:    lipgloss.Color("#9f1239"),
 			dimYellow: lipgloss.Color("#92400e"),
+			markBg:    lipgloss.Color("#dbeafe"),
 		}
 	default: // ThemeDark
 		return themeColors{
@@ -104,6 +109,7 @@ func paletteFor(t Theme) themeColors {
 			dimGreen:  lipgloss.Color("#166534"),
 			dimRed:    lipgloss.Color("#7f1d1d"),
 			dimYellow: lipgloss.Color("#854d0e"),
+			markBg:    lipgloss.Color("#1e3a5f"),
 		}
 	}
 }

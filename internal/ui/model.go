@@ -92,6 +92,7 @@ type Model struct {
 	hideWhitespace  bool
 
 	comments           comments
+	marks              marks
 	storePath          string // path to JSON file for comment persistence
 	commentInputActive bool
 	commentTarget      commentKey
@@ -155,16 +156,19 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 	dv := newDiffViewModel()
 
 	c := make(comments)
+	mk := make(marks)
 
-	// Load persisted comments if a store path is configured.
+	// Load persisted comments and marks if a store path is configured.
 	if storePath != "" {
 		if loaded, err := commentstore.Load(storePath); err == nil {
-			c = commentsFromStringMap(loaded)
+			c, mk = fromStringMap(loaded)
 		}
 	}
 
 	dv.comments = c
+	dv.marks = mk
 	fl.comments = c
+	fl.marks = mk
 
 	if len(diff.Files) > 0 {
 		dv.setFile(&diff.Files[0])
@@ -185,6 +189,7 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		diffView:        dv,
 		focus:           focusFileList,
 		comments:        c,
+		marks:           mk,
 		storePath:       storePath,
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
@@ -458,7 +463,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.diffView.cursor--
 						}
 						if m.diffView.cursorRef() != nil {
-							m.startCommentInput()
+							// Click in gutter area toggles mark; elsewhere opens comment.
+							diffPanelX := m.fileList.width + 2
+							if m.fullscreen {
+								diffPanelX = 0
+							}
+							// border (1) + cursor prefix (1) + gutter (6) = 8
+							if msg.X < diffPanelX+8 {
+								m.toggleMarkAtCursor()
+							} else {
+								m.startCommentInput()
+							}
 						}
 					}
 				}
@@ -763,6 +778,9 @@ func (m Model) updateConfirmClear(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for k := range m.comments {
 			delete(m.comments, k)
 		}
+		for k := range m.marks {
+			delete(m.marks, k)
+		}
 		m.saveComments()
 		m.diffView.rebuildLinesPreservingCursor()
 	}
@@ -786,7 +804,7 @@ func (m *Model) saveComments() {
 	if m.storePath == "" {
 		return
 	}
-	_ = commentstore.Save(m.storePath, m.comments.toStringMap())
+	_ = commentstore.Save(m.storePath, toStringMap(m.comments, m.marks))
 }
 
 func (m *Model) startCommentInput() {
@@ -851,10 +869,10 @@ func (m *Model) toggleMarkAtCursor() {
 		return
 	}
 	key := ref.commentKey(m.diffView.file.Path)
-	if _, ok := m.comments[key]; ok {
-		delete(m.comments, key)
+	if m.marks[key] {
+		delete(m.marks, key)
 	} else {
-		m.comments[key] = markSentinel
+		m.marks[key] = true
 	}
 	m.saveComments()
 	m.diffView.rebuildLinesPreservingCursor()
@@ -867,6 +885,7 @@ func (m *Model) deleteCommentAtCursor() {
 	}
 	key := ref.commentKey(m.diffView.file.Path)
 	delete(m.comments, key)
+	delete(m.marks, key)
 	m.saveComments()
 	m.diffView.rebuildLinesPreservingCursor()
 }
@@ -1001,7 +1020,7 @@ func fileHasSource(f *git.FileDiff, source git.HunkSource) bool {
 // exportComments copies comments to the clipboard or writes to a file.
 // Returns a status string describing what happened, or "" if there's nothing to export.
 func (m *Model) exportComments() string {
-	text := formatExport(m.diff.Files, m.comments)
+	text := formatExport(m.diff.Files, m.comments, m.marks)
 	if text == "" {
 		return ""
 	}
@@ -1244,16 +1263,6 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
 
-	// Show mark indicator when cursor is on a marked line
-	if m.focus == focusDiffView {
-		ref := m.diffView.cursorRef()
-		if ref != nil && m.diffView.file != nil {
-			key := ref.commentKey(m.diffView.file.Path)
-			if text, ok := m.comments[key]; ok && text == markSentinel {
-				return statusBarStyle.Width(m.width).Render("◆ marked")
-			}
-		}
-	}
 
 	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
 
