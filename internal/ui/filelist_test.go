@@ -168,6 +168,60 @@ func TestFileStagingSources(t *testing.T) {
 	}
 }
 
+func TestStatusIndicator(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  git.FileStatus
+		staging stagingSources
+		want    string // expected rendered string (letter + styling)
+	}{
+		// Fully staged: green style applied to the status letter
+		{"modified fully staged", git.StatusModified, stagingSources{staged: true}, statusAdded.Render("M")},
+		{"added fully staged", git.StatusAdded, stagingSources{staged: true}, statusAdded.Render("A")},
+		{"deleted fully staged", git.StatusDeleted, stagingSources{staged: true}, statusAdded.Render("D")},
+
+		// Partially staged: yellow style
+		{"modified partially staged", git.StatusModified, stagingSources{staged: true, unstaged: true}, statusModified.Render("M")},
+		{"added partially staged", git.StatusAdded, stagingSources{staged: true, unstaged: true}, statusModified.Render("A")},
+
+		// Unstaged only: default file status color
+		{"modified unstaged", git.StatusModified, stagingSources{unstaged: true}, statusModified.Render("M")},
+		{"added unstaged", git.StatusAdded, stagingSources{unstaged: true}, statusAdded.Render("A")},
+		{"deleted unstaged", git.StatusDeleted, stagingSources{unstaged: true}, statusDeleted.Render("D")},
+		{"untracked", git.StatusUntracked, stagingSources{unstaged: true}, statusUntracked.Render("?")},
+
+		// Branch only: default file status color
+		{"modified branch", git.StatusModified, stagingSources{branch: true}, statusModified.Render("M")},
+		{"renamed branch", git.StatusRenamed, stagingSources{branch: true}, statusModified.Render("R")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := statusIndicator(tt.status, tt.staging)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStatusLetter(t *testing.T) {
+	tests := []struct {
+		status git.FileStatus
+		want   string
+	}{
+		{git.StatusModified, "M"},
+		{git.StatusAdded, "A"},
+		{git.StatusDeleted, "D"},
+		{git.StatusRenamed, "R"},
+		{git.StatusUntracked, "?"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			assert.Equal(t, tt.want, statusLetter(tt.status))
+		})
+	}
+}
+
 func TestFileListTotals(t *testing.T) {
 	m := newFileListModel([]git.FileDiff{
 		{
