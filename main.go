@@ -31,7 +31,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Subcommand routing — before git repo checks.
+	// Subcommands that don't require a git repo.
 	args := flag.Args()
 	if len(args) > 0 {
 		switch args[0] {
@@ -41,12 +41,10 @@ func main() {
 		case "styles":
 			ui.PrintStylesDemo()
 			return
-		default:
-			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
-			os.Exit(1)
 		}
 	}
 
+	// All remaining paths require a git repo with commits.
 	if !git.IsGitRepo() {
 		fmt.Fprintln(os.Stderr, "Error: not a git repository")
 		os.Exit(1)
@@ -55,6 +53,18 @@ func main() {
 	if !git.HasCommits() {
 		fmt.Fprintln(os.Stderr, "Error: repository has no commits")
 		os.Exit(1)
+	}
+
+	// Subcommands that require a git repo.
+	if len(args) > 0 {
+		switch args[0] {
+		case "diff":
+			runDiff()
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
+			os.Exit(1)
+		}
 	}
 
 	onDefaultBranch, err := git.IsOnDefaultBranch()
@@ -93,6 +103,16 @@ func main() {
 	}
 }
 
+func runDiff() {
+	diff, err := git.GetDiff()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Print(git.Format(diff))
+}
+
 func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	pre := fs.Bool("pre", false, "Include pre-release (dev) builds")
@@ -129,6 +149,7 @@ Flags:
   --version, -v    Show version
 
 Commands:
+  diff            Print unified diff (no TUI)
   styles          Show file status color matrix
   update [--pre]  Update to the latest version`)
 
