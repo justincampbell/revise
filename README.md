@@ -45,11 +45,19 @@ Cycle through modes with `Tab` / `Shift+Tab`:
 | **Staged** | Staged + unstaged + untracked |
 | **Unstaged** | Unstaged + untracked only (narrowest) |
 
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `revise styles` | Show file status color matrix for all staging states |
+| `revise update [--pre]` | Update to the latest version |
+
 ### Features
 
 - **Diff review** -- split-pane file list and diff viewer with color-coded diffs
 - **Inline comments** -- add comments on any diff line, export for AI feedback
 - **Hunk staging** -- stage, unstage, or discard individual hunks or entire files
+- **File status colors** -- status indicators change color based on staging state (dim=branch, yellow=unstaged, green=staged, cyan=partial)
 - **Mouse support** -- click to select files, scroll to navigate
 - **NO_COLOR** -- respects the [`NO_COLOR`](https://no-color.org) environment variable
 

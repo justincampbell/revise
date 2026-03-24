@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/justincampbell/revise/internal/git"
 )
 
@@ -107,7 +108,7 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 
 	for i := m.offset; i < end; i++ {
 		f := m.files[i]
-		status := statusIndicator(f.Status)
+		status := statusIndicator(f.Status, fileStagingSources(f))
 		count := m.comments.countForFile(f.Path)
 		countSuffix := ""
 		if count > 0 {
@@ -117,10 +118,10 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 
 		if i == m.cursor {
 			prefix := "▸ "
-			b.WriteString(selectedStyle.Render(prefix+status+" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(selectedStyle.Render(prefix) + status + selectedStyle.Render(" "+name) + commentCountStyle.Render(countSuffix))
 		} else {
 			prefix := "  "
-			b.WriteString(unselectedStyle.Render(prefix+status+" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(unselectedStyle.Render(prefix) + status + unselectedStyle.Render(" "+name) + commentCountStyle.Render(countSuffix))
 		}
 
 		if i < end-1 {
@@ -134,20 +135,88 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 	return rendered
 }
 
-func statusIndicator(s git.FileStatus) string {
+type stagingSources struct {
+	branch   bool
+	staged   bool
+	unstaged bool
+}
+
+func fileStagingSources(f git.FileDiff) stagingSources {
+	var s stagingSources
+	for _, h := range f.Hunks {
+		switch h.Source {
+		case git.SourceBranch:
+			s.branch = true
+		case git.SourceStaged:
+			s.staged = true
+		case git.SourceUnstaged:
+			s.unstaged = true
+		}
+	}
+	return s
+}
+
+func statusIndicator(s git.FileStatus, staging stagingSources) string {
+	letter := statusLetter(s)
+	style := statusStyle(s, staging)
+	return style.Render(letter)
+}
+
+func statusLetter(s git.FileStatus) string {
 	switch s {
 	case git.StatusModified:
-		return statusModified.Render("M")
+		return "M"
 	case git.StatusAdded:
-		return statusAdded.Render("A")
+		return "A"
 	case git.StatusDeleted:
-		return statusDeleted.Render("D")
+		return "D"
 	case git.StatusRenamed:
-		return statusModified.Render("R")
+		return "R"
 	case git.StatusUntracked:
-		return statusUntracked.Render("?")
+		return "?"
 	default:
 		return " "
+	}
+}
+
+func statusStyle(s git.FileStatus, staging stagingSources) lipgloss.Style {
+	// Partially staged: cyan
+	if staging.staged && staging.unstaged {
+		return statusPartiallyStaged
+	}
+	// Fully staged: green
+	if staging.staged {
+		return statusAdded
+	}
+	// Branch only (committed, no working tree changes): dim variant of status color
+	if staging.branch && !staging.unstaged {
+		switch s {
+		case git.StatusModified:
+			return statusDimModified
+		case git.StatusAdded:
+			return statusDimAdded
+		case git.StatusDeleted:
+			return statusDimDeleted
+		case git.StatusRenamed:
+			return statusDimRenamed
+		default:
+			return lipgloss.NewStyle()
+		}
+	}
+	// Unstaged or default: use the file status color
+	switch s {
+	case git.StatusModified:
+		return statusModified
+	case git.StatusAdded:
+		return statusAdded
+	case git.StatusDeleted:
+		return statusDeleted
+	case git.StatusRenamed:
+		return statusModified
+	case git.StatusUntracked:
+		return statusUntracked
+	default:
+		return lipgloss.NewStyle()
 	}
 }
 

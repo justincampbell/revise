@@ -18,6 +18,12 @@ var (
 	colorWhite  = lipgloss.Color("#e5e7eb")
 	colorBorder = lipgloss.Color("#374151")
 
+	// Dim variants for branch-only indicators
+	colorDimGreen  = lipgloss.Color("#166534")
+	colorDimRed    = lipgloss.Color("#7f1d1d")
+	colorDimYellow = lipgloss.Color("#854d0e")
+	colorDimCyan   = lipgloss.Color("#155e75")
+
 	// Colors - backgrounds
 	colorAddedBg   = lipgloss.Color("#0d2818")
 	colorRemovedBg = lipgloss.Color("#2d0b0b")
@@ -43,10 +49,17 @@ var (
 	unselectedStyle = lipgloss.NewStyle().Foreground(colorDim)
 
 	// Status indicators
-	statusModified  = lipgloss.NewStyle().Foreground(colorYellow)
-	statusAdded     = lipgloss.NewStyle().Foreground(colorGreen)
-	statusDeleted   = lipgloss.NewStyle().Foreground(colorRed)
-	statusUntracked = lipgloss.NewStyle().Foreground(colorCyan)
+	statusModified        = lipgloss.NewStyle().Foreground(colorYellow)
+	statusAdded           = lipgloss.NewStyle().Foreground(colorGreen)
+	statusDeleted         = lipgloss.NewStyle().Foreground(colorRed)
+	statusUntracked       = lipgloss.NewStyle().Foreground(colorCyan)
+	statusPartiallyStaged = lipgloss.NewStyle().Foreground(colorCyan)
+
+	// Dim variants for branch-only (committed) indicators
+	statusDimModified = lipgloss.NewStyle().Foreground(colorDimYellow)
+	statusDimAdded    = lipgloss.NewStyle().Foreground(colorDimGreen)
+	statusDimDeleted  = lipgloss.NewStyle().Foreground(colorDimRed)
+	statusDimRenamed  = lipgloss.NewStyle().Foreground(colorDimYellow)
 
 	// Panel styles
 	panelBorder = lipgloss.NewStyle().
@@ -112,6 +125,11 @@ func init() {
 		statusAdded = lipgloss.NewStyle()
 		statusDeleted = lipgloss.NewStyle()
 		statusUntracked = lipgloss.NewStyle()
+		statusPartiallyStaged = lipgloss.NewStyle()
+		statusDimModified = lipgloss.NewStyle()
+		statusDimAdded = lipgloss.NewStyle()
+		statusDimDeleted = lipgloss.NewStyle()
+		statusDimRenamed = lipgloss.NewStyle()
 		panelBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 		focusedBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 		addedGutterStyle = lipgloss.NewStyle().Bold(true).Width(6)

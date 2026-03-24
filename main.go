@@ -38,6 +38,9 @@ func main() {
 		case "update":
 			runUpdate(args[1:])
 			return
+		case "styles":
+			ui.PrintStylesDemo()
+			return
 		default:
 			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
 			os.Exit(1)
@@ -126,6 +129,7 @@ Flags:
   --version, -v    Show version
 
 Commands:
+  styles          Show file status color matrix
   update [--pre]  Update to the latest version`)
 
 	for _, group := range ui.BindingGroups() {

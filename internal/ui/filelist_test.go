@@ -119,6 +119,117 @@ func TestFileTotals(t *testing.T) {
 	assert.Equal(t, 1, removed)
 }
 
+func TestFileStagingSources(t *testing.T) {
+	tests := []struct {
+		name    string
+		hunks   []git.Hunk
+		want    stagingSources
+	}{
+		{
+			name:  "staged only",
+			hunks: []git.Hunk{{Source: git.SourceStaged}},
+			want:  stagingSources{staged: true},
+		},
+		{
+			name:  "unstaged only",
+			hunks: []git.Hunk{{Source: git.SourceUnstaged}},
+			want:  stagingSources{unstaged: true},
+		},
+		{
+			name:  "branch only",
+			hunks: []git.Hunk{{Source: git.SourceBranch}},
+			want:  stagingSources{branch: true},
+		},
+		{
+			name: "partially staged",
+			hunks: []git.Hunk{
+				{Source: git.SourceStaged},
+				{Source: git.SourceUnstaged},
+			},
+			want: stagingSources{staged: true, unstaged: true},
+		},
+		{
+			name: "all sources",
+			hunks: []git.Hunk{
+				{Source: git.SourceBranch},
+				{Source: git.SourceStaged},
+				{Source: git.SourceUnstaged},
+			},
+			want: stagingSources{branch: true, staged: true, unstaged: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := git.FileDiff{Hunks: tt.hunks}
+			got := fileStagingSources(f)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStatusIndicator(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  git.FileStatus
+		staging stagingSources
+		want    string // expected rendered string (letter + styling)
+	}{
+		// Fully staged: green style applied to the status letter
+		{"modified fully staged", git.StatusModified, stagingSources{staged: true}, statusAdded.Render("M")},
+		{"added fully staged", git.StatusAdded, stagingSources{staged: true}, statusAdded.Render("A")},
+		{"deleted fully staged", git.StatusDeleted, stagingSources{staged: true}, statusAdded.Render("D")},
+
+		// Partially staged: cyan style
+		{"modified partially staged", git.StatusModified, stagingSources{staged: true, unstaged: true}, statusPartiallyStaged.Render("M")},
+		{"added partially staged", git.StatusAdded, stagingSources{staged: true, unstaged: true}, statusPartiallyStaged.Render("A")},
+
+		// Unstaged only: default file status color
+		{"modified unstaged", git.StatusModified, stagingSources{unstaged: true}, statusModified.Render("M")},
+		{"added unstaged", git.StatusAdded, stagingSources{unstaged: true}, statusAdded.Render("A")},
+		{"deleted unstaged", git.StatusDeleted, stagingSources{unstaged: true}, statusDeleted.Render("D")},
+		{"untracked", git.StatusUntracked, stagingSources{unstaged: true}, statusUntracked.Render("?")},
+
+		// Branch only: dim variant of status color
+		{"modified branch", git.StatusModified, stagingSources{branch: true}, statusDimModified.Render("M")},
+		{"added branch", git.StatusAdded, stagingSources{branch: true}, statusDimAdded.Render("A")},
+		{"deleted branch", git.StatusDeleted, stagingSources{branch: true}, statusDimDeleted.Render("D")},
+		{"renamed branch", git.StatusRenamed, stagingSources{branch: true}, statusDimRenamed.Render("R")},
+
+		// Branch+unstaged: unstaged color (working tree changes take priority)
+		{"modified branch+unstaged", git.StatusModified, stagingSources{branch: true, unstaged: true}, statusModified.Render("M")},
+
+		// Branch+staged: green
+		{"modified branch+staged", git.StatusModified, stagingSources{branch: true, staged: true}, statusAdded.Render("M")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := statusIndicator(tt.status, tt.staging)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStatusLetter(t *testing.T) {
+	tests := []struct {
+		status git.FileStatus
+		want   string
+	}{
+		{git.StatusModified, "M"},
+		{git.StatusAdded, "A"},
+		{git.StatusDeleted, "D"},
+		{git.StatusRenamed, "R"},
+		{git.StatusUntracked, "?"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			assert.Equal(t, tt.want, statusLetter(tt.status))
+		})
+	}
+}
+
 func TestFileListTotals(t *testing.T) {
 	m := newFileListModel([]git.FileDiff{
 		{
