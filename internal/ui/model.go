@@ -692,6 +692,8 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.diffView.cursorRef() != nil {
 			m.startCommentInput()
 		}
+	case "m":
+		m.toggleMarkAtCursor()
 	case "d":
 		m.deleteCommentAtCursor()
 	// Git-only keys — no-op in file review mode
@@ -841,6 +843,21 @@ func (m *Model) deleteFileComment() {
 		m.saveComments()
 		m.diffView.rebuildLinesPreservingCursor()
 	}
+}
+
+func (m *Model) toggleMarkAtCursor() {
+	ref := m.diffView.cursorRef()
+	if ref == nil || m.diffView.file == nil {
+		return
+	}
+	key := ref.commentKey(m.diffView.file.Path)
+	if _, ok := m.comments[key]; ok {
+		delete(m.comments, key)
+	} else {
+		m.comments[key] = markSentinel
+	}
+	m.saveComments()
+	m.diffView.rebuildLinesPreservingCursor()
 }
 
 func (m *Model) deleteCommentAtCursor() {
@@ -1225,6 +1242,17 @@ func (m Model) renderStatusBar() string {
 
 	if m.statusMsg != "" {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
+	}
+
+	// Show mark indicator when cursor is on a marked line
+	if m.focus == focusDiffView {
+		ref := m.diffView.cursorRef()
+		if ref != nil && m.diffView.file != nil {
+			key := ref.commentKey(m.diffView.file.Path)
+			if text, ok := m.comments[key]; ok && text == markSentinel {
+				return statusBarStyle.Width(m.width).Render("◆ marked")
+			}
+		}
 	}
 
 	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")

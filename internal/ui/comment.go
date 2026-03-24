@@ -38,6 +38,9 @@ func decodeCommentKey(s string) (commentKey, bool) {
 	return commentKey{file: parts[0], lineNum: lineNum, isOld: isOld}, true
 }
 
+// markSentinel is the comment value that represents a line mark (no text).
+const markSentinel = "📌"
+
 type comments map[commentKey]string
 
 // toStringMap converts comments to a serializable string-keyed map.
@@ -135,7 +138,11 @@ func formatExport(files []git.FileDiff, c comments) string {
 				} else {
 					sb.WriteString(fmt.Sprintf("%d:\n", lc.lineNum))
 				}
-				sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				if lc.text == markSentinel {
+					sb.WriteString("> [flagged]\n\n")
+				} else {
+					sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				}
 			}
 		}
 	}

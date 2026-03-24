@@ -82,7 +82,11 @@ func (m *diffViewModel) buildLines() {
 	fileKey := commentKey{file: m.file.Path, lineNum: 0}
 	if text, ok := m.comments[fileKey]; ok {
 		displayRef := &lineRef{isCommentDisplay: true}
-		add(commentDisplayStyle.Render("  ◆ "+text), displayRef)
+		if text == markSentinel {
+			add(commentDisplayStyle.Render("  ◆ 📌"), displayRef)
+		} else {
+			add(commentDisplayStyle.Render("  ◆ "+text), displayRef)
+		}
 		add("", nil) // blank separator
 	}
 
@@ -102,7 +106,11 @@ func (m *diffViewModel) buildLines() {
 			key := ref.commentKey(m.file.Path)
 			if text, ok := m.comments[key]; ok {
 				displayRef := &lineRef{isCommentDisplay: true}
-				add(commentDisplayStyle.Render("  ╰ "+text), displayRef)
+				if text == markSentinel {
+					add(commentDisplayStyle.Render("  ╰ 📌"), displayRef)
+				} else {
+					add(commentDisplayStyle.Render("  ╰ "+text), displayRef)
+				}
 			}
 		}
 		add("", nil)

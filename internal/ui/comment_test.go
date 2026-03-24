@@ -239,6 +239,24 @@ func TestFormatExport_NoTrailingBlankLines(t *testing.T) {
 	assert.Equal(t, strings.TrimRight(result, "\n"), result, "export should not end with blank lines")
 }
 
+func TestFormatExport_MarkSentinel(t *testing.T) {
+	files := []git.FileDiff{{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "flagged line", NewNum: 7},
+			},
+		}},
+	}}
+	c := comments{
+		{file: "foo.go", lineNum: 7}: markSentinel,
+	}
+	result := formatExport(files, c)
+	assert.Contains(t, result, "7: `flagged line`")
+	assert.Contains(t, result, "> [flagged]")
+	assert.NotContains(t, result, markSentinel)
+}
+
 func TestCountForFile_IncludesFileLevel(t *testing.T) {
 	c := comments{
 		{file: "a.go", lineNum: 0}: "file comment",
