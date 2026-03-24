@@ -180,9 +180,9 @@ func TestStatusIndicator(t *testing.T) {
 		{"added fully staged", git.StatusAdded, stagingSources{staged: true}, statusAdded.Render("A")},
 		{"deleted fully staged", git.StatusDeleted, stagingSources{staged: true}, statusAdded.Render("D")},
 
-		// Partially staged: yellow style
-		{"modified partially staged", git.StatusModified, stagingSources{staged: true, unstaged: true}, statusModified.Render("M")},
-		{"added partially staged", git.StatusAdded, stagingSources{staged: true, unstaged: true}, statusModified.Render("A")},
+		// Partially staged: cyan style
+		{"modified partially staged", git.StatusModified, stagingSources{staged: true, unstaged: true}, statusPartiallyStaged.Render("M")},
+		{"added partially staged", git.StatusAdded, stagingSources{staged: true, unstaged: true}, statusPartiallyStaged.Render("A")},
 
 		// Unstaged only: default file status color
 		{"modified unstaged", git.StatusModified, stagingSources{unstaged: true}, statusModified.Render("M")},
@@ -190,9 +190,17 @@ func TestStatusIndicator(t *testing.T) {
 		{"deleted unstaged", git.StatusDeleted, stagingSources{unstaged: true}, statusDeleted.Render("D")},
 		{"untracked", git.StatusUntracked, stagingSources{unstaged: true}, statusUntracked.Render("?")},
 
-		// Branch only: default file status color
-		{"modified branch", git.StatusModified, stagingSources{branch: true}, statusModified.Render("M")},
-		{"renamed branch", git.StatusRenamed, stagingSources{branch: true}, statusModified.Render("R")},
+		// Branch only: dim variant of status color
+		{"modified branch", git.StatusModified, stagingSources{branch: true}, statusDimModified.Render("M")},
+		{"added branch", git.StatusAdded, stagingSources{branch: true}, statusDimAdded.Render("A")},
+		{"deleted branch", git.StatusDeleted, stagingSources{branch: true}, statusDimDeleted.Render("D")},
+		{"renamed branch", git.StatusRenamed, stagingSources{branch: true}, statusDimRenamed.Render("R")},
+
+		// Branch+unstaged: unstaged color (working tree changes take priority)
+		{"modified branch+unstaged", git.StatusModified, stagingSources{branch: true, unstaged: true}, statusModified.Render("M")},
+
+		// Branch+staged: green
+		{"modified branch+staged", git.StatusModified, stagingSources{branch: true, staged: true}, statusAdded.Render("M")},
 	}
 
 	for _, tt := range tests {
