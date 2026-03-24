@@ -31,6 +31,23 @@ func TestFormatExport_SingleComment(t *testing.T) {
 	assert.Contains(t, result, "10: `hello world`\n> fix this")
 }
 
+func TestFormatExport_StripsLeadingWhitespace(t *testing.T) {
+	files := []git.FileDiff{{
+		Path: "comment_test.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "\t\tHunks: []git.Hunk{{", NewNum: 211},
+			},
+		}},
+	}}
+	c := comments{
+		{file: "comment_test.go", lineNum: 211}: "Test",
+	}
+	result := formatExport(files, c)
+	assert.Contains(t, result, "211: `Hunks: []git.Hunk{{`\n> Test")
+	assert.NotContains(t, result, "\t\tHunks")
+}
+
 func TestFormatExport_MultipleFiles_OrderedByDiff(t *testing.T) {
 	files := []git.FileDiff{
 		{Path: "a.go"},
