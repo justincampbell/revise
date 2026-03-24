@@ -30,8 +30,7 @@ func CheckForUpdate(currentVersion string, includePre bool) (*UpdateInfo, error)
 	}
 
 	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Source:    source,
-		Filters:  []string{"revise"},
+		Source:     source,
 		Prerelease: includePre,
 	})
 	if err != nil {
@@ -90,8 +89,7 @@ func ApplyUpdate() error {
 	}
 
 	updater, err := selfupdate.NewUpdater(selfupdate.Config{
-		Source:  source,
-		Filters: []string{"revise"},
+		Source: source,
 	})
 	if err != nil {
 		return fmt.Errorf("creating updater: %w", err)
