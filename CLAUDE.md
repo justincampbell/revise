@@ -20,9 +20,26 @@ Keep CLAUDE.md current as the project evolves. Update it when:
 - A new pattern or convention is established (testing approach, helper APIs)
 - A bug is fixed that reveals a non-obvious constraint (e.g. bubbletea Esc → `"esc"`, `parseFilePath` noprefix handling)
 - New files or packages are added to the architecture
-- A shortcut is added, removed, or changes behavior
 
 Do not add speculative or aspirational content — only document what is true now. Planned features belong in GitHub issues, not here.
+
+## Workflow
+
+Work is tracked in GitHub issues. When asked, pick up issues one at a time (or in small related groups). Every change goes through a PR:
+
+1. Create a feature branch from `main`
+2. Implement the change with tests
+3. Run `make install` so the user can manually test
+4. Open the PR (draft if not ready for review)
+5. When asked to merge, wait for CI to pass first
+6. After merge, pull main and rebase any remaining branches
+
+When adding or changing user-facing features, check whether these need updating:
+- **`keys.go`** — keyboard binding definitions (single source of truth for help + CLI)
+- **Help overlay** — generated from `keys.go`, but verify grouping/descriptions
+- **CLAUDE.md** — architecture map, key decisions
+- **README.md** — if the feature is user-facing or changes install/usage
+- **CHANGELOG.md** — add an entry for the change
 
 ## Development Approach
 
@@ -77,13 +94,14 @@ internal/
   git/
     types.go                   # Diff, FileDiff, Hunk, Line types
     diff.go                    # GetDiff, branch detection, merge-base logic
-    apply.go                   # stage/unstage/discard hunks via git apply (with lock retry)
-    retry.go                   # retryOnLock helper for index.lock contention
+    apply.go                   # stage/unstage/discard hunks via git apply
     parse.go                   # unified diff parser
+    format.go                  # plain-text diff formatter (revise diff subcommand)
     untracked.go               # untracked file detection
     parse_test.go              # parser unit tests
     apply_test.go              # stage/unstage/discard integration tests
     diff_test.go               # mergeFileDiffs unit tests
+    format_test.go             # formatter tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
   comments/
@@ -105,21 +123,15 @@ internal/
     filelist_test.go           # navigation and truncate tests
     diffview_test.go           # scroll logic and gutter format tests
     border_snapshot_test.go    # golden tests for pane border composition
-    help_test.go               # padRight unicode tests
+    help_test.go               # help overlay, padRight, pluralize tests
+    styles_demo.go             # --styles-demo output for visual testing
 ```
 
 ## Key Decisions
 
 ### Diff Strategy
 
-Three diff components displayed left-to-right: **Branch · Staged · Unstaged**. Tab/Shift+Tab cycles through modes. Broader modes light more components; `ModeStagedOnly` and `ModeUnstaged` each light only their respective component.
-
-| Mode | Slider | What it shows |
-|------|--------|--------------|
-| **ModeBranch** | **Branch+Staged+Unstaged** | committed + staged + unstaged + untracked (broadest, default) — skipped on default branch |
-| **ModeStaged** | Branch **Staged+Unstaged** | staged + unstaged + untracked |
-| **ModeStagedOnly** | Branch **Staged** Unstaged | staged only (no unstaged or untracked) |
-| **ModeUnstaged** | Branch Staged **Unstaged** | unstaged + untracked only (narrowest) |
+Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (narrowest). Tab/Shift+Tab cycles.
 
 - Default mode: ModeBranch on feature branches (broadest), ModeStaged on default branch
 - Default branch is auto-detected via `origin/main`, `origin/master`, then `git symbolic-ref refs/remotes/origin/HEAD`
@@ -131,7 +143,7 @@ Three diff components displayed left-to-right: **Branch · Staged · Unstaged**.
 ### UI Layout
 
 - Fixed file list width: 30 chars (or `width/3` on narrow terminals < 80 cols)
-- Panel height: terminal height minus 2 rows for status area
+- Panel height: terminal height minus 3 rows (status bar + mode slider)
 - Fullscreen mode hides file list, expands diff to full width
 
 ### Styling
@@ -140,6 +152,8 @@ Three diff components displayed left-to-right: **Branch · Staged · Unstaged**.
 - Bold gutter with line numbers (old/new), width 11
 - Respects `NO_COLOR` env var — strips all colors when set
 - Focused panel gets cyan border; unfocused gets dim border
+- Help overlay uses yellow border to distinguish from panels
+- Lipgloss `Width(n)`/`Height(n)` include padding but exclude borders — when setting explicit dimensions, add padding to the content size
 
 ### Keyboard Bindings
 
@@ -147,36 +161,9 @@ All bindings are defined in `internal/ui/keys.go` (`allBindings`) and used to ge
 
 Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `case "esc":` in switch statements.
 
-| Key | Action |
-|-----|--------|
-| `←` (`h`) | Focus file list |
-| `→` (`l`) | Focus diff view |
-| `n` / `N` | Next / prev file |
-| `Tab` / `Shift+Tab` | Cycle diff mode |
-| `+`/`-` | More/fewer context lines |
-| `f` | Toggle fullscreen diff |
-| `Esc` | Back to file list (exits fullscreen if needed) |
-| `?` | Toggle help overlay |
-| `q` / `Ctrl+C` | Quit |
-| `e` | Export comments (works from any panel) |
-| `j/k`, `↑/↓` | Navigate files (file list) / move cursor (diff) |
-| `Enter` | Select file and focus diff (file list) / open comment input (diff) |
-| `}` / `{` (`]`/`[`) | Next / prev hunk |
-| `g` / `G` | Top / bottom of diff |
-| `Fn+↓` / `Space` | Page down |
-| `Fn+↑` | Page up |
-| `c` | Add/edit file comment (file list) / Add/edit comment on line (diff) |
-| `d` | Delete file comment (file list) / Delete comment on line (diff) |
-| `C` | Clear all comments (with confirmation) |
-| `s` / `S` | Stage hunk / file (file list: `s` stages file) |
-| `u` / `U` | Unstage hunk / file (file list: `u` unstages file) |
-| `w` | Toggle hide whitespace changes |
-| `D` | Discard hunk / file (with `y` confirmation) |
-| `Ctrl+U` | Apply available update |
-
 ### Mouse Support
 
-- Scroll wheel up/down: scrolls whichever panel the cursor is over
+- Scroll wheel up/down: scrolls whichever panel the cursor is over (help overlay intercepts scroll when visible)
 - Left click on file list: selects the file at that row (accounts for border + header offset)
 - Panel detection uses X position relative to file list width
 
@@ -186,25 +173,9 @@ Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256
 
 File-level comments use `lineNum: 0` in the `commentKey` struct (diff line numbers are always >= 1). They are displayed at the top of the diff view before hunks, and exported as "File comment: ..." in the export format.
 
-### Diff Panel Footer
-
-The diff panel bottom border shows three overlaid elements:
-- **Left**: "Context: N" (dim when default 3, cyan when changed)
-- **Center**: "+A/-R" change counts with slash anchored to pane center
-- **Right**: "Whitespace" (dim) or "Whitespace hidden" (cyan when `w` toggled)
-
 ### Diff Parsing
 
 - `parseFilePath` handles both standard (`diff --git a/foo b/foo`) and no-prefix (`diff --git foo foo`) formats — the latter occurs when `diff.noprefix=true` is set in the user's git config
 - `padRight` and all column-width calculations use rune count (`len([]rune(s))`), not byte length, to handle multi-byte Unicode characters like arrow symbols correctly
 
-## File Status Indicators
-
-| Symbol | Meaning |
-|--------|---------|
-| `M` | Modified |
-| `A` | Added |
-| `D` | Deleted |
-| `R` | Renamed |
-| `?` | Untracked |
 
