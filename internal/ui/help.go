@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -56,6 +57,13 @@ func renderHelp(width, height, scroll int) string {
 		lipgloss.Center, lipgloss.Center,
 		helpStyle.Render(content),
 	)
+}
+
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
 }
 
 func padRight(s string, n int) string {
