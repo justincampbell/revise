@@ -76,14 +76,15 @@ func (c comments) countForFile(path string) int {
 }
 
 // findLineContent looks up the content of a line in a file's hunks.
+// Leading whitespace is stripped to keep exported output readable.
 func findLineContent(f git.FileDiff, lineNum int, isOld bool) string {
 	for _, h := range f.Hunks {
 		for _, l := range h.Lines {
 			if isOld && l.OldNum == lineNum && (l.Type == git.LineRemoved || l.Type == git.LineContext) {
-				return l.Content
+				return strings.TrimLeft(l.Content, " \t")
 			}
 			if !isOld && l.NewNum == lineNum && (l.Type == git.LineAdded || l.Type == git.LineContext) {
-				return l.Content
+				return strings.TrimLeft(l.Content, " \t")
 			}
 		}
 	}
