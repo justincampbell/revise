@@ -7,6 +7,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestIsSemver(t *testing.T) {
+	assert.True(t, isSemver("1.0.0"))
+	assert.True(t, isSemver("v1.0.0"))
+	assert.True(t, isSemver("0.1.0"))
+	assert.True(t, isSemver("1.2.3-beta"))
+	assert.False(t, isSemver("dev"))
+	assert.False(t, isSemver("dev-abc1234"))
+	assert.False(t, isSemver(""))
+	assert.False(t, isSemver("latest"))
+}
+
 func TestCheckForUpdate_DevVersion(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

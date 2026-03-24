@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/creativeprojects/go-selfupdate"
@@ -51,7 +52,8 @@ func CheckForUpdate(currentVersion string, includePre bool) (*UpdateInfo, error)
 	// Store for ApplyUpdate.
 	detectedRelease = latest
 
-	newer := latest.GreaterThan(currentVersion)
+	// Dev builds and other non-semver versions always report as needing update.
+	newer := !isSemver(currentVersion) || latest.GreaterThan(currentVersion)
 
 	return &UpdateInfo{
 		CurrentVersion: currentVersion,
@@ -60,6 +62,19 @@ func CheckForUpdate(currentVersion string, includePre bool) (*UpdateInfo, error)
 		IsPreRelease:   latest.Prerelease,
 		ReleaseNotes:   latest.ReleaseNotes,
 	}, nil
+}
+
+// isSemver returns true if the version string is valid semver (with or without v prefix).
+func isSemver(v string) bool {
+	s := v
+	if !strings.HasPrefix(s, "v") {
+		s = "v" + s
+	}
+	// Quick check: must have at least one dot and start with a digit after v.
+	if len(s) < 4 || s[1] < '0' || s[1] > '9' || !strings.Contains(s, ".") {
+		return false
+	}
+	return true
 }
 
 // ApplyUpdate downloads and installs the previously detected update.
