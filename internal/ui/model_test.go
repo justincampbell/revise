@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/git"
+	"github.com/justincampbell/revise/internal/update"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1265,6 +1266,32 @@ func TestInit_ReturnsPollTickCmd(t *testing.T) {
 	m := makeModel("a.go")
 	cmd := m.Init()
 	assert.NotNil(t, cmd, "Init should return a poll tick command")
+}
+
+func TestUpdateCheckMsg_SetsStatusAndClearsAfterTimeout(t *testing.T) {
+	m := makeModel("a.go")
+
+	updated, cmd := m.Update(updateCheckMsg{
+		info: &update.UpdateInfo{
+			CurrentVersion: "0.1.0",
+			LatestVersion:  "0.2.0",
+			IsNewer:        true,
+		},
+	})
+	m = updated.(Model)
+
+	assert.Contains(t, m.statusMsg, "Update available")
+	assert.NotNil(t, cmd, "should return a clear timer command")
+}
+
+func TestUpdateApplied_SetsStatusAndClearsAfterTimeout(t *testing.T) {
+	m := makeModel("a.go")
+
+	updated, cmd := m.Update(updateAppliedMsg{newVersion: "0.2.0"})
+	m = updated.(Model)
+
+	assert.Contains(t, m.statusMsg, "Updated to 0.2.0")
+	assert.NotNil(t, cmd, "should return a clear timer command")
 }
 
 func TestPollResult_SameFingerprint_NoReload(t *testing.T) {

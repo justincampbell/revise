@@ -52,7 +52,7 @@ func CheckForUpdate(currentVersion string, includePre bool) (*UpdateInfo, error)
 	detectedRelease = latest
 
 	// Dev builds and other non-semver versions always report as needing update.
-	newer := !isSemver(currentVersion) || latest.GreaterThan(currentVersion)
+	newer := !IsSemver(currentVersion) || latest.GreaterThan(currentVersion)
 
 	return &UpdateInfo{
 		CurrentVersion: currentVersion,
@@ -63,8 +63,8 @@ func CheckForUpdate(currentVersion string, includePre bool) (*UpdateInfo, error)
 	}, nil
 }
 
-// isSemver returns true if the version string is valid semver (with or without v prefix).
-func isSemver(v string) bool {
+// IsSemver returns true if the version string is valid semver (with or without v prefix).
+func IsSemver(v string) bool {
 	s := v
 	if !strings.HasPrefix(s, "v") {
 		s = "v" + s
