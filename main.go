@@ -18,6 +18,7 @@ var version = "dev"
 func main() {
 	helpFlag := flag.Bool("help", false, "Show help")
 	versionFlag := flag.Bool("version", false, "Show version")
+	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
 	flag.Parse()
 
 	if *helpFlag {
@@ -37,6 +38,9 @@ func main() {
 		case "update":
 			runUpdate(args[1:])
 			return
+		default:
+			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
+			os.Exit(1)
 		}
 	}
 
@@ -118,8 +122,8 @@ func printHelp() {
 Usage: revise [flags] [command]
 
 Flags:
-  --help      Show this help
-  --version   Show version
+  --help           Show this help
+  --version, -v    Show version
 
 Commands:
   update [--pre]  Update to the latest version`)
