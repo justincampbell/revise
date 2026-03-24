@@ -80,6 +80,7 @@ type Model struct {
 	diffView   diffViewModel
 	focus      focusPanel
 	showHelp   bool
+	helpScroll int
 	fullscreen bool
 	width      int
 	height     int
@@ -190,8 +191,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.showHelp {
-			m.showHelp = false
-			return m, nil
+			switch msg.String() {
+			case "j", "down":
+				m.helpScroll++
+				return m, nil
+			case "k", "up":
+				if m.helpScroll > 0 {
+					m.helpScroll--
+				}
+				return m, nil
+			default:
+				m.showHelp = false
+				m.helpScroll = 0
+				return m, nil
+			}
 		}
 
 		switch msg.String() {
@@ -473,7 +486,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateCheckMsg:
 		if msg.err == nil && msg.info != nil && msg.info.IsNewer {
 			m.updateInfo = msg.info
-			m.statusMsg = fmt.Sprintf("Update available: %s → %s (Ctrl+U to update)", msg.info.CurrentVersion, msg.info.LatestVersion)
+			m.statusMsg = fmt.Sprintf("Update available: %s → %s (", msg.info.CurrentVersion, msg.info.LatestVersion) +
+				helpKeyStyle.Render("Ctrl+U") + statusBarStyle.Render(" to update)")
 		}
 		return m, nil
 
@@ -1092,7 +1106,9 @@ func (m Model) renderModeSlider() string {
 
 func (m Model) renderStatusBar() string {
 	if m.commentInputActive {
-		return statusBarStyle.Width(m.width).Render("Enter: save  Esc: cancel")
+		hint := helpKeyStyle.Render("Enter") + statusBarStyle.Render(": save  ") +
+			helpKeyStyle.Render("Esc") + statusBarStyle.Render(": cancel")
+		return statusBarStyle.Width(m.width).Render(hint)
 	}
 
 	if m.statusMsg != "" {
@@ -1112,9 +1128,9 @@ func (m Model) renderStatusBar() string {
 
 	count := len(m.comments)
 	if count > 0 {
-		return statusBarStyle.Width(m.width).Render(fmt.Sprintf("%d comment(s)  ?", count))
+		return statusBarStyle.Width(m.width).Render(fmt.Sprintf("%d comment(s)  ", count) + helpKeyStyle.Render("?"))
 	}
-	return statusBarStyle.Width(m.width).Render("?")
+	return statusBarStyle.Width(m.width).Render(helpKeyStyle.Render("?"))
 }
 
 func (m Model) View() string {
@@ -1123,7 +1139,7 @@ func (m Model) View() string {
 	}
 
 	if m.showHelp {
-		return renderHelp(m.width, m.height)
+		return renderHelp(m.width, m.height, m.helpScroll)
 	}
 
 	statusBar := m.renderStatusBar()
