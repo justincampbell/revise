@@ -1116,17 +1116,6 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
 
-	// Show comment text when cursor is on a commented line
-	if m.focus == focusDiffView {
-		ref := m.diffView.cursorRef()
-		if ref != nil && m.diffView.file != nil {
-			key := ref.commentKey(m.diffView.file.Path)
-			if text, ok := m.comments[key]; ok {
-				return statusBarStyle.Width(m.width).Render("◆ " + text)
-			}
-		}
-	}
-
 	count := len(m.comments)
 	if count > 0 {
 		hint := pluralize(count, "comment", "comments") +
