@@ -1132,14 +1132,16 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
 
+	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
+
 	count := len(m.comments)
 	if count > 0 {
 		hint := pluralize(count, "comment", "comments") +
 			"  " + helpKeyStyle.Render("e") + statusBarStyle.Render(" export") +
-			"  " + helpKeyStyle.Render("?")
+			"  " + helpHint
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
-	return statusBarStyle.Width(m.width).Render(helpKeyStyle.Render("?"))
+	return statusBarStyle.Width(m.width).Render(helpHint)
 }
 
 func (m Model) View() string {
