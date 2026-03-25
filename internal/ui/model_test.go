@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/git"
@@ -1338,7 +1339,7 @@ func TestPollResult_SameFingerprint_NoReload(t *testing.T) {
 
 	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
 	m = updated.(Model)
-	assert.Nil(t, cmd, "same fingerprint should not trigger a reload")
+	assert.NotNil(t, cmd, "same fingerprint should still schedule next tick")
 }
 
 func TestPollResult_DifferentFingerprint_TriggersReload(t *testing.T) {
@@ -1381,5 +1382,82 @@ func TestPollResult_Error_NoReload(t *testing.T) {
 	m.lastFingerprint = "M a.go\n"
 
 	_, cmd := m.Update(pollResultMsg{err: fmt.Errorf("git error")})
-	assert.Nil(t, cmd, "error should not trigger a reload")
+	assert.NotNil(t, cmd, "error should still schedule next tick")
+}
+
+func TestPollTick_SetsPollingFlag(t *testing.T) {
+	m := makeModel("a.go")
+	assert.False(t, m.polling)
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.True(t, m.polling, "polling flag should be set")
+	assert.NotNil(t, cmd, "should return fingerprint check command")
+}
+
+func TestPollTick_SkipsWhenAlreadyPolling(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.True(t, m.polling, "polling flag should remain true")
+	assert.Nil(t, cmd, "should not schedule anything when already polling")
+}
+
+func TestPollTick_SkipsWhenUnfocused(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.False(t, m.polling, "should not start polling when unfocused")
+	assert.Nil(t, cmd, "should not schedule anything when unfocused")
+}
+
+func TestBlur_StopsPolling(t *testing.T) {
+	m := makeModel("a.go")
+	assert.True(t, m.focused)
+
+	updated, cmd := m.Update(tea.BlurMsg{})
+	m = updated.(Model)
+	assert.False(t, m.focused)
+	assert.Nil(t, cmd, "blur should not schedule anything")
+}
+
+func TestFocus_ResumesPolling(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	updated, cmd := m.Update(tea.FocusMsg{})
+	m = updated.(Model)
+	assert.True(t, m.focused)
+	assert.NotNil(t, cmd, "focus should schedule a poll tick")
+}
+
+func TestPollResult_SkipsNextTickWhenUnfocused(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+	m.focused = false
+	m.lastFingerprint = "M a.go\n"
+
+	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	m = updated.(Model)
+	assert.False(t, m.polling, "polling flag should be cleared")
+	assert.Nil(t, cmd, "should not schedule next tick when unfocused")
+}
+
+func TestPollResult_ClearsPollingFlag(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+	m.lastFingerprint = "M a.go\n"
+
+	updated, _ := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	m = updated.(Model)
+	assert.False(t, m.polling, "polling flag should be cleared after result")
+}
+
+func TestPollInterval_IsAtLeast30Seconds(t *testing.T) {
+	assert.GreaterOrEqual(t, pollInterval, 30*time.Second,
+		"poll interval must be >= 30s to avoid I/O contention (see #129)")
 }
