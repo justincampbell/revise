@@ -110,6 +110,37 @@ type Model struct {
 	currentVersion string              // version string from build
 	updateInfo     *update.UpdateInfo  // populated after update check
 	updating       bool                // true while downloading update
+
+	fileReviewMode bool   // true when reviewing a file (not a git diff)
+	fileReviewPath string // filename shown in status bar
+}
+
+// NewFileReview creates a Model for reviewing a file (not a git diff).
+// It starts in fullscreen with focus on the diff view.
+func NewFileReview(diff *git.Diff, filePath string) Model {
+	fl := newFileListModel(diff.Files)
+	dv := newDiffViewModel()
+
+	c := make(comments)
+	dv.comments = c
+	dv.fileReviewMode = true
+	fl.comments = c
+
+	if len(diff.Files) > 0 {
+		dv.setFile(&diff.Files[0])
+	}
+
+	return Model{
+		diff:           diff,
+		fileList:       fl,
+		diffView:       dv,
+		focus:          focusDiffView,
+		fullscreen:     true,
+		comments:       c,
+		mode:           ModeStaged,
+		fileReviewMode: true,
+		fileReviewPath: filePath,
+	}
 }
 
 func New(diff *git.Diff, onDefaultBranch bool) Model {
@@ -165,6 +196,9 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.fileReviewMode {
+		return nil
+	}
 	cmds := []tea.Cmd{
 		tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
 	}
@@ -221,6 +255,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "right", "l":
+			if m.fileReviewMode {
+				return m, nil
+			}
 			if m.focus == focusDiffView {
 				m.fullscreen = !m.fullscreen
 				m.updateLayout()
@@ -229,36 +266,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "left", "h":
-			if m.fullscreen {
-				m.fullscreen = false
+		case "left", "h", "f", "esc":
+			if m.fileReviewMode {
+				return m, nil
+			}
+			switch msg.String() {
+			case "left", "h":
+				if m.fullscreen {
+					m.fullscreen = false
+					m.updateLayout()
+				}
+				m.focus = focusFileList
+			case "f":
+				m.fullscreen = !m.fullscreen
+				if m.fullscreen {
+					m.focus = focusDiffView
+				}
 				m.updateLayout()
+			case "esc":
+				if m.fullscreen {
+					m.fullscreen = false
+					m.updateLayout()
+				}
+				m.focus = focusFileList
 			}
-			m.focus = focusFileList
 			return m, nil
 
-		case "f":
-			m.fullscreen = !m.fullscreen
-			if m.fullscreen {
-				m.focus = focusDiffView
+		// Git-only keys — no-op in file review mode
+		case "tab", "shift+tab", "w", "+", "=", "-", "_":
+			if m.fileReviewMode {
+				return m, nil
 			}
-			m.updateLayout()
-			return m, nil
-
-		case "esc":
-			if m.fullscreen {
-				m.fullscreen = false
-				m.updateLayout()
+			switch msg.String() {
+			case "tab":
+				m.cycleMode(+1)
+				return m, m.loadDiff()
+			case "shift+tab":
+				m.cycleMode(-1)
+				return m, m.loadDiff()
+			case "w":
+				m.hideWhitespace = !m.hideWhitespace
+				return m, m.loadDiff()
+			case "+", "=":
+				m.contextLines++
+				return m, m.loadDiff()
+			case "-", "_":
+				if m.contextLines > 0 {
+					m.contextLines--
+					return m, m.loadDiff()
+				}
+				return m, nil
 			}
-			m.focus = focusFileList
-			return m, nil
-
-		case "tab":
-			m.cycleMode(+1)
-			return m, m.loadDiff()
-		case "shift+tab":
-			m.cycleMode(-1)
-			return m, m.loadDiff()
 
 		// File list navigation (always works)
 		case "n":
@@ -266,22 +324,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "N":
 			m.prevFile()
-			return m, nil
-
-		// Toggle hide whitespace
-		case "w":
-			m.hideWhitespace = !m.hideWhitespace
-			return m, m.loadDiff()
-
-		// Adjust context lines
-		case "+", "=":
-			m.contextLines++
-			return m, m.loadDiff()
-		case "-", "_":
-			if m.contextLines > 0 {
-				m.contextLines--
-				return m, m.loadDiff()
-			}
 			return m, nil
 
 		// Report issue opens GitHub new issue page
@@ -601,17 +643,24 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.syncSelectedFile()
 		m.focus = focusDiffView
-	case "s", "S":
-		if cmd := m.stageCurrentFile(); cmd != nil {
-			return m, cmd
+	// Git-only keys — no-op in file review mode
+	case "s", "S", "u", "U", "D":
+		if m.fileReviewMode {
+			return m, nil
 		}
-	case "u", "U":
-		if cmd := m.unstageCurrentFile(); cmd != nil {
-			return m, cmd
-		}
-	case "D":
-		if cmd := m.discardCurrentFile(); cmd != nil {
-			return m, cmd
+		switch msg.String() {
+		case "s", "S":
+			if cmd := m.stageCurrentFile(); cmd != nil {
+				return m, cmd
+			}
+		case "u", "U":
+			if cmd := m.unstageCurrentFile(); cmd != nil {
+				return m, cmd
+			}
+		case "D":
+			if cmd := m.discardCurrentFile(); cmd != nil {
+				return m, cmd
+			}
 		}
 	case "c":
 		m.startFileComment()
@@ -645,25 +694,32 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		m.deleteCommentAtCursor()
-	case "s":
-		if cmd := m.stageCurrentHunk(); cmd != nil {
-			return m, cmd
+	// Git-only keys — no-op in file review mode
+	case "s", "u", "D", "S", "U":
+		if m.fileReviewMode {
+			return m, nil
 		}
-	case "u":
-		if cmd := m.unstageCurrentHunk(); cmd != nil {
-			return m, cmd
-		}
-	case "D":
-		if cmd := m.discardCurrentHunk(); cmd != nil {
-			return m, cmd
-		}
-	case "S":
-		if cmd := m.stageCurrentFile(); cmd != nil {
-			return m, cmd
-		}
-	case "U":
-		if cmd := m.unstageCurrentFile(); cmd != nil {
-			return m, cmd
+		switch msg.String() {
+		case "s":
+			if cmd := m.stageCurrentHunk(); cmd != nil {
+				return m, cmd
+			}
+		case "u":
+			if cmd := m.unstageCurrentHunk(); cmd != nil {
+				return m, cmd
+			}
+		case "D":
+			if cmd := m.discardCurrentHunk(); cmd != nil {
+				return m, cmd
+			}
+		case "S":
+			if cmd := m.stageCurrentFile(); cmd != nil {
+				return m, cmd
+			}
+		case "U":
+			if cmd := m.unstageCurrentFile(); cmd != nil {
+				return m, cmd
+			}
 		}
 	}
 	return m, nil
@@ -1190,12 +1246,17 @@ func (m Model) View() string {
 
 	statusBar := m.renderStatusBar()
 
+	slider := m.renderModeSlider()
+	if m.fileReviewMode {
+		slider = m.fileReviewPath
+	}
+
 	var screen string
 	if m.fullscreen {
-		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace, m.renderModeSlider())
+		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace, slider)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
 	} else {
-		left := m.fileList.render(m.focus == focusFileList, m.renderModeSlider())
+		left := m.fileList.render(m.focus == focusFileList, slider)
 		right := m.diffView.render(m.focus == focusDiffView, m.contextLines, m.hideWhitespace)
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
@@ -1206,8 +1267,18 @@ func (m Model) View() string {
 	}
 
 	if m.showHelp {
-		screen = overlayCenter(screen, renderHelp(m.width, m.height, m.helpScroll), m.width, m.height)
+		var helpBindings []BindingGroup
+		if m.fileReviewMode {
+			helpBindings = FileReviewBindingGroups()
+		}
+		screen = overlayCenter(screen, renderHelp(m.width, m.height, m.helpScroll, helpBindings), m.width, m.height)
 	}
 
 	return screen
+}
+
+// ExportedComments returns the formatted comment text for printing on exit.
+// Returns "" if there are no comments.
+func (m Model) ExportedComments() string {
+	return formatExport(m.diff.Files, m.comments)
 }

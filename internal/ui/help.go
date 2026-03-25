@@ -41,13 +41,18 @@ func helpVisibleLines(height int) int {
 	return maxLines
 }
 
-func renderHelp(width, height, scroll int) string {
+func renderHelp(width, height, scroll int, groups ...[]BindingGroup) string {
+	bindings := allBindings
+	if len(groups) > 0 && groups[0] != nil {
+		bindings = groups[0]
+	}
+
 	var lines []string
 
 	// Compute max content width from raw text (before styling) so ANSI
 	// escape sequences don't inflate the measurement.
 	maxW := 0
-	for _, group := range allBindings {
+	for _, group := range bindings {
 		if w := len([]rune(group.Name)); w > maxW {
 			maxW = w
 		}
@@ -59,7 +64,7 @@ func renderHelp(width, height, scroll int) string {
 			}
 		}
 	}
-	for _, group := range allBindings {
+	for _, group := range bindings {
 		lines = append(lines, "")
 		lines = append(lines, helpGroupStyle.Render(group.Name))
 		for _, bind := range group.Bindings {
