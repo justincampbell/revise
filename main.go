@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/comments"
@@ -152,15 +151,4 @@ Commands:
   diff            Print unified diff (no TUI)
   styles          Show file status color matrix
   update [--pre]  Update to the latest version`)
-
-	for _, group := range ui.BindingGroups() {
-		fmt.Printf("\n%s:\n", group.Name)
-		for _, b := range group.Bindings {
-			pad := 14 - len([]rune(b.Key))
-			if pad < 1 {
-				pad = 1
-			}
-			fmt.Printf("  %s%s %s\n", b.Key, strings.Repeat(" ", pad), b.Desc)
-		}
-	}
 }
