@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Self-update failing with "executable not found in tar" due to missing executable path (#124)
 - Retry git operations on index.lock contention with exponential backoff (#46)
 - Branch mode becoming unavailable after checking out a new branch while running (#57)
 - Cache untracked file reads to avoid redundant I/O when adjusting context lines (#35)

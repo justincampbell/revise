@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -98,7 +99,12 @@ func ApplyUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err = updater.UpdateTo(ctx, detectedRelease, "")
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable path: %w", err)
+	}
+
+	err = updater.UpdateTo(ctx, detectedRelease, exe)
 	if err != nil {
 		return fmt.Errorf("applying update: %w", err)
 	}
