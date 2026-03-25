@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -102,6 +103,13 @@ func ApplyUpdate() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("finding executable path: %w", err)
+	}
+
+	// Resolve symlinks so we update the actual binary, not the symlink
+	// (e.g. Homebrew installs are symlinked from /opt/homebrew/bin/).
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return fmt.Errorf("resolving executable path: %w", err)
 	}
 
 	err = updater.UpdateTo(ctx, detectedRelease, exe)
