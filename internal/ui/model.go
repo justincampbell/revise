@@ -26,7 +26,7 @@ type pollResultMsg struct {
 	err         error
 }
 
-const pollInterval = 2 * time.Second
+const pollInterval = 30 * time.Second
 
 // hunkApplyMsg is sent when an async hunk stage/unstage/discard completes.
 type hunkApplyMsg struct {
