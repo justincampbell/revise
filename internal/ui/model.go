@@ -105,6 +105,7 @@ type Model struct {
 
 	lastFingerprint string // last seen git status fingerprint for auto-refresh
 	polling         bool   // true while a fingerprint check is in flight
+	focused         bool   // true when the terminal has focus; polling pauses on blur
 
 	currentVersion string              // version string from build
 	updateInfo     *update.UpdateInfo  // populated after update check
@@ -158,6 +159,7 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		onDefaultBranch: onDefaultBranch,
 		contextLines:    git.DefaultContextLines,
 		lastFingerprint: initialFP,
+		focused:         true,
 		currentVersion:  version,
 	}
 }
@@ -490,11 +492,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = ""
 		return m, nil
 
+	case tea.FocusMsg:
+		m.focused = true
+		// Resume polling now that we have focus again.
+		return m, tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+
+	case tea.BlurMsg:
+		m.focused = false
+		return m, nil
+
 	case pollTickMsg:
-		// Skip if a fingerprint check is already in flight to avoid
-		// piling up git status processes (see #129).
-		if m.polling {
-			return m, tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		// Skip if unfocused or if a fingerprint check is already in
+		// flight to avoid piling up git status processes (see #129).
+		// On blur, polling stops entirely; FocusMsg restarts it.
+		// The in-flight check's pollResultMsg will schedule the next tick.
+		if !m.focused || m.polling {
+			return m, nil
 		}
 		m.polling = true
 		return m, func() tea.Msg {
@@ -522,13 +535,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pollResultMsg:
 		m.polling = false
-		nextTick := tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		// Don't schedule the next tick if unfocused; FocusMsg will restart it.
+		var nextTick tea.Cmd
+		if m.focused {
+			nextTick = tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		}
 		if msg.err != nil {
 			return m, nextTick
 		}
 		if msg.fingerprint != m.lastFingerprint {
 			m.lastFingerprint = msg.fingerprint
-			return m, tea.Batch(m.loadDiffFromPoll(), nextTick)
+			if nextTick != nil {
+				return m, tea.Batch(m.loadDiffFromPoll(), nextTick)
+			}
+			return m, m.loadDiffFromPoll()
 		}
 		return m, nextTick
 	}

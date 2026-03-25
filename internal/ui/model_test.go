@@ -1384,6 +1384,16 @@ func TestPollResult_Error_NoReload(t *testing.T) {
 	assert.NotNil(t, cmd, "error should still schedule next tick")
 }
 
+func TestPollTick_SetsPollingFlag(t *testing.T) {
+	m := makeModel("a.go")
+	assert.False(t, m.polling)
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.True(t, m.polling, "polling flag should be set")
+	assert.NotNil(t, cmd, "should return fingerprint check command")
+}
+
 func TestPollTick_SkipsWhenAlreadyPolling(t *testing.T) {
 	m := makeModel("a.go")
 	m.polling = true
@@ -1391,7 +1401,49 @@ func TestPollTick_SkipsWhenAlreadyPolling(t *testing.T) {
 	updated, cmd := m.Update(pollTickMsg{})
 	m = updated.(Model)
 	assert.True(t, m.polling, "polling flag should remain true")
-	assert.NotNil(t, cmd, "should reschedule tick even when skipping")
+	assert.Nil(t, cmd, "should not schedule anything when already polling")
+}
+
+func TestPollTick_SkipsWhenUnfocused(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.False(t, m.polling, "should not start polling when unfocused")
+	assert.Nil(t, cmd, "should not schedule anything when unfocused")
+}
+
+func TestBlur_StopsPolling(t *testing.T) {
+	m := makeModel("a.go")
+	assert.True(t, m.focused)
+
+	updated, cmd := m.Update(tea.BlurMsg{})
+	m = updated.(Model)
+	assert.False(t, m.focused)
+	assert.Nil(t, cmd, "blur should not schedule anything")
+}
+
+func TestFocus_ResumesPolling(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	updated, cmd := m.Update(tea.FocusMsg{})
+	m = updated.(Model)
+	assert.True(t, m.focused)
+	assert.NotNil(t, cmd, "focus should schedule a poll tick")
+}
+
+func TestPollResult_SkipsNextTickWhenUnfocused(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+	m.focused = false
+	m.lastFingerprint = "M a.go\n"
+
+	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	m = updated.(Model)
+	assert.False(t, m.polling, "polling flag should be cleared")
+	assert.Nil(t, cmd, "should not schedule next tick when unfocused")
 }
 
 func TestPollResult_ClearsPollingFlag(t *testing.T) {
