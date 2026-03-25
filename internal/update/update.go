@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -98,7 +100,19 @@ func ApplyUpdate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err = updater.UpdateTo(ctx, detectedRelease, "")
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable path: %w", err)
+	}
+
+	// Resolve symlinks so we update the actual binary, not the symlink
+	// (e.g. Homebrew installs are symlinked from /opt/homebrew/bin/).
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return fmt.Errorf("resolving executable path: %w", err)
+	}
+
+	err = updater.UpdateTo(ctx, detectedRelease, exe)
 	if err != nil {
 		return fmt.Errorf("applying update: %w", err)
 	}
