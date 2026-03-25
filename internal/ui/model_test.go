@@ -1338,7 +1338,7 @@ func TestPollResult_SameFingerprint_NoReload(t *testing.T) {
 
 	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
 	m = updated.(Model)
-	assert.Nil(t, cmd, "same fingerprint should not trigger a reload")
+	assert.NotNil(t, cmd, "same fingerprint should still schedule next tick")
 }
 
 func TestPollResult_DifferentFingerprint_TriggersReload(t *testing.T) {
@@ -1381,5 +1381,25 @@ func TestPollResult_Error_NoReload(t *testing.T) {
 	m.lastFingerprint = "M a.go\n"
 
 	_, cmd := m.Update(pollResultMsg{err: fmt.Errorf("git error")})
-	assert.Nil(t, cmd, "error should not trigger a reload")
+	assert.NotNil(t, cmd, "error should still schedule next tick")
+}
+
+func TestPollTick_SkipsWhenAlreadyPolling(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+
+	updated, cmd := m.Update(pollTickMsg{})
+	m = updated.(Model)
+	assert.True(t, m.polling, "polling flag should remain true")
+	assert.NotNil(t, cmd, "should reschedule tick even when skipping")
+}
+
+func TestPollResult_ClearsPollingFlag(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+	m.lastFingerprint = "M a.go\n"
+
+	updated, _ := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	m = updated.(Model)
+	assert.False(t, m.polling, "polling flag should be cleared after result")
 }

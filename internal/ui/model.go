@@ -104,6 +104,7 @@ type Model struct {
 	confirmClear bool // waiting for confirmation to clear all comments
 
 	lastFingerprint string // last seen git status fingerprint for auto-refresh
+	polling         bool   // true while a fingerprint check is in flight
 
 	currentVersion string              // version string from build
 	updateInfo     *update.UpdateInfo  // populated after update check
@@ -490,14 +491,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case pollTickMsg:
-		// Schedule the next tick and check fingerprint concurrently.
-		return m, tea.Batch(
-			tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
-			func() tea.Msg {
-				fp, err := git.StatusFingerprint()
-				return pollResultMsg{fingerprint: fp, err: err}
-			},
-		)
+		// Skip if a fingerprint check is already in flight to avoid
+		// piling up git status processes (see #129).
+		if m.polling {
+			return m, tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		}
+		m.polling = true
+		return m, func() tea.Msg {
+			fp, err := git.StatusFingerprint()
+			return pollResultMsg{fingerprint: fp, err: err}
+		}
 
 	case updateCheckMsg:
 		if msg.err == nil && msg.info != nil && msg.info.IsNewer {
@@ -518,14 +521,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 
 	case pollResultMsg:
+		m.polling = false
+		nextTick := tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
 		if msg.err != nil {
-			return m, nil
+			return m, nextTick
 		}
 		if msg.fingerprint != m.lastFingerprint {
 			m.lastFingerprint = msg.fingerprint
-			return m, m.loadDiffFromPoll()
+			return m, tea.Batch(m.loadDiffFromPoll(), nextTick)
 		}
-		return m, nil
+		return m, nextTick
 	}
 
 	return m, nil
