@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/git"
@@ -1454,4 +1455,9 @@ func TestPollResult_ClearsPollingFlag(t *testing.T) {
 	updated, _ := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
 	m = updated.(Model)
 	assert.False(t, m.polling, "polling flag should be cleared after result")
+}
+
+func TestPollInterval_IsAtLeast30Seconds(t *testing.T) {
+	assert.GreaterOrEqual(t, pollInterval, 30*time.Second,
+		"poll interval must be >= 30s to avoid I/O contention (see #129)")
 }
