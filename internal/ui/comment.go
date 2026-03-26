@@ -76,9 +76,6 @@ func fromStringMap(m map[string]string) (comments, marks) {
 	return c, mk
 }
 
-func (c comments) isEmpty() bool {
-	return len(c) == 0
-}
 
 func (c comments) countForFile(path string) int {
 	n := 0
@@ -151,29 +148,29 @@ func formatExport(files []git.FileDiff, c comments, m marks) string {
 			return entries[i].lineNum < entries[j].lineNum
 		})
 
-		sb.WriteString(fmt.Sprintf("\n## %s\n\n", f.Path))
+		fmt.Fprintf(&sb, "\n## %s\n\n", f.Path)
 		for _, lc := range entries {
 			if lc.lineNum == 0 {
 				if lc.isMark {
-					sb.WriteString("> [flagged]\n\n")
+					fmt.Fprintf(&sb, "> [flagged]\n\n")
 				} else {
-					sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+					fmt.Fprintf(&sb, "> %s\n\n", lc.text)
 				}
 			} else {
 				content := findLineContent(f, lc.lineNum, lc.isOld)
 				if lc.isOld && content != "" {
-					sb.WriteString(fmt.Sprintf("%d (removed): `%s`\n", lc.lineNum, content))
+					fmt.Fprintf(&sb, "%d (removed): `%s`\n", lc.lineNum, content)
 				} else if lc.isOld {
-					sb.WriteString(fmt.Sprintf("%d (removed):\n", lc.lineNum))
+					fmt.Fprintf(&sb, "%d (removed):\n", lc.lineNum)
 				} else if content != "" {
-					sb.WriteString(fmt.Sprintf("%d: `%s`\n", lc.lineNum, content))
+					fmt.Fprintf(&sb, "%d: `%s`\n", lc.lineNum, content)
 				} else {
-					sb.WriteString(fmt.Sprintf("%d:\n", lc.lineNum))
+					fmt.Fprintf(&sb, "%d:\n", lc.lineNum)
 				}
 				if lc.isMark {
-					sb.WriteString("> [flagged]\n\n")
+					fmt.Fprintf(&sb, "> [flagged]\n\n")
 				} else {
-					sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+					fmt.Fprintf(&sb, "> %s\n\n", lc.text)
 				}
 			}
 		}

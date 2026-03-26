@@ -185,7 +185,7 @@ func buildFileDiff(filePath string) (*git.Diff, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // best-effort close on read-only file
 
 	var lines []git.Line
 	scanner := bufio.NewScanner(f)
@@ -225,7 +225,7 @@ func runDiff() {
 func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	pre := fs.Bool("pre", false, "Include pre-release (dev) builds")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	fmt.Printf("Current version: %s\n", version)
 	fmt.Println("Checking for updates...")

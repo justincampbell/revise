@@ -21,8 +21,8 @@ func TestIsGitRepo_Inside(t *testing.T) {
 
 func TestIsGitRepo_Outside(t *testing.T) {
 	orig, _ := os.Getwd()
-	os.Chdir(t.TempDir())
-	t.Cleanup(func() { os.Chdir(orig) })
+	os.Chdir(t.TempDir())                      //nolint:errcheck // test setup
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck // best-effort restore
 	assert.False(t, IsGitRepo())
 }
 
@@ -411,7 +411,7 @@ func TestRemoteName_NonOriginRemote(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
 	}
-	exec.Command("git", "-C", bare, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	_ = exec.Command("git", "-C", bare, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 	r.AddRemoteAs(t, bare, "upstream")
 	assert.Equal(t, "upstream", RemoteName())
 }
@@ -424,7 +424,7 @@ func TestRemoteName_PrefersOriginOverOthers(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
 	}
-	exec.Command("git", "-C", bare1, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	_ = exec.Command("git", "-C", bare1, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 	r.AddRemoteAs(t, bare1, "upstream")
 
 	bare2 := t.TempDir()
@@ -432,7 +432,7 @@ func TestRemoteName_PrefersOriginOverOthers(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v\n%s", err, out)
 	}
-	exec.Command("git", "-C", bare2, "symbolic-ref", "HEAD", "refs/heads/main").Run()
+	_ = exec.Command("git", "-C", bare2, "symbolic-ref", "HEAD", "refs/heads/main").Run()
 	r.mustGit("remote", "add", "origin", bare2)
 
 	assert.Equal(t, "origin", RemoteName())

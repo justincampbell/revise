@@ -89,7 +89,7 @@ func (r *TestRepo) Chdir() {
 	if err := os.Chdir(r.Dir); err != nil {
 		r.t.Fatalf("chdir %s: %v", r.Dir, err)
 	}
-	r.t.Cleanup(func() { os.Chdir(orig) })
+	r.t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck // best-effort restore
 }
 
 // StagedDiffRaw returns the raw output of git diff --cached.
@@ -188,10 +188,10 @@ func behindRemoteRepo(t *testing.T) *TestRepo {
 	}
 	cmd = exec.Command("git", "config", "user.email", "test@example.com")
 	cmd.Dir = cloneDir
-	cmd.Run()
+	_ = cmd.Run()
 	cmd = exec.Command("git", "config", "user.name", "Test")
 	cmd.Dir = cloneDir
-	cmd.Run()
+	_ = cmd.Run()
 
 	// Add a commit in the clone and push
 	if err := os.WriteFile(filepath.Join(cloneDir, "remote-change.go"), []byte("package main\n\n// from remote\n"), 0644); err != nil {

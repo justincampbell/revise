@@ -107,8 +107,7 @@ func Parse(raw string) *Diff {
 			})
 			oldNum++
 			newNum++
-		} else if line == `\ No newline at end of file` {
-			// skip
+		} else if line == `\ No newline at end of file` { //nolint:staticcheck // intentionally ignored
 		}
 	}
 

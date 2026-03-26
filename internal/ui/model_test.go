@@ -1107,7 +1107,7 @@ func TestModelComment_PersistsOnSave(t *testing.T) {
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
+	_ = updated.(Model)
 
 	// Create a new model from the same store — should load the comment
 	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
@@ -1570,8 +1570,7 @@ func TestFileReviewMode_StageKeyIsNoop(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
 	})
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
-	m = updated.(Model)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	assert.Nil(t, cmd)
 }
 
@@ -1579,8 +1578,7 @@ func TestFileReviewMode_UnstageKeyIsNoop(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
 	})
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	m = updated.(Model)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
 	assert.Nil(t, cmd)
 }
 
