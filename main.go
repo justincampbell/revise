@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/comments"
@@ -18,6 +19,7 @@ func main() {
 	helpFlag := flag.Bool("help", false, "Show help")
 	versionFlag := flag.Bool("version", false, "Show version")
 	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
+	themeFlag := flag.String("theme", "dark", "Color theme: dark, light, dark-daltonized, light-daltonized")
 	flag.Parse()
 
 	if *helpFlag {
@@ -29,6 +31,17 @@ func main() {
 		fmt.Println("revise", version)
 		os.Exit(0)
 	}
+
+	theme := ui.Theme(*themeFlag)
+	if !ui.IsValidTheme(theme) {
+		valid := make([]string, len(ui.ValidThemes))
+		for i, t := range ui.ValidThemes {
+			valid[i] = string(t)
+		}
+		fmt.Fprintf(os.Stderr, "Error: unknown theme %q (valid: %s)\n", *themeFlag, strings.Join(valid, ", "))
+		os.Exit(1)
+	}
+	ui.SetTheme(theme)
 
 	// Subcommands that don't require a git repo.
 	args := flag.Args()
@@ -144,8 +157,9 @@ func printHelp() {
 Usage: revise [flags] [command]
 
 Flags:
-  --help           Show this help
-  --version, -v    Show version
+  --help                Show this help
+  --version, -v         Show version
+  --theme <name>        Color theme: dark (default), light, dark-daltonized, light-daltonized
 
 Commands:
   diff            Print unified diff (no TUI)
