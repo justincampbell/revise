@@ -962,6 +962,45 @@ func TestModelFileList_D_BranchOnlyFile_ShowsError(t *testing.T) {
 	assert.False(t, m.confirmDiscard)
 }
 
+// --- Cursor preservation tests ---
+
+func TestDiffReload_PreservesCursorWhenFileRemoved(t *testing.T) {
+	m := makeModel("a.go", "b.go", "c.go")
+	// Move cursor to b.go (index 1)
+	m = sendKey(m, "j")
+	assert.Equal(t, 1, m.fileList.cursor)
+	assert.Equal(t, "b.go", m.fileList.selectedFile().Path)
+
+	// Simulate a diff reload where b.go was discarded/removed
+	updated, _ := m.Update(diffLoadedMsg{
+		diff: &git.Diff{Files: []git.FileDiff{
+			{Path: "a.go", Status: git.StatusModified},
+			{Path: "c.go", Status: git.StatusModified},
+		}},
+	})
+	m = updated.(Model)
+	// Cursor should stay at index 1 (now c.go), not reset to 0
+	assert.Equal(t, 1, m.fileList.cursor)
+	assert.Equal(t, "c.go", m.fileList.selectedFile().Path)
+}
+
+func TestDiffReload_ClampsCursorWhenLastFileRemoved(t *testing.T) {
+	m := makeModel("a.go", "b.go")
+	// Move cursor to b.go (index 1)
+	m = sendKey(m, "j")
+	assert.Equal(t, 1, m.fileList.cursor)
+
+	// Simulate a diff reload where b.go was removed, leaving only a.go
+	updated, _ := m.Update(diffLoadedMsg{
+		diff: &git.Diff{Files: []git.FileDiff{
+			{Path: "a.go", Status: git.StatusModified},
+		}},
+	})
+	m = updated.(Model)
+	// Cursor should clamp to last file (index 0)
+	assert.Equal(t, 0, m.fileList.cursor)
+}
+
 // --- Hide whitespace tests ---
 
 func TestModelW_TogglesHideWhitespace(t *testing.T) {

@@ -452,19 +452,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		selectedPath := ""
+		prevCursor := m.fileList.cursor
 		if f := m.fileList.selectedFile(); f != nil {
 			selectedPath = f.Path
 		}
 		m.fileList = newFileListModel(m.diff.Files)
 		m.fileList.comments = m.comments
 		m.updateLayout()
-		// Re-select the same file if it still exists
+		// Re-select the same file if it still exists, otherwise
+		// keep the cursor at the same index (clamped to the list).
+		found := false
 		if selectedPath != "" {
 			for i, f := range m.diff.Files {
 				if f.Path == selectedPath {
 					m.fileList.cursor = i
+					found = true
 					break
 				}
+			}
+		}
+		if !found && len(m.diff.Files) > 0 {
+			if prevCursor >= len(m.diff.Files) {
+				m.fileList.cursor = len(m.diff.Files) - 1
+			} else {
+				m.fileList.cursor = prevCursor
 			}
 		}
 		if msg.fromPoll {
