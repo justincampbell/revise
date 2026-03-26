@@ -114,7 +114,7 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 		markCount := m.marks.countForFile(f.Path)
 		countSuffix := ""
 		if commentCount > 0 && markCount > 0 {
-			countSuffix = fmt.Sprintf(" (%d💬 %d◆)", commentCount, markCount)
+			countSuffix = fmt.Sprintf(" (%d %d◆)", commentCount, markCount)
 		} else if commentCount > 0 {
 			countSuffix = fmt.Sprintf(" (%d)", commentCount)
 		} else if markCount > 0 {

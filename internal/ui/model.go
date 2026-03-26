@@ -345,8 +345,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Clear all comments
 		case "C":
-			if len(m.comments) > 0 {
-				n := len(m.comments)
+			if len(m.comments) > 0 || len(m.marks) > 0 {
+				n := len(m.comments) + len(m.marks)
 				noun := "comments"
 				if n == 1 {
 					noun = "comment"
@@ -1317,5 +1317,5 @@ func (m Model) View() string {
 // ExportedComments returns the formatted comment text for printing on exit.
 // Returns "" if there are no comments.
 func (m Model) ExportedComments() string {
-	return formatExport(m.diff.Files, m.comments)
+	return formatExport(m.diff.Files, m.comments, m.marks)
 }

@@ -43,7 +43,7 @@ func TestFormatExport_StripsLeadingWhitespace(t *testing.T) {
 	c := comments{
 		{file: "comment_test.go", lineNum: 211}: "Test",
 	}
-	result := formatExport(files, c)
+	result := formatExport(files, c, nil)
 	assert.Contains(t, result, "211: `Hunks: []git.Hunk{{`\n> Test")
 	assert.NotContains(t, result, "\t\tHunks")
 }
