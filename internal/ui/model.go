@@ -376,6 +376,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.syncSelectedFile()
 			}
 		case tea.MouseButtonLeft:
+			if msg.Action != tea.MouseActionPress {
+				return m, nil
+			}
 			// Check for status bar slider click
 			if msg.Y == m.height-1 {
 				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode {

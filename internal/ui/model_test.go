@@ -602,6 +602,26 @@ func TestMouseClickSlider_SameMode_NoReload(t *testing.T) {
 	assert.Nil(t, cmd, "should not reload when clicking the already-active mode")
 }
 
+func TestMouseRelease_Ignored(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	// Open comment input on the first line
+	m = sendKey(m, "c")
+	require.True(t, m.commentInputActive)
+
+	// Simulate mouse release on the diff panel — should be ignored
+	releaseMsg := tea.MouseMsg{
+		X:      40,
+		Y:      2,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	}
+	updated, _ := m.Update(releaseMsg)
+	m = updated.(Model)
+	assert.True(t, m.commentInputActive, "mouse release should not close the comment input")
+}
+
 func TestModelExport_NoCommentsNoStatus(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineAdded, Content: "hello", NewNum: 1},
