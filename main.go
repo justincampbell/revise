@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
@@ -15,7 +18,27 @@ import (
 
 var version = "dev"
 
+// ttyOut is the TUI output writer. Opened from /dev/tty so the TUI
+// renders to the terminal even when stdout is redirected.
+var ttyOut *os.File
+
+func init() {
+	// Open /dev/tty so the TUI renders to the real terminal even when
+	// stdout is redirected (enables piping and EDITOR workflows).
+	// Mutate the existing default renderer (don't replace it) so that
+	// styles already created by imported packages keep their reference.
+	var err error
+	ttyOut, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		ttyOut = os.Stderr
+	}
+	r := lipgloss.DefaultRenderer()
+	r.SetOutput(termenv.NewOutput(ttyOut))
+}
+
 func main() {
+
+	outputFlag := flag.String("output", "", "Write comments to file on exit")
 	helpFlag := flag.Bool("help", false, "Show help")
 	versionFlag := flag.Bool("version", false, "Show version")
 	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
@@ -53,6 +76,12 @@ func main() {
 		case "styles":
 			ui.PrintStylesDemo()
 			return
+		case "diff":
+			// Handled below after git repo check.
+		default:
+			// Positional argument: file review mode.
+			runFileReview(args[0], *outputFlag)
+			return
 		}
 	}
 
@@ -68,15 +97,9 @@ func main() {
 	}
 
 	// Subcommands that require a git repo.
-	if len(args) > 0 {
-		switch args[0] {
-		case "diff":
-			runDiff()
-			return
-		default:
-			fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
-			os.Exit(1)
-		}
+	if len(args) > 0 && args[0] == "diff" {
+		runDiff()
+		return
 	}
 
 	onDefaultBranch, err := git.IsOnDefaultBranch()
@@ -107,12 +130,86 @@ func main() {
 	}
 
 	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(), tea.WithOutput(ttyOut))
 
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Output comments on exit.
+	if fm, ok := finalModel.(ui.Model); ok {
+		writeComments(fm, *outputFlag)
+	}
+}
+
+func runFileReview(filePath string, outputPath string) {
+	diff, err := buildFileDiff(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	m := ui.NewFileReview(diff, filePath)
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(ttyOut))
+	finalModel, err := p.Run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Output comments on exit.
+	if fm, ok := finalModel.(ui.Model); ok {
+		writeComments(fm, outputPath)
+	}
+}
+
+// writeComments outputs comments to --output file or stdout.
+func writeComments(m ui.Model, outputPath string) {
+	text := m.ExportedComments()
+	if text == "" {
+		return
+	}
+	if outputPath != "" {
+		if err := os.WriteFile(outputPath, []byte(text), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing comments: %v\n", err)
+		}
+		return
+	}
+	fmt.Print(text)
+}
+
+// buildFileDiff reads a file and returns a synthetic Diff for file review mode.
+func buildFileDiff(filePath string) (*git.Diff, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []git.Line
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		lines = append(lines, git.Line{
+			Type:    git.LineContext,
+			Content: scanner.Text(),
+			OldNum:  lineNum,
+			NewNum:  lineNum,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return &git.Diff{
+		Files: []git.FileDiff{{
+			Path:   filePath,
+			Status: git.StatusModified,
+			Hunks:  []git.Hunk{{Lines: lines}},
+		}},
+	}, nil
 }
 
 func runDiff() {
@@ -154,15 +251,19 @@ func runUpdate(args []string) {
 func printHelp() {
 	fmt.Println(`revise - Review local git changes
 
-Usage: revise [flags] [command]
+Usage: revise [flags] [command] [file]
 
 Flags:
   --help                Show this help
   --version, -v         Show version
   --theme <name>        Color theme: dark (default), light, dark-daltonized, light-daltonized
+  --output <file>       Write comments to file on exit
 
 Commands:
   diff            Print unified diff (no TUI)
   styles          Show file status color matrix
-  update [--pre]  Update to the latest version`)
+  update [--pre]  Update to the latest version
+
+File review:
+  revise <file>   Review a file with comments`)
 }

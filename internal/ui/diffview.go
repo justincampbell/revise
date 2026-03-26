@@ -42,6 +42,7 @@ type diffViewModel struct {
 	commentInputActive bool
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
 	textInput          textinput.Model
+	fileReviewMode     bool // true when reviewing a file (suppresses git chrome in render)
 }
 
 func newDiffViewModel() diffViewModel {
@@ -404,9 +405,17 @@ func renderHunkHeader(h git.Hunk) string {
 		label = "unstaged"
 	}
 
+	// No source and no header context — nothing to show (e.g. file review mode).
+	if label == "" && header == "" {
+		return ""
+	}
+
 	tag := hunkSourceTagStyle.Render("[" + label + "]")
 	if header == "" {
 		return tag
+	}
+	if label == "" {
+		return style.Render(header)
 	}
 	return tag + " " + style.Render(header)
 }
@@ -562,6 +571,18 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		style = focusedBorder
 	}
 	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+
+	if m.fileReviewMode {
+		// File review mode: centered filename in top border, clean bottom border.
+		slider := ""
+		if len(modeSlider) > 0 {
+			slider = modeSlider[0]
+		}
+		if slider != "" {
+			rendered = setBorderTitleCentered(rendered, fileStyle.Render(" "+slider+" "), focused)
+		}
+		return rendered
+	}
 
 	title := ""
 	if m.file != nil {

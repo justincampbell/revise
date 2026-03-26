@@ -155,9 +155,15 @@ Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (nar
 - Help overlay uses yellow border to distinguish from panels
 - Lipgloss `Width(n)`/`Height(n)` include padding but exclude borders — when setting explicit dimensions, add padding to the content size
 
+### File Review Mode
+
+`revise <file>` opens any file in a read-only review mode with full comment support. All lines are shown as context (no diff coloring). Starts fullscreen with diff view focused. Git-specific keys (stage/unstage/discard, mode cycling, context lines, whitespace toggle) are disabled — guarded by a single `fileReviewMode` check per key group in the Update handlers. The help overlay filters bindings via `FileReviewBindingGroups()` which uses the `GitOnly` flag on `Binding`.
+
+Comments are output to stdout on exit (both in file review and git diff modes), enabling integration with Claude Code: Claude launches `revise`, user reviews and comments, comments print on close.
+
 ### Keyboard Bindings
 
-All bindings are defined in `internal/ui/keys.go` (`allBindings`) and used to generate both the in-app help overlay (`?`) and the `--help` CLI output. This is the single source of truth — do not define bindings elsewhere.
+All bindings are defined in `internal/ui/keys.go` (`allBindings`) and used to generate both the in-app help overlay (`?`) and the `--help` CLI output. This is the single source of truth — do not define bindings elsewhere. Each `Binding` has a `GitOnly` flag — when true, the binding is hidden in file review mode help and disabled in input handling.
 
 Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `case "esc":` in switch statements.
 

@@ -45,10 +45,24 @@ Cycle through modes with `Tab` / `Shift+Tab`:
 | **Staged** | Staged + unstaged + untracked |
 | **Unstaged** | Unstaged + untracked only (narrowest) |
 
+### File Review
+
+Review any file with comments:
+
+```sh
+revise <file>
+revise --output comments.md <file>
+```
+
+Opens the file in a read-only review mode — all lines shown as context, git-specific keys disabled. Add comments, then quit — comments are printed to stdout on exit. Use `--output <file>` to write comments to a file instead.
+
+Comments are also output on exit in normal git diff mode.
+
 ### Subcommands
 
 | Command | Description |
 |---------|-------------|
+| `revise <file>` | Review a file with comments |
 | `revise styles` | Show file status color matrix for all staging states |
 | `revise update [--pre]` | Update to the latest version |
 

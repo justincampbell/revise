@@ -2,8 +2,9 @@ package ui
 
 // Binding describes a keyboard shortcut for display in help.
 type Binding struct {
-	Key  string
-	Desc string
+	Key     string
+	Desc    string
+	GitOnly bool // true for bindings that only apply in git diff mode
 }
 
 // BindingGroup is a named group of keyboard shortcuts.
@@ -16,50 +17,67 @@ type BindingGroup struct {
 // The help overlay and --help output are generated from this list.
 var allBindings = []BindingGroup{
 	{"General", []Binding{
-		{"← (h)", "Focus file list"},
-		{"→ (l)", "Focus diff view"},
-		{"n/N", "Next/prev file"},
-		{"Tab/S-Tab", "Cycle diff mode"},
-		{"f", "Toggle fullscreen diff"},
-		{"Esc", "Back to file list"},
-		{"?", "Toggle help"},
-		{"q", "Quit"},
+		{Key: "← (h)", Desc: "Focus file list", GitOnly: true},
+		{Key: "→ (l)", Desc: "Focus diff view", GitOnly: true},
+		{Key: "n/N", Desc: "Next/prev file", GitOnly: true},
+		{Key: "Tab/S-Tab", Desc: "Cycle diff mode", GitOnly: true},
+		{Key: "f", Desc: "Toggle fullscreen diff", GitOnly: true},
+		{Key: "Esc", Desc: "Back to file list", GitOnly: true},
+		{Key: "?", Desc: "Toggle help"},
+		{Key: "q", Desc: "Quit"},
 	}},
 	{"File List", []Binding{
-		{"j/k, ↑/↓", "Navigate files"},
-		{"Enter", "Select file and focus diff"},
-		{"c", "Add/edit file comment"},
-		{"d", "Delete file comment"},
-		{"s", "Stage file"},
-		{"u", "Unstage file"},
-		{"D", "Discard file"},
+		{Key: "j/k, ↑/↓", Desc: "Navigate files", GitOnly: true},
+		{Key: "Enter", Desc: "Select file and focus diff", GitOnly: true},
+		{Key: "c", Desc: "Add/edit file comment", GitOnly: true},
+		{Key: "d", Desc: "Delete file comment", GitOnly: true},
+		{Key: "s", Desc: "Stage file", GitOnly: true},
+		{Key: "u", Desc: "Unstage file", GitOnly: true},
+		{Key: "D", Desc: "Discard file", GitOnly: true},
 	}},
 	{"Diff View", []Binding{
-		{"j/k, ↑/↓", "Move cursor"},
-		{"}/{ (]/[)", "Next/prev hunk"},
-		{"+/-", "More/fewer context lines"},
-		{"w", "Toggle hide whitespace"},
-		{"g/G", "Top/bottom"},
-		{"Fn+↓/↑", "Page down/up"},
-		{"Enter/c", "Add/edit comment on line"},
-		{"d", "Delete comment on line"},
-		{"s/S", "Stage hunk/file"},
-		{"u/U", "Unstage hunk/file"},
-		{"D", "Discard hunk"},
+		{Key: "j/k, ↑/↓", Desc: "Move cursor"},
+		{Key: "}/{ (]/[)", Desc: "Next/prev hunk"},
+		{Key: "+/-", Desc: "More/fewer context lines", GitOnly: true},
+		{Key: "w", Desc: "Toggle hide whitespace", GitOnly: true},
+		{Key: "g/G", Desc: "Top/bottom"},
+		{Key: "Fn+↓/↑", Desc: "Page down/up"},
+		{Key: "Enter/c", Desc: "Add/edit comment on line"},
+		{Key: "d", Desc: "Delete comment on line"},
+		{Key: "s/S", Desc: "Stage hunk/file", GitOnly: true},
+		{Key: "u/U", Desc: "Unstage hunk/file", GitOnly: true},
+		{Key: "D", Desc: "Discard hunk", GitOnly: true},
 	}},
 	{"Global", []Binding{
-		{"e", "Export comments to clipboard"},
-		{"C", "Clear all comments"},
-		{"Ctrl+U", "Apply available update"},
-		{"!", "Report issue on GitHub"},
+		{Key: "e", Desc: "Export comments to clipboard"},
+		{Key: "C", Desc: "Clear all comments"},
+		{Key: "Ctrl+U", Desc: "Apply available update", GitOnly: true},
+		{Key: "!", Desc: "Report issue on GitHub"},
 	}},
 	{"Comment Input", []Binding{
-		{"Enter", "Save comment"},
-		{"Esc", "Cancel"},
+		{Key: "Enter", Desc: "Save comment"},
+		{Key: "Esc", Desc: "Cancel"},
 	}},
 }
 
 // BindingGroups returns all keyboard shortcut groups.
 func BindingGroups() []BindingGroup {
 	return allBindings
+}
+
+// FileReviewBindingGroups returns binding groups with git-only bindings filtered out.
+func FileReviewBindingGroups() []BindingGroup {
+	var groups []BindingGroup
+	for _, g := range allBindings {
+		var bindings []Binding
+		for _, b := range g.Bindings {
+			if !b.GitOnly {
+				bindings = append(bindings, b)
+			}
+		}
+		if len(bindings) > 0 {
+			groups = append(groups, BindingGroup{Name: g.Name, Bindings: bindings})
+		}
+	}
+	return groups
 }
