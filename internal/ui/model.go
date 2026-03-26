@@ -518,6 +518,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.fileList = newFileListModel(m.diff.Files)
 		m.fileList.comments = m.comments
+		m.fileList.marks = m.marks
 		m.updateLayout()
 		// Re-select the same file if it still exists, otherwise
 		// keep the cursor at the same index (clamped to the list).
