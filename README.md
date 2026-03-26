@@ -63,6 +63,9 @@ Comments are also output on exit in normal git diff mode.
 | Command | Description |
 |---------|-------------|
 | `revise <file>` | Review a file with comments |
+| `revise config` | Show current configuration |
+| `revise config init` | Create default config file (`--force` to overwrite) |
+| `revise config path` | Print config file path |
 | `revise styles` | Show file status color matrix for all staging states |
 | `revise update [--pre]` | Update to the latest version |
 
@@ -124,6 +127,27 @@ Press `?` inside revise to see the help overlay.
 |-----|--------|
 | `e` | Export comments to clipboard |
 | `!` | Report issue on GitHub |
+
+## Configuration
+
+Create a config file with:
+
+```sh
+revise config init
+```
+
+This writes a commented template to `~/.config/revise/config.yaml` (or `$XDG_CONFIG_HOME/revise/config.yaml`). Uncomment and edit values to customize:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `theme` | string | `dark` | Color theme: `dark`, `light`, `dark-daltonized`, `light-daltonized` |
+| `default_mode` | string | `branch` | Starting diff mode: `branch`, `staged`, `staged_only`, `unstaged_only` |
+| `context_lines` | int | `3` | Lines of context around changes (0-20) |
+| `whitespace` | bool | `true` | Show whitespace-only changes |
+| `mouse` | bool | `true` | Enable mouse support |
+| `update_check` | bool/string | `true` | Check for updates: `true`, `false`, or `dev` (include pre-releases) |
+
+CLI flags (e.g., `--theme`) override config file values.
 
 ## Inspiration
 

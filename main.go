@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/justincampbell/revise/internal/comments"
+	"github.com/justincampbell/revise/internal/config"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
 	"github.com/justincampbell/revise/internal/update"
@@ -50,19 +51,39 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Load config from file.
+	cfg, cfgWarnings, cfgErr := config.LoadDefault()
+	if cfgErr != nil {
+		cfgWarnings = append(cfgWarnings, fmt.Sprintf("config: %v", cfgErr))
+	}
+	resolved := config.Resolve(cfg)
+
+	// CLI flags override config values.
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "theme":
+			resolved.Theme = *themeFlag
+		}
+	})
+
 	if *versionFlag {
-		fmt.Println("revise", version)
+		configInfo := "(no config file)"
+		if config.Exists() {
+			configInfo = fmt.Sprintf("(config: %s)", config.Path())
+		}
+		fmt.Println("revise", version, configInfo)
 		os.Exit(0)
 	}
 
-	theme := ui.Theme(*themeFlag)
+	// Validate theme.
+	theme := ui.Theme(resolved.Theme)
 	if !ui.IsValidTheme(theme) {
 		valid := make([]string, len(ui.ValidThemes))
 		for i, t := range ui.ValidThemes {
 			valid[i] = string(t)
 		}
-		fmt.Fprintf(os.Stderr, "Error: unknown theme %q (valid: %s)\n", *themeFlag, strings.Join(valid, ", "))
-		os.Exit(1)
+		cfgWarnings = append(cfgWarnings, fmt.Sprintf("invalid theme %q (valid: %s), using default", resolved.Theme, strings.Join(valid, ", ")))
+		theme = ui.ThemeDark
 	}
 	ui.SetTheme(theme)
 
@@ -70,6 +91,9 @@ func main() {
 	args := flag.Args()
 	if len(args) > 0 {
 		switch args[0] {
+		case "config":
+			runConfig(args[1:])
+			return
 		case "update":
 			runUpdate(args[1:])
 			return
@@ -108,11 +132,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Map config default_mode to DiffMode.
+	defaultMode := parseDiffMode(resolved.DefaultMode)
+
+	contextLines := resolved.ContextLines
+	hideWhitespace := !resolved.Whitespace
+
 	var diff *git.Diff
 	if onDefaultBranch {
-		diff, err = git.WorkingTreeDiff(git.DefaultContextLines)
+		diff, err = git.WorkingTreeDiffOptions(contextLines, hideWhitespace)
 	} else {
-		diff, err = git.BranchDiff(git.DefaultContextLines)
+		diff, err = git.BranchDiffOptions(contextLines, hideWhitespace)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -129,8 +159,23 @@ func main() {
 		storePath = comments.StorePath(repoRoot, branch)
 	}
 
-	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(), tea.WithOutput(ttyOut))
+	m := ui.NewFromOptions(ui.ModelOptions{
+		Diff:            diff,
+		OnDefaultBranch: onDefaultBranch,
+		StorePath:       storePath,
+		Version:         version,
+		ContextLines:    contextLines,
+		HideWhitespace:  hideWhitespace,
+		UpdateCheck:     resolved.UpdateCheck,
+		DefaultMode:     defaultMode,
+		ConfigWarnings:  cfgWarnings,
+	})
+
+	opts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithReportFocus(), tea.WithOutput(ttyOut)}
+	if resolved.Mouse {
+		opts = append(opts, tea.WithMouseCellMotion())
+	}
+	p := tea.NewProgram(m, opts...)
 
 	finalModel, err := p.Run()
 	if err != nil {
@@ -212,6 +257,68 @@ func buildFileDiff(filePath string) (*git.Diff, error) {
 	}, nil
 }
 
+func parseDiffMode(s string) ui.DiffMode {
+	switch s {
+	case "staged":
+		return ui.ModeStaged
+	case "staged_only":
+		return ui.ModeStagedOnly
+	case "unstaged_only":
+		return ui.ModeUnstaged
+	default:
+		return ui.ModeBranch
+	}
+}
+
+func runConfig(args []string) {
+	if len(args) == 0 {
+		// Bare "revise config" — print resolved config.
+		cfg, _, _ := config.LoadDefault()
+		resolved := config.Resolve(cfg)
+		p := config.Path()
+		if p != "" {
+			fmt.Printf("# %s\n", p)
+		}
+		fmt.Printf("theme: %s\n", resolved.Theme)
+		fmt.Printf("default_mode: %s\n", resolved.DefaultMode)
+		fmt.Printf("context_lines: %d\n", resolved.ContextLines)
+		fmt.Printf("whitespace: %t\n", resolved.Whitespace)
+		fmt.Printf("mouse: %t\n", resolved.Mouse)
+		fmt.Printf("update_check: %s\n", resolved.UpdateCheck)
+		return
+	}
+
+	switch args[0] {
+	case "path":
+		p := config.Path()
+		if p == "" {
+			fmt.Fprintln(os.Stderr, "Error: cannot determine config path (HOME not set)")
+			os.Exit(1)
+		}
+		fmt.Println(p)
+
+	case "init":
+		fs := flag.NewFlagSet("config init", flag.ExitOnError)
+		force := fs.Bool("force", false, "Overwrite existing config file")
+		fs.Parse(args[1:])
+
+		p := config.Path()
+		if p == "" {
+			fmt.Fprintln(os.Stderr, "Error: cannot determine config path (HOME not set)")
+			os.Exit(1)
+		}
+		if err := config.WriteTemplate(p, *force); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Created config file at %s\n", p)
+
+	default:
+		fmt.Fprintf(os.Stderr, "unknown config command: %s\n", args[0])
+		os.Exit(1)
+	}
+}
+
 func runDiff() {
 	diff, err := git.GetDiff()
 	if err != nil {
@@ -260,6 +367,9 @@ Flags:
   --output <file>       Write comments to file on exit
 
 Commands:
+  config          Show, create, or manage configuration
+  config path     Print config file path
+  config init     Create default config file (--force to overwrite)
   diff            Print unified diff (no TUI)
   styles          Show file status color matrix
   update [--pre]  Update to the latest version

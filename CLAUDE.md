@@ -104,6 +104,9 @@ internal/
     format_test.go             # formatter tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
+  config/
+    config.go                  # user config: load YAML, resolve defaults, path, template
+    config_test.go             # config loading, resolution, edge case tests
   comments/
     store.go                   # JSON persistence for comments (Save/Load/StorePath)
     store_test.go              # persistence unit tests
@@ -179,9 +182,18 @@ Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256
 
 File-level comments use `lineNum: 0` in the `commentKey` struct (diff line numbers are always >= 1). They are displayed at the top of the diff view before hunks, and exported as "File comment: ..." in the export format.
 
+### Configuration
+
+- Config file at `~/.config/revise/config.yaml` (respects `$XDG_CONFIG_HOME`)
+- Pointer-typed `Config` struct for distinguishing "not set" from zero values; `ResolvedConfig` flat struct for the rest of the app
+- Precedence: hardcoded defaults < config file < CLI flags (uses `flag.Visit` to detect explicit flags)
+- Config errors show as status bar warnings, never crash the app
+- `revise config init` generates a commented template; `revise config path` shows the file location
+- The `internal/config` package does NOT import `internal/ui` — semantic validation (valid theme/mode) happens in `main.go`
+- `update_check` supports `true`, `false`, and `"dev"` (pre-release channel)
+- `whitespace: true` (default, show changes) maps inversely to internal `hideWhitespace` field
+
 ### Diff Parsing
 
 - `parseFilePath` handles both standard (`diff --git a/foo b/foo`) and no-prefix (`diff --git foo foo`) formats — the latter occurs when `diff.noprefix=true` is set in the user's git config
 - `padRight` and all column-width calculations use rune count (`len([]rune(s))`), not byte length, to handle multi-byte Unicode characters like arrow symbols correctly
-
-

@@ -39,6 +39,24 @@ func makeModelWithDiff(filePath string, lines []git.Line) Model {
 	return updated.(Model)
 }
 
+// newModelWithStorePath is a test helper that wraps NewFromOptions for tests
+// that need comment persistence.
+func newModelWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, version string) Model {
+	mode := ModeBranch
+	if onDefaultBranch {
+		mode = ModeStaged
+	}
+	return NewFromOptions(ModelOptions{
+		Diff:            diff,
+		OnDefaultBranch: onDefaultBranch,
+		StorePath:       storePath,
+		Version:         version,
+		ContextLines:    git.DefaultContextLines,
+		UpdateCheck:     "true",
+		DefaultMode:     mode,
+	})
+}
+
 func sendKey(m Model, key string) Model {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 	return updated.(Model)
@@ -1090,7 +1108,7 @@ func makeModelWithStore(t *testing.T, filePath string, lines []git.Line) (Model,
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{hunk},
 	}}
-	m := NewWithStorePath(&git.Diff{Files: files}, false, storePath, "")
+	m := newModelWithStorePath(&git.Diff{Files: files}, false, storePath, "")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	return updated.(Model), storePath
 }
@@ -1110,7 +1128,7 @@ func TestModelComment_PersistsOnSave(t *testing.T) {
 	m = updated.(Model)
 
 	// Create a new model from the same store — should load the comment
-	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+	m2 := newModelWithStorePath(&git.Diff{Files: []git.FileDiff{{
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
@@ -1136,7 +1154,7 @@ func TestModelComment_PersistsOnDelete(t *testing.T) {
 	m = sendKey(m, "d")
 
 	// Create a new model — comment should be gone
-	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+	m2 := newModelWithStorePath(&git.Diff{Files: []git.FileDiff{{
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
@@ -1225,7 +1243,7 @@ func TestModelClearComments_Persists(t *testing.T) {
 	m = sendKey(m, "y")
 
 	// Reload from store — should be empty
-	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+	m2 := newModelWithStorePath(&git.Diff{Files: []git.FileDiff{{
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
@@ -1349,7 +1367,7 @@ func TestModelFileComment_Persists(t *testing.T) {
 	m = updated.(Model)
 
 	// Create a new model from the same store — should load the file comment
-	m2 := NewWithStorePath(&git.Diff{Files: []git.FileDiff{{
+	m2 := newModelWithStorePath(&git.Diff{Files: []git.FileDiff{{
 		Path:   "foo.go",
 		Status: git.StatusModified,
 		Hunks:  []git.Hunk{{Header: "@@ -1,1 +1,1 @@", Lines: lines}},
@@ -1364,6 +1382,28 @@ func TestInit_ReturnsPollTickCmd(t *testing.T) {
 	m := makeModel("a.go")
 	cmd := m.Init()
 	assert.NotNil(t, cmd, "Init should return a poll tick command")
+}
+
+func TestInit_UpdateCheckDisabled(t *testing.T) {
+	m := NewFromOptions(ModelOptions{
+		Diff:        &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		Version:     "1.0.0",
+		UpdateCheck: "false",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	assert.Equal(t, "false", m.updateCheck)
+}
+
+func TestInit_ConfigWarnings(t *testing.T) {
+	m := NewFromOptions(ModelOptions{
+		Diff:           &git.Diff{Files: []git.FileDiff{{Path: "a.go"}}},
+		UpdateCheck:    "true",
+		ConfigWarnings: []string{"config: unknown key contxt_lines"},
+	})
+	cmd := m.Init()
+	assert.NotNil(t, cmd)
+	assert.Contains(t, m.statusMsg, "contxt_lines")
 }
 
 func TestUpdateCheckMsg_SetsStatusAndClearsAfterTimeout(t *testing.T) {
