@@ -140,5 +140,5 @@ func formatExport(files []git.FileDiff, c comments) string {
 		}
 	}
 
-	return sb.String()
+	return strings.TrimRight(sb.String(), "\n")
 }
