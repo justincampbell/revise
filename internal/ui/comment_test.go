@@ -222,6 +222,23 @@ func TestFormatExport_FileLevelComment_AppearsFirst(t *testing.T) {
 	assert.Less(t, fileIdx, lineIdx, "file-level comment should appear before line comments")
 }
 
+func TestFormatExport_NoTrailingBlankLines(t *testing.T) {
+	files := []git.FileDiff{{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "hello", NewNum: 10},
+			},
+		}},
+	}}
+	c := comments{
+		{file: "foo.go", lineNum: 10}: "fix this",
+	}
+	result := formatExport(files, c)
+	assert.NotEqual(t, "", result)
+	assert.Equal(t, strings.TrimRight(result, "\n"), result, "export should not end with blank lines")
+}
+
 func TestCountForFile_IncludesFileLevel(t *testing.T) {
 	c := comments{
 		{file: "a.go", lineNum: 0}: "file comment",
