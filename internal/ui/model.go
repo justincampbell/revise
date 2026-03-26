@@ -110,6 +110,9 @@ type Model struct {
 	currentVersion string              // version string from build
 	updateInfo     *update.UpdateInfo  // populated after update check
 	updating       bool                // true while downloading update
+	updateCheck    string              // "true", "false", "dev"
+
+	configWarnings []string // shown as status message on startup
 
 	fileReviewMode bool   // true when reviewing a file (not a git diff)
 	fileReviewPath string // filename shown in status bar
@@ -143,22 +146,46 @@ func NewFileReview(diff *git.Diff, filePath string) Model {
 	}
 }
 
-func New(diff *git.Diff, onDefaultBranch bool) Model {
-	return NewWithStorePath(diff, onDefaultBranch, "", "")
+// ModelOptions holds all configuration for creating a new Model.
+type ModelOptions struct {
+	Diff            *git.Diff
+	OnDefaultBranch bool
+	StorePath       string
+	Version         string
+	ContextLines    int
+	HideWhitespace  bool
+	UpdateCheck     string   // "true", "false", "dev"
+	DefaultMode     DiffMode
+	ConfigWarnings  []string // shown as status message on startup
 }
 
-// NewWithStorePath creates a Model with comment persistence at the given path.
-// If storePath is non-empty, comments are loaded from it on startup and saved
+// New creates a Model with default options. Used primarily by tests.
+func New(diff *git.Diff, onDefaultBranch bool) Model {
+	mode := ModeBranch
+	if onDefaultBranch {
+		mode = ModeStaged
+	}
+	return NewFromOptions(ModelOptions{
+		Diff:            diff,
+		OnDefaultBranch: onDefaultBranch,
+		ContextLines:    git.DefaultContextLines,
+		UpdateCheck:     "true",
+		DefaultMode:     mode,
+	})
+}
+
+// NewFromOptions creates a Model from the given options.
+// If StorePath is non-empty, comments are loaded from it on startup and saved
 // automatically on every add/edit/delete.
-func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, version string) Model {
-	fl := newFileListModel(diff.Files)
+func NewFromOptions(opts ModelOptions) Model {
+	fl := newFileListModel(opts.Diff.Files)
 	dv := newDiffViewModel()
 
 	c := make(comments)
 
 	// Load persisted comments if a store path is configured.
-	if storePath != "" {
-		if loaded, err := commentstore.Load(storePath); err == nil {
+	if opts.StorePath != "" {
+		if loaded, err := commentstore.Load(opts.StorePath); err == nil {
 			c = commentsFromStringMap(loaded)
 		}
 	}
@@ -166,12 +193,12 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 	dv.comments = c
 	fl.comments = c
 
-	if len(diff.Files) > 0 {
-		dv.setFile(&diff.Files[0])
+	if len(opts.Diff.Files) > 0 {
+		dv.setFile(&opts.Diff.Files[0])
 	}
 
-	mode := ModeBranch
-	if onDefaultBranch {
+	mode := opts.DefaultMode
+	if opts.OnDefaultBranch {
 		mode = ModeStaged
 	}
 
@@ -179,19 +206,28 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 	// trigger an unnecessary reload.
 	initialFP, _ := git.StatusFingerprint()
 
+	var statusMsg string
+	if len(opts.ConfigWarnings) > 0 {
+		statusMsg = strings.Join(opts.ConfigWarnings, "; ")
+	}
+
 	return Model{
-		diff:            diff,
+		diff:            opts.Diff,
 		fileList:        fl,
 		diffView:        dv,
 		focus:           focusFileList,
 		comments:        c,
-		storePath:       storePath,
+		storePath:       opts.StorePath,
 		mode:            mode,
-		onDefaultBranch: onDefaultBranch,
-		contextLines:    git.DefaultContextLines,
+		onDefaultBranch: opts.OnDefaultBranch,
+		contextLines:    opts.ContextLines,
+		hideWhitespace:  opts.HideWhitespace,
 		lastFingerprint: initialFP,
 		focused:         true,
-		currentVersion:  version,
+		currentVersion:  opts.Version,
+		updateCheck:     opts.UpdateCheck,
+		configWarnings:  opts.ConfigWarnings,
+		statusMsg:       statusMsg,
 	}
 }
 
@@ -202,12 +238,16 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
 	}
-	if m.currentVersion != "" && update.IsSemver(m.currentVersion) {
+	if m.updateCheck != "false" && m.currentVersion != "" && update.IsSemver(m.currentVersion) {
 		ver := m.currentVersion
+		includePre := m.updateCheck == "dev"
 		cmds = append(cmds, func() tea.Msg {
-			info, err := update.CheckForUpdate(ver, false)
+			info, err := update.CheckForUpdate(ver, includePre)
 			return updateCheckMsg{info: info, err: err}
 		})
+	}
+	if len(m.configWarnings) > 0 {
+		cmds = append(cmds, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }))
 	}
 	return tea.Batch(cmds...)
 }
