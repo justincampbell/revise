@@ -4,7 +4,7 @@ GOLANGCI_LINT_VERSION := v2.11.4
 
 .PHONY: all build install test lint clean
 
-all: lint test build
+all: lint test
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o revise .
