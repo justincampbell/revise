@@ -15,6 +15,7 @@ type fileListModel struct {
 	width    int
 	offset   int // scroll offset
 	comments comments
+	marks    marks
 }
 
 func newFileListModel(files []git.FileDiff) fileListModel {
@@ -109,19 +110,25 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 	for i := m.offset; i < end; i++ {
 		f := m.files[i]
 		status := statusIndicator(f.Status, fileStagingSources(f))
-		count := m.comments.countForFile(f.Path)
-		countSuffix := ""
-		if count > 0 {
-			countSuffix = fmt.Sprintf(" (%d)", count)
+		commentCount := m.comments.countForFile(f.Path)
+		markCount := m.marks.countForFile(f.Path)
+		commentSuffix := ""
+		markSuffix := ""
+		if commentCount > 0 {
+			commentSuffix = fmt.Sprintf(" (%d)", commentCount)
 		}
-		name := truncate(f.Path, m.width-5-len(countSuffix))
+		if markCount > 0 {
+			markSuffix = fmt.Sprintf(" (%d)", markCount)
+		}
+		suffixLen := len(commentSuffix) + len(markSuffix)
+		name := truncate(f.Path, m.width-5-suffixLen)
 
 		if i == m.cursor {
 			prefix := "▸ "
-			b.WriteString(selectedStyle.Render(prefix) + status + selectedStyle.Render(" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(selectedStyle.Render(prefix) + status + selectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix))
 		} else {
 			prefix := "  "
-			b.WriteString(unselectedStyle.Render(prefix) + status + unselectedStyle.Render(" "+name) + commentCountStyle.Render(countSuffix))
+			b.WriteString(unselectedStyle.Render(prefix) + status + unselectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix))
 		}
 
 		if i < end-1 {

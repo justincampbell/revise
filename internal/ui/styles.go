@@ -69,11 +69,20 @@ var (
 	// Cursor indicator (1-char prefix column)
 	cursorStyle lipgloss.Style
 
-	// Comment count badge in file list
+	// Comment/mark count badges in file list
 	commentCountStyle lipgloss.Style
+	markCountStyle    lipgloss.Style
 
 	// Inline comment display (persisted annotation below a code line)
 	commentDisplayStyle lipgloss.Style
+
+	// Marked line styles
+	markAddedStyle    lipgloss.Style
+	markRemovedStyle  lipgloss.Style
+	markContextStyle  lipgloss.Style
+	markGutterAdded   lipgloss.Style
+	markGutterRemoved lipgloss.Style
+	markGutterContext lipgloss.Style
 
 	// Inline comment input box
 	commentInputStyle lipgloss.Style
@@ -148,7 +157,16 @@ func applyTheme(p themeColors) {
 	cursorStyle = lipgloss.NewStyle().Foreground(p.cyan).Bold(true)
 
 	commentCountStyle = lipgloss.NewStyle().Foreground(p.yellow)
+	markCountStyle = lipgloss.NewStyle().Foreground(p.cyan)
 	commentDisplayStyle = lipgloss.NewStyle().Foreground(p.yellow).Italic(true)
+
+	markAddedStyle = lipgloss.NewStyle().Foreground(p.addedFg).Background(p.markBg)
+	markRemovedStyle = lipgloss.NewStyle().Foreground(p.removedFg).Background(p.markBg)
+	markContextStyle = lipgloss.NewStyle().Foreground(p.white).Background(p.markBg)
+	markGutterAdded = lipgloss.NewStyle().Bold(true).Foreground(p.addedFg).Background(p.markBg).Width(6)
+	markGutterRemoved = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg).Background(p.markBg).Width(6)
+	markGutterContext = lipgloss.NewStyle().Bold(true).Foreground(p.white).Background(p.markBg).Width(6)
+
 	commentInputStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(p.yellow).
@@ -203,7 +221,14 @@ func applyNoColor() {
 	contextGutterStyle = lipgloss.NewStyle().Bold(true).Width(6)
 	cursorStyle = lipgloss.NewStyle().Bold(true)
 	commentCountStyle = lipgloss.NewStyle()
+	markCountStyle = lipgloss.NewStyle()
 	commentDisplayStyle = lipgloss.NewStyle()
+	markAddedStyle = lipgloss.NewStyle().Reverse(true)
+	markRemovedStyle = lipgloss.NewStyle().Reverse(true)
+	markContextStyle = lipgloss.NewStyle().Reverse(true)
+	markGutterAdded = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
+	markGutterRemoved = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
+	markGutterContext = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
 	commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	modeActiveStyle = lipgloss.NewStyle().Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle()

@@ -38,27 +38,42 @@ func decodeCommentKey(s string) (commentKey, bool) {
 	return commentKey{file: parts[0], lineNum: lineNum, isOld: isOld}, true
 }
 
+type marks map[commentKey]bool
+
 type comments map[commentKey]string
 
-// toStringMap converts comments to a serializable string-keyed map.
-func (c comments) toStringMap() map[string]string {
-	m := make(map[string]string, len(c))
+// markValue is the reserved value used to persist marks in the string map.
+const markValue = "__marked__"
+
+// toStringMap converts comments and marks to a serializable string-keyed map.
+func toStringMap(c comments, m marks) map[string]string {
+	out := make(map[string]string, len(c)+len(m))
 	for k, v := range c {
-		m[k.encode()] = v
+		out[k.encode()] = v
 	}
-	return m
+	for k := range m {
+		out[k.encode()] = markValue
+	}
+	return out
 }
 
-// commentsFromStringMap converts a string-keyed map back to comments.
+// fromStringMap converts a string-keyed map back to comments and marks.
 // Invalid keys are silently skipped.
-func commentsFromStringMap(m map[string]string) comments {
+func fromStringMap(m map[string]string) (comments, marks) {
 	c := make(comments, len(m))
+	mk := make(marks)
 	for k, v := range m {
-		if key, ok := decodeCommentKey(k); ok {
+		key, ok := decodeCommentKey(k)
+		if !ok {
+			continue
+		}
+		if v == markValue {
+			mk[key] = true
+		} else {
 			c[key] = v
 		}
 	}
-	return c
+	return c, mk
 }
 
 func (c comments) isEmpty() bool {
@@ -68,6 +83,16 @@ func (c comments) isEmpty() bool {
 func (c comments) countForFile(path string) int {
 	n := 0
 	for k := range c {
+		if k.file == path {
+			n++
+		}
+	}
+	return n
+}
+
+func (m marks) countForFile(path string) int {
+	n := 0
+	for k := range m {
 		if k.file == path {
 			n++
 		}
@@ -91,10 +116,10 @@ func findLineContent(f git.FileDiff, lineNum int, isOld bool) string {
 	return ""
 }
 
-// formatExport formats all comments for export in a readable format suitable for Claude Code.
+// formatExport formats all comments and marks for export in a readable format suitable for Claude Code.
 // Files are listed in the order they appear in the diff.
-func formatExport(files []git.FileDiff, c comments) string {
-	if len(c) == 0 {
+func formatExport(files []git.FileDiff, c comments, m marks) string {
+	if len(c) == 0 && len(m) == 0 {
 		return ""
 	}
 
@@ -102,28 +127,38 @@ func formatExport(files []git.FileDiff, c comments) string {
 	sb.WriteString("# Code Review Comments\n")
 
 	for _, f := range files {
-		type lineComment struct {
+		type lineEntry struct {
 			lineNum int
 			isOld   bool
-			text    string
+			text    string  // empty for marks
+			isMark  bool
 		}
-		var fileComments []lineComment
+		var entries []lineEntry
 		for key, text := range c {
 			if key.file == f.Path {
-				fileComments = append(fileComments, lineComment{key.lineNum, key.isOld, text})
+				entries = append(entries, lineEntry{key.lineNum, key.isOld, text, false})
 			}
 		}
-		if len(fileComments) == 0 {
+		for key := range m {
+			if key.file == f.Path {
+				entries = append(entries, lineEntry{key.lineNum, key.isOld, "", true})
+			}
+		}
+		if len(entries) == 0 {
 			continue
 		}
-		sort.Slice(fileComments, func(i, j int) bool {
-			return fileComments[i].lineNum < fileComments[j].lineNum
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].lineNum < entries[j].lineNum
 		})
 
 		sb.WriteString(fmt.Sprintf("\n## %s\n\n", f.Path))
-		for _, lc := range fileComments {
+		for _, lc := range entries {
 			if lc.lineNum == 0 {
-				sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				if lc.isMark {
+					sb.WriteString("> [flagged]\n\n")
+				} else {
+					sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				}
 			} else {
 				content := findLineContent(f, lc.lineNum, lc.isOld)
 				if lc.isOld && content != "" {
@@ -135,7 +170,11 @@ func formatExport(files []git.FileDiff, c comments) string {
 				} else {
 					sb.WriteString(fmt.Sprintf("%d:\n", lc.lineNum))
 				}
-				sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				if lc.isMark {
+					sb.WriteString("> [flagged]\n\n")
+				} else {
+					sb.WriteString(fmt.Sprintf("> %s\n\n", lc.text))
+				}
 			}
 		}
 	}

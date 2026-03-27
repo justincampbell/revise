@@ -38,6 +38,7 @@ type diffViewModel struct {
 	height   int
 	width    int
 	comments comments
+	marks    marks
 
 	commentInputActive bool
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
@@ -96,7 +97,13 @@ func (m *diffViewModel) buildLines() {
 				oldNum:   line.OldNum,
 				lineType: line.Type,
 			}
-			add(renderDiffLine(line), ref)
+			isMarked := m.marks[ref.commentKey(m.file.Path)]
+			// width - 3 for border (2) + cursor prefix (1)
+			fillWidth := m.width - 3
+			if fillWidth < 1 {
+				fillWidth = 1
+			}
+			add(renderDiffLine(line, isMarked, fillWidth), ref)
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -363,8 +370,26 @@ func (m diffViewModel) renderLines() []string {
 	return m.lines
 }
 
-func renderDiffLine(l git.Line) string {
+func renderDiffLine(l git.Line, marked bool, fillWidth int) string {
 	gutter := formatGutter(l)
+	if marked {
+		content := l.Content
+		// Pad content to fill the available width so background covers the line.
+		gutterWidth := 6 // matches gutter style Width(6)
+		contentWidth := fillWidth - gutterWidth
+		if contentWidth > 0 && len(content) < contentWidth {
+			content += strings.Repeat(" ", contentWidth-len(content))
+		}
+		switch l.Type {
+		case git.LineAdded:
+			return markGutterAdded.Render(gutter) + markAddedStyle.Render(content)
+		case git.LineRemoved:
+			return markGutterRemoved.Render(gutter) + markRemovedStyle.Render(content)
+		case git.LineContext:
+			return markGutterContext.Render(gutter) + markContextStyle.Render(content)
+		}
+		return l.Content
+	}
 	switch l.Type {
 	case git.LineAdded:
 		return addedGutterStyle.Render(gutter) + addedStyle.Render(l.Content)
