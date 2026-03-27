@@ -77,13 +77,20 @@ r.UnstagedDiffRaw()          // git diff
 r.StatusPorcelain()          // git status --porcelain
 ```
 
+## Formatting
+
+- ALWAYS format Go code you write with `goimports`. If `goimports` is not available, use `gofmt`.
+- Run `make lint` to check for lint issues before committing.
+
 ## Build & Run
 
 ```sh
-make build    # build binary
-make install  # go install
-make test     # go test ./...
-make clean    # remove binary
+make           # lint + test (default)
+make build     # build binary
+make install   # lint + test, then go install
+make test      # go test ./...
+make lint      # golangci-lint
+make clean     # remove binary
 ```
 
 ## Architecture

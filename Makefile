@@ -9,7 +9,7 @@ all: lint test
 build:
 	go build -ldflags "$(LDFLAGS)" -o revise .
 
-install: lint test
+install:
 	go install -ldflags "$(LDFLAGS)" .
 
 test:
