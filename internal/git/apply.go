@@ -13,21 +13,21 @@ import (
 func HunkPatch(path string, status FileStatus, h Hunk) string {
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", path, path))
+	fmt.Fprintf(&b, "diff --git a/%s b/%s\n", path, path)
 
 	switch status {
 	case StatusAdded:
 		b.WriteString("--- /dev/null\n")
-		b.WriteString(fmt.Sprintf("+++ b/%s\n", path))
+		fmt.Fprintf(&b, "+++ b/%s\n", path)
 	case StatusDeleted:
-		b.WriteString(fmt.Sprintf("--- a/%s\n", path))
+		fmt.Fprintf(&b, "--- a/%s\n", path)
 		b.WriteString("+++ /dev/null\n")
 	default:
-		b.WriteString(fmt.Sprintf("--- a/%s\n", path))
-		b.WriteString(fmt.Sprintf("+++ b/%s\n", path))
+		fmt.Fprintf(&b, "--- a/%s\n", path)
+		fmt.Fprintf(&b, "+++ b/%s\n", path)
 	}
 
-	b.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", h.OldStart, h.OldCount, h.NewStart, h.NewCount))
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", h.OldStart, h.OldCount, h.NewStart, h.NewCount)
 
 	for _, line := range h.Lines {
 		switch line.Type {

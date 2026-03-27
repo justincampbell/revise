@@ -366,10 +366,6 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	return nextIdx + (clickY - codeAbove - inputBoxHeight)
 }
 
-func (m diffViewModel) renderLines() []string {
-	return m.lines
-}
-
 func renderDiffLine(l git.Line, marked bool, fillWidth int) string {
 	gutter := formatGutter(l)
 	if marked {

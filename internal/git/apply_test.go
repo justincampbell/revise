@@ -240,7 +240,7 @@ func TestStageFile_RetryOnLock(t *testing.T) {
 	// Remove the lock after a short delay to simulate transient contention
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		os.Remove(lockPath)
+		os.Remove(lockPath) //nolint:errcheck // test cleanup
 	}()
 
 	err := StageFile("base.go")
