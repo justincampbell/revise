@@ -347,12 +347,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "C":
 			if len(m.comments) > 0 || len(m.marks) > 0 {
 				n := len(m.comments) + len(m.marks)
-				noun := "comments"
+				noun := "items"
 				if n == 1 {
-					noun = "comment"
+					noun = "item"
 				}
 				m.confirmClear = true
-				m.confirmMsg = fmt.Sprintf("Clear all comments? (%d %s)", n, noun)
+				m.confirmMsg = fmt.Sprintf("Clear all comments and marks? (%d %s)", n, noun)
 			}
 			return m, nil
 
@@ -1263,7 +1263,6 @@ func (m Model) renderStatusBar() string {
 	if m.statusMsg != "" {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
-
 
 	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
 

@@ -61,7 +61,7 @@ func paletteFor(t Theme) themeColors {
 			dimGreen:  lipgloss.Color("#166534"),
 			dimRed:    lipgloss.Color("#9f1239"),
 			dimYellow: lipgloss.Color("#92400e"),
-			markBg:    lipgloss.Color("#1e3a5f"),
+			markBg:    lipgloss.Color("#dbeafe"),
 		}
 	case ThemeDarkDaltonized:
 		return themeColors{
