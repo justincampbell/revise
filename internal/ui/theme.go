@@ -33,7 +33,7 @@ func IsValidTheme(t Theme) bool {
 
 // chromaStyleFor returns the chroma style name for light themes.
 // Dark themes use chromaStyleEntries() instead.
-func chromaStyleFor(isDark bool) string {
+func chromaStyleFor() string {
 	return "github"
 }
 

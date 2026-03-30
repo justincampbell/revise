@@ -92,7 +92,7 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	if entries := chromaStyleEntries(isDark, daltonized); entries != nil {
 		style = chroma.MustNewStyle("revise-dark", entries)
 	} else {
-		style = styles.Get(chromaStyleFor(isDark))
+		style = styles.Get(chromaStyleFor())
 	}
 
 	// Strip leading whitespace before tokenising so chroma sees clean content,
