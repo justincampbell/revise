@@ -80,7 +80,12 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	highlightCacheMu.Lock()
 	theme := activeTheme
 	isDark := activeIsDark
-	cacheKey := string(theme) + "\x00" + filePath + "\x00" + fmt.Sprintf("%v", bg) + "\x00" + content
+	bgKey := "nil"
+	if bg != nil {
+		r, g, b, a := bg.RGBA()
+		bgKey = fmt.Sprintf("%d,%d,%d,%d", r, g, b, a)
+	}
+	cacheKey := string(theme) + "\x00" + filePath + "\x00" + bgKey + "\x00" + content
 	if cached, ok := highlightCache[cacheKey]; ok {
 		highlightCacheMu.Unlock()
 		return cached, true
