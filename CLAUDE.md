@@ -89,7 +89,7 @@ make           # lint + test (default)
 make build     # build revise + revise@VERSION
 make install   # install revise + revise@VERSION to GOBIN
 make test      # go test ./...
-make lint      # golangci-lint
+make lint      # go.mod tidy check + golangci-lint
 make clean     # remove binaries
 ```
 

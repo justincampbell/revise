@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `make build` and `make install` produce a version-stamped copy (`revise@VERSION`) alongside `revise` for testing multiple versions side-by-side (#153)
 
+### Changed
+
+- Lowered `go.mod` go directive from `1.25.3` to `1.24.11` (actual minimum), added `toolchain` directive (#151)
+- Added `lint-gomod` check to verify `go.mod` stays tidy and go version doesn't drift (#151)
+
 ## [0.2.0] - 2026-03-30
 
 ### Added
