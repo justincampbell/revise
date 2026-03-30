@@ -195,7 +195,10 @@ func detectIndentSize(lines []string) int {
 // non-whitespace content separately. This allows the non-whitespace portion to
 // be passed to the syntax highlighter while guides are prepended after.
 func splitLeadingWhitespace(content string, indentSize int, bg color.Color) (guides, rest string) {
-	return splitLeadingWhitespaceColor(content, indentSize, bg, paletteFor(activeTheme, activeIsDark).dim)
+	highlightCacheMu.Lock()
+	guideColor := paletteFor(activeTheme, activeIsDark).dim
+	highlightCacheMu.Unlock()
+	return splitLeadingWhitespaceColor(content, indentSize, bg, guideColor)
 }
 
 func splitLeadingWhitespaceColor(content string, indentSize int, bg, guideColor color.Color) (guides, rest string) {
