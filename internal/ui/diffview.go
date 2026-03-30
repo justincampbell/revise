@@ -88,15 +88,7 @@ func (m *diffViewModel) buildLines() {
 	}
 
 	p := paletteFor(activeTheme, activeIsDark)
-	indentSize := detectIndentSize(func() []string {
-		var contents []string
-		for _, hunk := range m.file.Hunks {
-			for _, line := range hunk.Lines {
-				contents = append(contents, line.Content)
-			}
-		}
-		return contents
-	}())
+	indentSize := detectIndentSize(m.file.Hunks)
 	for _, hunk := range m.file.Hunks {
 		if header := renderHunkHeader(hunk); header != "" {
 			add(header, nil)

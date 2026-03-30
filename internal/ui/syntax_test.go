@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,6 +30,14 @@ func TestEscapeControlChars(t *testing.T) {
 	}
 }
 
+func makeHunks(contents ...string) []git.Hunk {
+	lines := make([]git.Line, len(contents))
+	for i, c := range contents {
+		lines[i] = git.Line{Type: git.LineContext, Content: c}
+	}
+	return []git.Hunk{{Lines: lines}}
+}
+
 func TestDetectIndentSize(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -46,7 +55,7 @@ func TestDetectIndentSize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, detectIndentSize(tt.lines))
+			assert.Equal(t, tt.want, detectIndentSize(makeHunks(tt.lines...)))
 		})
 	}
 }

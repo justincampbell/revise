@@ -13,6 +13,7 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/justincampbell/revise/internal/git"
 )
 
 //go:embed haml.xml
@@ -167,29 +168,30 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 // indentGuide is the character used to mark indent levels.
 const indentGuide = "▏"
 
-// detectIndentSize scans a slice of line contents and returns the smallest
-// non-zero indent unit found (in spaces). Tabs count as one unit. Returns 0
-// if no indented lines are found, which callers should treat as "no guides".
-func detectIndentSize(lines []string) int {
+// detectIndentSize scans hunks and returns the smallest non-zero indent unit
+// found in line contents (in spaces). Tabs count as one unit. Returns 0 if no
+// indented lines are found, which callers should treat as "no guides".
+func detectIndentSize(hunks []git.Hunk) int {
 	min := 0
-	for _, line := range lines {
-		if len(line) == 0 {
-			continue
-		}
-		n := 0
-		for _, ch := range line {
-			if ch == '\t' {
-				// Tabs: treat each tab as one unit; report as 1 space-equivalent
-				n = 1
-				break
-			} else if ch == ' ' {
-				n++
-			} else {
-				break
+	for _, hunk := range hunks {
+		for _, line := range hunk.Lines {
+			if len(line.Content) == 0 {
+				continue
 			}
-		}
-		if n > 0 && (min == 0 || n < min) {
-			min = n
+			n := 0
+			for _, ch := range line.Content {
+				if ch == '\t' {
+					n = 1
+					break
+				} else if ch == ' ' {
+					n++
+				} else {
+					break
+				}
+			}
+			if n > 0 && (min == 0 || n < min) {
+				min = n
+			}
 		}
 	}
 	return min
