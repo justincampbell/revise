@@ -392,7 +392,7 @@ func TestDiffView_RenderShowsCenteredFooterTotals(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	rendered := m.render(true, 3, false)
+	rendered := ansi.Strip(m.render(true, 3, false))
 	assert.Contains(t, rendered, "+2/-1")
 }
 

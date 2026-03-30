@@ -8,7 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
@@ -644,7 +644,7 @@ func (m *Model) updateLayout() {
 
 	m.fileList.width = listW
 	m.fileList.height = panelH
-	m.diffView.width = m.width - listW - 5 // file list borders (2) + gap (1) + diff borders (2)
+	m.diffView.width = m.width - listW - 3 // file list right border (1) + gap (1) + diff left border (1)
 	m.diffView.height = panelH
 }
 

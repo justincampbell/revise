@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -87,6 +87,16 @@ func (m *diffViewModel) buildLines() {
 		add("", nil) // blank separator
 	}
 
+	p := paletteFor(activeTheme, activeIsDark)
+	indentSize := detectIndentSize(func() []string {
+		var contents []string
+		for _, hunk := range m.file.Hunks {
+			for _, line := range hunk.Lines {
+				contents = append(contents, line.Content)
+			}
+		}
+		return contents
+	}())
 	for _, hunk := range m.file.Hunks {
 		if header := renderHunkHeader(hunk); header != "" {
 			add(header, nil)
@@ -103,7 +113,7 @@ func (m *diffViewModel) buildLines() {
 			if fillWidth < 1 {
 				fillWidth = 1
 			}
-			add(renderDiffLine(line, isMarked, fillWidth), ref)
+			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize), ref)
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -366,7 +376,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	return nextIdx + (clickY - codeAbove - inputBoxHeight)
 }
 
-func renderDiffLine(l git.Line, marked bool, fillWidth int) string {
+func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
 	gutter := formatGutter(l)
 	if marked {
 		content := l.Content
@@ -388,11 +398,20 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int) string {
 	}
 	switch l.Type {
 	case git.LineAdded:
-		return addedGutterStyle.Render(gutter) + addedStyle.Render(l.Content)
+		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize); ok {
+			return addedGutterStyle.Render(gutter) + highlighted
+		}
+		return addedGutterStyle.Render(gutter) + addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 	case git.LineRemoved:
-		return removedGutterStyle.Render(gutter) + removedStyle.Render(l.Content)
+		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize); ok {
+			return removedGutterStyle.Render(gutter) + highlighted
+		}
+		return removedGutterStyle.Render(gutter) + removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 	case git.LineContext:
-		return contextGutterStyle.Render(gutter) + contextStyle.Render(l.Content)
+		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize); ok {
+			return contextGutterStyle.Render(gutter) + highlighted
+		}
+		return contextGutterStyle.Render(gutter) + contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
 	}
 	return l.Content
 }

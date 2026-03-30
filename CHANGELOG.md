@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Syntax highlighting via chroma (token colors layered over diff backgrounds)
 - `--theme` flag with four color palettes: `dark` (default), `light`, `dark-daltonized`, `light-daltonized`
 - File review mode: `revise <file>` opens any file for review with comments (#55, #119)
 - Output comments to stdout on exit for Claude Code integration (#118)

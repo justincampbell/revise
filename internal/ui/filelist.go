@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
 
@@ -123,13 +124,16 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 		suffixLen := len(commentSuffix) + len(markSuffix)
 		name := truncate(f.Path, m.width-5-suffixLen)
 
+		innerWidth := m.width - 2 // subtract left+right border
+		var row string
 		if i == m.cursor {
 			prefix := "▸ "
-			b.WriteString(selectedStyle.Render(prefix) + status + selectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix))
+			row = selectedStyle.Render(prefix) + status + selectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix)
 		} else {
 			prefix := "  "
-			b.WriteString(unselectedStyle.Render(prefix) + status + unselectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix))
+			row = unselectedStyle.Render(prefix) + status + unselectedStyle.Render(" "+name) + commentCountStyle.Render(commentSuffix) + markCountStyle.Render(markSuffix)
 		}
+		b.WriteString(ansi.Truncate(row, innerWidth, ""))
 
 		if i < end-1 {
 			b.WriteString("\n")
