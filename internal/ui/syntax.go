@@ -95,7 +95,10 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 
 	var style *chroma.Style
 	daltonized := theme == ThemeDarkDaltonized || theme == ThemeLightDaltonized
-	if entries := chromaStyleEntries(isDark, daltonized); entries != nil {
+	// Auto theme uses dark Charmtone syntax colors (works well against the
+	// ANSI 256 diff backgrounds). Explicit themes use their own palette.
+	effectiveIsDark := isDark || theme == ThemeAuto
+	if entries := chromaStyleEntries(effectiveIsDark, daltonized); entries != nil {
 		style = chroma.MustNewStyle("revise", entries)
 	} else {
 		style = styles.Get(chromaStyleFor())

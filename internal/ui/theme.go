@@ -37,6 +37,7 @@ func chromaStyleFor() string {
 	return "github"
 }
 
+
 // chromaStyleEntries returns a chroma.StyleEntries map for syntax highlighting.
 // Dark themes use the Charmtone/Crush palette; light themes use GitHub-based
 // colors. daltonized swaps green→blue for red-green colorblind users.
@@ -150,11 +151,29 @@ func paletteFor(t Theme, isDark bool) themeColors {
 		return lightPalette()
 	case ThemeDark:
 		return darkPalette()
-	default: // ThemeAuto
-		if isDark {
-			return darkPalette()
-		}
-		return lightPalette()
+	default: // ThemeAuto — use terminal ANSI colors
+		return autoPalette()
+	}
+}
+
+func autoPalette() themeColors {
+	return themeColors{
+		// Muted hex colors that work well across dark terminals without
+		// being neon. Uses low-saturation tones that feel like dim ANSI
+		// colors regardless of the terminal's actual palette.
+		addedFg:   lipgloss.Color("#57c77a"), // muted green
+		removedFg: lipgloss.Color("#e06c75"), // muted red
+		addedBg:   lipgloss.Color("#1a2e1f"), // very dark green tint
+		removedBg: lipgloss.Color("#2e1a1c"), // very dark red tint
+		cyan:      lipgloss.Cyan,
+		yellow:    lipgloss.Yellow,
+		dim:       lipgloss.BrightBlack,
+		white:     lipgloss.White,
+		border:    lipgloss.BrightBlack,
+		dimGreen:  lipgloss.Color("#3a6644"),
+		dimRed:    lipgloss.Color("#6e3a3d"),
+		dimYellow: lipgloss.Yellow,
+		markBg:    lipgloss.Color("#1a1f2e"), // very dark blue tint
 	}
 }
 
