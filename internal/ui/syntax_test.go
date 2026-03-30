@@ -4,6 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	chromachroma "github.com/alecthomas/chroma/v2"
+	chromalexers "github.com/alecthomas/chroma/v2/lexers"
+	chromastyles "github.com/alecthomas/chroma/v2/styles"
+	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 )
@@ -158,25 +162,84 @@ func TestHighlightLine_CacheKeyIncludesTheme(t *testing.T) {
 	orig := noColor
 	noColor = false
 	origTheme := activeTheme
+	origIsDark := activeIsDark
 	defer func() {
 		noColor = orig
 		activeTheme = origTheme
+		activeIsDark = origIsDark
 	}()
 
 	clearHighlightCache()
 
-	activeTheme = ThemeDark
-	result1, _ := highlightLine("package main", "main.go", nil, 0)
+	SetTheme(ThemeDark, true)
+	bg1 := paletteFor(ThemeDark, true).addedBg
+	result1, ok1 := highlightLine("package main", "main.go", bg1, 0)
+	assert.True(t, ok1)
 
-	activeTheme = ThemeLight
-	result2, _ := highlightLine("package main", "main.go", nil, 0)
+	SetTheme(ThemeLight, false)
+	bg2 := paletteFor(ThemeLight, false).addedBg
+	result2, ok2 := highlightLine("package main", "main.go", bg2, 0)
+	assert.True(t, ok2)
 
-	// Different themes should produce different cache entries (may differ in output)
-	_ = result1
-	_ = result2
+	// Different themes + backgrounds produce different ANSI output
+	assert.NotEqual(t, result1, result2)
 
+	// After the second SetTheme call the cache was cleared, so only 1 entry remains
 	highlightCacheMu.Lock()
 	count := len(highlightCache)
 	highlightCacheMu.Unlock()
-	assert.Equal(t, 2, count)
+	assert.Equal(t, 1, count)
+}
+
+func TestChromaFormatter_BakesBackground(t *testing.T) {
+	bg := lipgloss.Color("#1C3634")
+	f := chromaFormatter{bg: bg}
+
+	// Use a real lexer from the registry
+	lexer := chromachroma.Coalesce(chromalexers.Get("go"))
+	it, err := lexer.Tokenise(nil, "package main")
+	assert.NoError(t, err)
+
+	style := chromastyles.Get("monokai")
+	var sb strings.Builder
+	err = f.Format(&sb, style, it)
+	assert.NoError(t, err)
+	// Output should be non-empty and contain ANSI escape sequences
+	out := sb.String()
+	assert.NotEmpty(t, out)
+	assert.Contains(t, out, "\x1b[")
+}
+
+func TestRenderDiffLine_HighlightedVsFallback(t *testing.T) {
+	orig := noColor
+	noColor = false
+	defer func() { noColor = orig }()
+
+	p := paletteFor(ThemeDark, true)
+	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
+
+	// With a known Go file — should highlight
+	withHighlight := renderDiffLine(line, false, 80, "main.go", p, 0)
+	// With unknown extension — plain fallback
+	withoutHighlight := renderDiffLine(line, false, 80, "file.xyzunknown", p, 0)
+
+	assert.NotEmpty(t, withHighlight)
+	assert.NotEmpty(t, withoutHighlight)
+	// Highlighted output should differ (contains more ANSI sequences)
+	assert.NotEqual(t, withHighlight, withoutHighlight)
+}
+
+func TestRenderDiffLine_MarkedSkipsHighlight(t *testing.T) {
+	orig := noColor
+	noColor = false
+	defer func() { noColor = orig }()
+
+	p := paletteFor(ThemeDark, true)
+	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
+
+	marked := renderDiffLine(line, true, 80, "main.go", p, 0)
+	unmarked := renderDiffLine(line, false, 80, "main.go", p, 0)
+
+	// Marked lines use mark styles, not syntax highlight styles — they differ
+	assert.NotEqual(t, marked, unmarked)
 }
