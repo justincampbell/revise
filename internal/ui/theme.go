@@ -37,12 +37,42 @@ func chromaStyleFor() string {
 	return "github"
 }
 
-// chromaStyleEntries returns a chroma.StyleEntries map using the Charmtone
-// palette for dark themes. Returns nil for light themes (use named style).
-// daltonized swaps green→blue for red-green colorblind users.
+// chromaStyleEntries returns a chroma.StyleEntries map for syntax highlighting.
+// Dark themes use the Charmtone/Crush palette; light themes use GitHub-based
+// colors. daltonized swaps green→blue for red-green colorblind users.
+// Returns nil for non-daltonized light themes (use the named "github" style).
 func chromaStyleEntries(isDark, daltonized bool) chroma.StyleEntries {
-	if !isDark {
+	if !isDark && !daltonized {
 		return nil
+	}
+	if !isDark && daltonized {
+		// Light daltonized: GitHub palette with green→blue swaps.
+		return chroma.StyleEntries{
+			chroma.Background:          "bg:#ffffff",
+			chroma.Text:                "#24292e",
+			chroma.Comment:             "italic #6a737d",
+			chroma.CommentPreproc:      "#e36209",
+			chroma.Keyword:             "bold #d73a49",
+			chroma.KeywordType:         "#0000ff", // blue instead of green
+			chroma.Operator:            "bold #d73a49",
+			chroma.Punctuation:         "#24292e",
+			chroma.Name:                "#24292e",
+			chroma.NameBuiltin:         "#005cc5",
+			chroma.NameTag:             "bold #22863a",
+			chroma.NameAttribute:       "#6f42c1",
+			chroma.NameClass:           "bold #6f42c1",
+			chroma.NameConstant:        "#005cc5",
+			chroma.NameDecorator:       "bold #6f42c1",
+			chroma.NameFunction:        "#005cc5", // blue instead of green
+			chroma.LiteralNumber:       "#005cc5", // blue instead of green
+			chroma.LiteralString:       "#032f62",
+			chroma.LiteralStringEscape: "bold #032f62",
+			chroma.GenericDeleted:      "#b31d28",
+			chroma.GenericEmph:         "italic",
+			chroma.GenericInserted:     "#005cc5", // blue instead of green
+			chroma.GenericStrong:       "bold",
+			chroma.GenericSubheading:   "bold #6a737d",
+		}
 	}
 
 	entries := chroma.StyleEntries{

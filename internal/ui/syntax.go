@@ -90,7 +90,7 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	var style *chroma.Style
 	daltonized := theme == ThemeDarkDaltonized || theme == ThemeLightDaltonized
 	if entries := chromaStyleEntries(isDark, daltonized); entries != nil {
-		style = chroma.MustNewStyle("revise-dark", entries)
+		style = chroma.MustNewStyle("revise", entries)
 	} else {
 		style = styles.Get(chromaStyleFor())
 	}
