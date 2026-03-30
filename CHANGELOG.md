@@ -6,11 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-30
+
 ### Added
 
-- `--theme` flag with four color palettes: `dark` (default), `light`, `dark-daltonized`, `light-daltonized`
+- Line marking with `m` key to highlight lines of interest (#105)
+- `--theme` flag with four color palettes: `dark` (default), `light`, `dark-daltonized`, `light-daltonized` (#136)
 - File review mode: `revise <file>` opens any file for review with comments (#55, #119)
 - Output comments to stdout on exit for Claude Code integration (#118)
+- Show git sha in dev version output (#134)
 - Auto-refresh diff every 2 seconds when files change (#87)
 - Include line contents in comment export (#85)
 - File-level comments with `c`/`d` on file list (#73)
@@ -37,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Mouse click under inline comment selecting wrong line (#127)
+- File list cursor position lost on diff reload (#113)
+- Trailing blank lines in clipboard export (#128)
 - Self-update failing with "executable not found in tar" due to missing executable path (#124)
 - Retry git operations on index.lock contention with exponential backoff (#46)
 - Branch mode becoming unavailable after checking out a new branch while running (#57)
