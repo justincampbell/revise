@@ -24,6 +24,9 @@ func init() {
 
 // highlightCache caches highlighted lines keyed by theme+filePath+content.
 // This avoids re-lexing the same line when switching back to a file.
+// Cleared on theme change and when it exceeds highlightCacheMaxSize.
+const highlightCacheMaxSize = 2000
+
 var (
 	highlightCache   = map[string]string{}
 	highlightCacheMu sync.Mutex
@@ -111,6 +114,9 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	result := sb.String()
 
 	highlightCacheMu.Lock()
+	if len(highlightCache) >= highlightCacheMaxSize {
+		highlightCache = map[string]string{}
+	}
 	highlightCache[cacheKey] = result
 	highlightCacheMu.Unlock()
 
