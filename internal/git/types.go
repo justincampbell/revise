@@ -18,10 +18,11 @@ const (
 
 // FileDiff represents the diff for a single file.
 type FileDiff struct {
-	Path    string
-	OldPath string // for renames
-	Status  FileStatus
-	Hunks   []Hunk
+	Path     string
+	OldPath  string // for renames
+	Status   FileStatus
+	IsBinary bool
+	Hunks    []Hunk
 }
 
 // HunkSource identifies where a hunk came from.

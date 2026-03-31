@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,6 +51,16 @@ func UntrackedFiles() ([]FileDiff, error) {
 
 		content, err := os.ReadFile(path)
 		if err != nil {
+			continue
+		}
+
+		// Detect binary files by checking for null bytes (same heuristic as git)
+		if bytes.ContainsRune(content, 0) {
+			files = append(files, FileDiff{
+				Path:     path,
+				Status:   StatusUntracked,
+				IsBinary: true,
+			})
 			continue
 		}
 
