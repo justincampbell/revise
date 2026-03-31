@@ -586,6 +586,33 @@ func stripANSI(s string) string {
 	return ansi.Strip(s)
 }
 
+func TestBuildLines_BinaryFile(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 40
+	m.height = 10
+	m.file = &git.FileDiff{
+		Path:     "image.png",
+		IsBinary: true,
+	}
+	m.buildLines()
+	// Should show a binary file message, not an empty diff
+	require.NotEmpty(t, m.lines)
+	found := false
+	for _, line := range m.lines {
+		if strings.Contains(line, "Binary file") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected 'Binary file' message in lines: %v", m.lines)
+	// No navigable lines for binary files
+	for i, ref := range m.lineRefs {
+		if ref != nil && !ref.isCommentDisplay {
+			t.Errorf("expected no navigable lines for binary file, but line %d has ref %+v", i, ref)
+		}
+	}
+}
+
 func TestSetBorderBottomCounts_SlashColumnFixed(t *testing.T) {
 	// The slash should always appear at the same column regardless of
 	// digit counts in the added/removed numbers.

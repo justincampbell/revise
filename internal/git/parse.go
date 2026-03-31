@@ -60,6 +60,12 @@ func Parse(raw string) *Diff {
 			continue
 		}
 
+		// Detect binary files
+		if strings.HasPrefix(line, "Binary files ") {
+			currentFile.IsBinary = true
+			continue
+		}
+
 		// Skip index, --- and +++ lines
 		if strings.HasPrefix(line, "index ") ||
 			strings.HasPrefix(line, "--- ") ||

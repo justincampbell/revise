@@ -144,6 +144,60 @@ func TestParseRenamedFile(t *testing.T) {
 	assert.Equal(t, "new.go", f.Path)
 }
 
+const binaryFileDiff = `diff --git a/image.png b/image.png
+new file mode 100644
+index 0000000..abc1234
+Binary files /dev/null and b/image.png differ
+`
+
+func TestParseBinaryFile(t *testing.T) {
+	diff := Parse(binaryFileDiff)
+
+	require.Len(t, diff.Files, 1)
+	f := diff.Files[0]
+	assert.Equal(t, "image.png", f.Path)
+	assert.True(t, f.IsBinary, "expected IsBinary to be true")
+	assert.Empty(t, f.Hunks, "binary files should have no hunks")
+}
+
+const binaryModifiedDiff = `diff --git a/image.png b/image.png
+index abc1234..def5678 100644
+Binary files a/image.png and b/image.png differ
+`
+
+func TestParseBinaryModifiedFile(t *testing.T) {
+	diff := Parse(binaryModifiedDiff)
+
+	require.Len(t, diff.Files, 1)
+	f := diff.Files[0]
+	assert.Equal(t, "image.png", f.Path)
+	assert.True(t, f.IsBinary)
+	assert.Equal(t, StatusModified, f.Status)
+}
+
+const mixedBinaryAndTextDiff = `diff --git a/image.png b/image.png
+new file mode 100644
+index 0000000..abc1234
+Binary files /dev/null and b/image.png differ
+diff --git a/main.go b/main.go
+index abc1234..def5678 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,4 @@
+ package main
++import "os"
+ func main() {}
+`
+
+func TestParseMixedBinaryAndText(t *testing.T) {
+	diff := Parse(mixedBinaryAndTextDiff)
+
+	require.Len(t, diff.Files, 2)
+	assert.True(t, diff.Files[0].IsBinary, "image.png should be binary")
+	assert.False(t, diff.Files[1].IsBinary, "main.go should not be binary")
+	assert.Len(t, diff.Files[1].Hunks, 1)
+}
+
 func TestParseLineNumbers(t *testing.T) {
 	diff := Parse(sampleDiff)
 	h := diff.Files[0].Hunks[0]

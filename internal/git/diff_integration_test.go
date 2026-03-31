@@ -656,6 +656,30 @@ func TestUntrackedFiles_TaggedAsUnstaged(t *testing.T) {
 	assert.Equal(t, SourceUnstaged, f.Hunks[0].Source)
 }
 
+func TestUntrackedFiles_BinaryDetected(t *testing.T) {
+	r := baseRepo(t)
+	// Write a file with null bytes (binary content)
+	full := r.Dir + "/image.png"
+	if err := os.WriteFile(full, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00}, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	InvalidateUntrackedCache()
+	files, err := UntrackedFiles()
+	require.NoError(t, err)
+
+	var found *FileDiff
+	for i := range files {
+		if files[i].Path == "image.png" {
+			found = &files[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "expected image.png in untracked files")
+	assert.True(t, found.IsBinary, "expected image.png to be marked as binary")
+	assert.Empty(t, found.Hunks, "binary files should have no hunks")
+}
+
 // ============================================================================
 // Hide whitespace
 // ============================================================================

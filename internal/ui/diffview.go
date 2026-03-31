@@ -79,6 +79,12 @@ func (m *diffViewModel) buildLines() {
 		m.lineRefs = append(m.lineRefs, ref)
 	}
 
+	// Binary files: show a placeholder instead of diff content.
+	if m.file.IsBinary {
+		add("  Binary file — cannot display diff", nil)
+		return
+	}
+
 	// Show file-level comment (lineNum == 0) at the top if one exists.
 	fileKey := commentKey{file: m.file.Path, lineNum: 0}
 	if text, ok := m.comments[fileKey]; ok {
