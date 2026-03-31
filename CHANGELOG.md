@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `make build` and `make install` produce a version-stamped copy (`revise@VERSION`) alongside `revise` for testing multiple versions side-by-side (#153)
+
 ## [0.2.0] - 2026-03-30
 
 ### Added

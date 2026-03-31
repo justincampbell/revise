@@ -86,12 +86,14 @@ r.StatusPorcelain()          // git status --porcelain
 
 ```sh
 make           # lint + test (default)
-make build     # build binary
-make install   # lint + test, then go install
+make build     # build revise + revise@VERSION
+make install   # install revise + revise@VERSION to GOBIN
 make test      # go test ./...
 make lint      # golangci-lint
-make clean     # remove binary
+make clean     # remove binaries
 ```
+
+`make build` and `make install` produce two binaries: `revise` (for normal use) and `revise@VERSION` (e.g. `revise@v0.2.0` on a tag, `revise@v0.2.0-gb18a73d` on a dev build). The versioned copy lets you keep and compare specific builds side-by-side.
 
 ## Architecture
 
