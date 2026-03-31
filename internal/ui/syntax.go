@@ -95,10 +95,15 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 
 	var style *chroma.Style
 	daltonized := theme == ThemeDarkDaltonized || theme == ThemeLightDaltonized
-	// Auto theme uses dark Charmtone syntax colors (works well against the
-	// ANSI 256 diff backgrounds). Explicit themes use their own palette.
-	effectiveIsDark := isDark || theme == ThemeAuto
-	if entries := chromaStyleEntries(effectiveIsDark, daltonized); entries != nil {
+	if theme == ThemeAuto {
+		// Auto theme uses a built-in chroma style that works with the
+		// terminal's native palette instead of hardcoded hex colors.
+		if isDark {
+			style = styles.Get("native")
+		} else {
+			style = styles.Get(chromaStyleFor())
+		}
+	} else if entries := chromaStyleEntries(isDark, daltonized); entries != nil {
 		style = chroma.MustNewStyle("revise", entries)
 	} else {
 		style = styles.Get(chromaStyleFor())
@@ -116,6 +121,9 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	var sb strings.Builder
 	sb.WriteString(guides)
 	f := chromaFormatter{bg: bg}
+	if theme == ThemeAuto {
+		f.commentFg = lipgloss.Color("136") // ANSI 256: dark yellow
+	}
 	if err := f.Format(&sb, style, it); err != nil {
 		return content, false
 	}
@@ -135,8 +143,12 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 // chromaFormatter is a custom chroma formatter that renders each token using
 // lipgloss, with the diff line background baked into every token style. This
 // prevents ANSI reset sequences from clearing the background mid-line.
+//
+// When commentFg is non-nil, comment tokens use that color instead of the
+// style's hardcoded value — this lets auto mode use the terminal's own dim color.
 type chromaFormatter struct {
-	bg color.Color
+	bg        color.Color
+	commentFg color.Color
 }
 
 func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
@@ -149,17 +161,26 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 			continue
 		}
 
-		s := lipgloss.NewStyle().Background(c.bg)
+		isComment := c.commentFg != nil && token.Type.InSubCategory(chroma.Comment)
+
+		s := lipgloss.NewStyle()
+		if c.bg != nil {
+			s = s.Background(c.bg)
+		}
 		if entry.Bold == chroma.Yes {
 			s = s.Bold(true)
 		}
-		if entry.Italic == chroma.Yes {
+		// Skip italic for overridden comments — some terminals render
+		// italic text with a background highlight.
+		if entry.Italic == chroma.Yes && !isComment {
 			s = s.Italic(true)
 		}
 		if entry.Underline == chroma.Yes {
 			s = s.Underline(true)
 		}
-		if entry.Colour.IsSet() {
+		if isComment {
+			s = s.Foreground(c.commentFg)
+		} else if entry.Colour.IsSet() {
 			s = s.Foreground(lipgloss.Color(entry.Colour.String()))
 		}
 

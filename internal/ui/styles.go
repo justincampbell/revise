@@ -132,8 +132,16 @@ func applyTheme(p themeColors) {
 	hunkSourceTagStyle = lipgloss.NewStyle().Foreground(p.dim).Italic(true)
 	fileStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)
 
-	addedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.addedFg).Width(6)
-	removedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg).Width(6)
+	gutterAdded := p.gutterAddedFg
+	if gutterAdded == nil {
+		gutterAdded = p.addedFg
+	}
+	gutterRemoved := p.gutterRemovedFg
+	if gutterRemoved == nil {
+		gutterRemoved = p.removedFg
+	}
+	addedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(gutterAdded).Width(6)
+	removedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(gutterRemoved).Width(6)
 	contextGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.dim).Width(6)
 
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)

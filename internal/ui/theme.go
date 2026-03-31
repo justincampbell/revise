@@ -137,6 +137,9 @@ type themeColors struct {
 	dimRed    color.Color
 	dimYellow color.Color
 
+	gutterAddedFg   color.Color
+	gutterRemovedFg color.Color
+
 	markBg color.Color
 }
 
@@ -158,11 +161,11 @@ func paletteFor(t Theme, isDark bool) themeColors {
 
 func autoPalette() themeColors {
 	return themeColors{
-		// Muted hex colors that work well across dark terminals without
-		// being neon. Uses low-saturation tones that feel like dim ANSI
-		// colors regardless of the terminal's actual palette.
-		addedFg:   lipgloss.Color("#57c77a"), // muted green
-		removedFg: lipgloss.Color("#e06c75"), // muted red
+		// ANSI 4-bit foregrounds adapt to the terminal colorscheme.
+		// Truecolor hex backgrounds provide subtle tints — dark enough to
+		// work on any dark terminal without clashing with the palette.
+		addedFg:   lipgloss.Green,
+		removedFg: lipgloss.Red,
 		addedBg:   lipgloss.Color("#1a2e1f"), // very dark green tint
 		removedBg: lipgloss.Color("#2e1a1c"), // very dark red tint
 		cyan:      lipgloss.Cyan,
@@ -170,10 +173,14 @@ func autoPalette() themeColors {
 		dim:       lipgloss.BrightBlack,
 		white:     lipgloss.White,
 		border:    lipgloss.BrightBlack,
-		dimGreen:  lipgloss.Color("#3a6644"),
-		dimRed:    lipgloss.Color("#6e3a3d"),
+		dimGreen:  lipgloss.Color("28"),  // ANSI 256: muted green
+		dimRed:    lipgloss.Color("88"),  // ANSI 256: muted red
 		dimYellow: lipgloss.Yellow,
-		markBg:    lipgloss.Color("#1a1f2e"), // very dark blue tint
+
+		gutterAddedFg:   lipgloss.Color("28"), // ANSI 256: muted green
+		gutterRemovedFg: lipgloss.Color("88"), // ANSI 256: muted red
+
+		markBg: lipgloss.Color("#1a1f2e"), // very dark blue tint
 	}
 }
 
@@ -191,7 +198,8 @@ func darkPalette() themeColors {
 		dimGreen:  lipgloss.Color("#00A475"), // Pickle
 		dimRed:    lipgloss.Color("#AB2454"), // Pom
 		dimYellow: lipgloss.Color("#858392"), // Squid
-		markBg:    lipgloss.Color("#18463D"), // Gator
+
+		markBg: lipgloss.Color("#18463D"), // Gator
 	}
 }
 
@@ -209,7 +217,8 @@ func lightPalette() themeColors {
 		dimGreen:  lipgloss.Color("#166534"),
 		dimRed:    lipgloss.Color("#9f1239"),
 		dimYellow: lipgloss.Color("#92400e"),
-		markBg:    lipgloss.Color("#dbeafe"),
+
+		markBg: lipgloss.Color("#dbeafe"),
 	}
 }
 
@@ -227,7 +236,8 @@ func darkDaltonizedPalette() themeColors {
 		dimGreen:  lipgloss.Color("#007AB8"), // Damson
 		dimRed:    lipgloss.Color("#AB2454"), // Pom
 		dimYellow: lipgloss.Color("#858392"), // Squid
-		markBg:    lipgloss.Color("#0F2A4A"), // navy
+
+		markBg: lipgloss.Color("#0F2A4A"), // navy
 	}
 }
 
@@ -245,6 +255,7 @@ func lightDaltonizedPalette() themeColors {
 		dimGreen:  lipgloss.Color("#1e40af"),
 		dimRed:    lipgloss.Color("#9f1239"),
 		dimYellow: lipgloss.Color("#92400e"),
-		markBg:    lipgloss.Color("#dbeafe"),
+
+		markBg: lipgloss.Color("#dbeafe"),
 	}
 }

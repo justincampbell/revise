@@ -229,6 +229,65 @@ func TestRenderDiffLine_HighlightedVsFallback(t *testing.T) {
 	assert.NotEqual(t, withHighlight, withoutHighlight)
 }
 
+func TestChromaFormatter_CommentFgOverride(t *testing.T) {
+	lexer := chromachroma.Coalesce(chromalexers.Get("go"))
+	style := chromastyles.Get("native")
+
+	// Without commentFg — uses the style's default comment color (#999999)
+	it1, _ := lexer.Tokenise(nil, "// a comment")
+	var sb1 strings.Builder
+	f1 := chromaFormatter{bg: nil}
+	f1.Format(&sb1, style, it1)
+	without := sb1.String()
+
+	// With commentFg — overrides to our color
+	it2, _ := lexer.Tokenise(nil, "// a comment")
+	var sb2 strings.Builder
+	f2 := chromaFormatter{bg: nil, commentFg: lipgloss.Color("136")}
+	f2.Format(&sb2, style, it2)
+	with := sb2.String()
+
+	assert.NotEqual(t, without, with, "commentFg override should change output")
+	// Override should use foreground ANSI code (38;5;136), not background
+	assert.Contains(t, with, "38;5;136", "should contain foreground 256-color code")
+	assert.NotContains(t, with, "48;5;136", "should not contain background 256-color code")
+}
+
+func TestChromaFormatter_CommentFgSkipsItalic(t *testing.T) {
+	lexer := chromachroma.Coalesce(chromalexers.Get("go"))
+	style := chromastyles.Get("native") // native uses italic comments
+
+	it, _ := lexer.Tokenise(nil, "// a comment")
+	var sb strings.Builder
+	f := chromaFormatter{bg: nil, commentFg: lipgloss.Color("136")}
+	f.Format(&sb, style, it)
+	result := sb.String()
+
+	// Italic is ANSI code 3; should NOT be present when commentFg is set
+	assert.NotContains(t, result, "\x1b[3;", "comment override should skip italic")
+	assert.NotContains(t, result, ";3;", "comment override should skip italic")
+}
+
+func TestHighlightLine_AutoThemeCommentFg(t *testing.T) {
+	orig := noColor
+	noColor = false
+	origTheme := activeTheme
+	origIsDark := activeIsDark
+	defer func() {
+		noColor = orig
+		activeTheme = origTheme
+		activeIsDark = origIsDark
+	}()
+
+	SetTheme(ThemeAuto, true)
+
+	result, ok := highlightLine("// a comment", "main.go", nil, 0)
+	assert.True(t, ok)
+	// Should use ANSI 256 color 136 (foreground), not italic
+	assert.Contains(t, result, "38;5;136")
+	assert.NotContains(t, result, "\x1b[3;")
+}
+
 func TestRenderDiffLine_MarkedSkipsHighlight(t *testing.T) {
 	orig := noColor
 	noColor = false
