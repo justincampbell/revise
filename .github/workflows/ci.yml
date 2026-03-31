@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  gomod:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,6 +17,11 @@ jobs:
 
       - name: Check go.mod is tidy
         run: make lint-gomod
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Lint
         uses: golangci/golangci-lint-action@v7
