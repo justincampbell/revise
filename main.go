@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
@@ -25,15 +24,11 @@ var ttyOut *os.File
 func init() {
 	// Open /dev/tty so the TUI renders to the real terminal even when
 	// stdout is redirected (enables piping and EDITOR workflows).
-	// Mutate the existing default renderer (don't replace it) so that
-	// styles already created by imported packages keep their reference.
 	var err error
 	ttyOut, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 	if err != nil {
 		ttyOut = os.Stderr
 	}
-	r := lipgloss.DefaultRenderer()
-	r.SetOutput(termenv.NewOutput(ttyOut))
 }
 
 func main() {
@@ -42,7 +37,7 @@ func main() {
 	helpFlag := flag.Bool("help", false, "Show help")
 	versionFlag := flag.Bool("version", false, "Show version")
 	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
-	themeFlag := flag.String("theme", "dark", "Color theme: dark, light, dark-daltonized, light-daltonized")
+	themeFlag := flag.String("theme", "auto", "Color theme: auto, auto-daltonized, charmtone-dark, charmtone-dark-daltonized, charmtone-light, charmtone-light-daltonized, github-dark, github-dark-daltonized, github-light, github-light-daltonized")
 	flag.Parse()
 
 	if *helpFlag {
@@ -64,7 +59,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: unknown theme %q (valid: %s)\n", *themeFlag, strings.Join(valid, ", "))
 		os.Exit(1)
 	}
-	ui.SetTheme(theme)
+	var isDark bool
+	switch theme {
+	case ui.ThemeAuto, ui.ThemeAutoDaltonized:
+		isDark = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+	default:
+		isDark = ui.IsDarkTheme(theme)
+	}
+	ui.SetTheme(theme, isDark)
 
 	// Subcommands that don't require a git repo.
 	args := flag.Args()
@@ -256,7 +258,12 @@ Usage: revise [flags] [command] [file]
 Flags:
   --help                Show this help
   --version, -v         Show version
-  --theme <name>        Color theme: dark (default), light, dark-daltonized, light-daltonized
+  --theme <name>        Color theme (default: auto)
+                          auto, auto-daltonized
+                          charmtone-dark, charmtone-dark-daltonized
+                          charmtone-light, charmtone-light-daltonized
+                          github-dark, github-dark-daltonized
+                          github-light, github-light-daltonized
   --output <file>       Write comments to file on exit
 
 Commands:

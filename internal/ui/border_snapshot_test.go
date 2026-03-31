@@ -53,8 +53,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     false,
-			wantTop:    "╭ foo.go ────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ───── +1/-1 ──── Whitespace ╯",
+			wantTop:    "╭ foo.go ──────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ──── +1/-1 ─── Whitespace ╯",
 		},
 		{
 			name:    "unfocused/simple file/width 40",
@@ -73,8 +73,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     false,
-			wantTop:    "╭ foo.go ────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ───── +1/-1 ──── Whitespace ╯",
+			wantTop:    "╭ foo.go ──────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ──── +1/-1 ─── Whitespace ╯",
 		},
 		{
 			name:    "renamed file title/width 60",
@@ -93,8 +93,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     false,
-			wantTop:    "╭ old_name.go → new_name.go ─────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ─────────────── +0/-0 ────────────── Whitespace ╯",
+			wantTop:    "╭ old_name.go → new_name.go ───────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ────────────── +0/-0 ───────────── Whitespace ╯",
 		},
 		{
 			name:    "large counts/width 50",
@@ -110,8 +110,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     false,
-			wantTop:    "╭ big.go ──────────────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ─────── +1234/-768 ─────── Whitespace ╯",
+			wantTop:    "╭ big.go ────────────────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ────── +1234/-768 ────── Whitespace ╯",
 		},
 		{
 			name:    "no file selected/width 40",
@@ -122,8 +122,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			context: 3,
 			hideWS:  false,
 			// No title when no file is selected
-			wantTop:    "╭────────────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ───── +0/-0 ──── Whitespace ╯",
+			wantTop:    "╭──────────────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ──── +0/-0 ─── Whitespace ╯",
 		},
 		{
 			name:    "narrow width 20",
@@ -141,8 +141,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     false,
-			wantTop:    "╭ narrow.go ─────────╮",
-			wantBottom: "╰ Context Whitespace ╯",
+			wantTop:    "╭ narrow.go ───────╮",
+			wantBottom: "╰ Conte Whitespace ╯",
 		},
 		{
 			name:    "non-default context/width 40",
@@ -160,8 +160,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    10,
 			hideWS:     false,
-			wantTop:    "╭ ctx.go ────────────────────────────────╮",
-			wantBottom: "╰ Context: 10 ──── +1/-0 ──── Whitespace ╯",
+			wantTop:    "╭ ctx.go ──────────────────────────────╮",
+			wantBottom: "╰ Context: 10 ─── +1/-0 ─── Whitespace ╯",
 		},
 		{
 			name:    "whitespace hidden/width 50",
@@ -179,8 +179,8 @@ func TestDiffPaneBorderSnapshots(t *testing.T) {
 			},
 			context:    3,
 			hideWS:     true,
-			wantTop:    "╭ ws.go ───────────────────────────────────────────╮",
-			wantBottom: "╰ Context: 3 ────────── +1/-0 ── Whitespace hidden ╯",
+			wantTop:    "╭ ws.go ─────────────────────────────────────────╮",
+			wantBottom: "╰ Context: 3 ───────── +1/-0 ─ Whitespace hidden ╯",
 		},
 	}
 
@@ -221,8 +221,8 @@ func TestFileListBorderSnapshots(t *testing.T) {
 			focused:    true,
 			files:      makeFiles("a.go", "b.go", "c.go"),
 			modeSlider: " Staged+Unstaged ",
-			wantTop:    "╭────── Staged+Unstaged ───────╮",
-			wantBottom: "╰──────────────────────────────╯",
+			wantTop:    "╭───── Staged+Unstaged ──────╮",
+			wantBottom: "╰────────────────────────────╯",
 		},
 		{
 			name:       "unfocused/with files/width 30",
@@ -231,8 +231,8 @@ func TestFileListBorderSnapshots(t *testing.T) {
 			focused:    false,
 			files:      makeFiles("a.go", "b.go"),
 			modeSlider: " Staged+Unstaged ",
-			wantTop:    "╭────── Staged+Unstaged ───────╮",
-			wantBottom: "╰──────────────────────────────╯",
+			wantTop:    "╭───── Staged+Unstaged ──────╮",
+			wantBottom: "╰────────────────────────────╯",
 		},
 		{
 			name:       "no files/width 30",
@@ -241,8 +241,8 @@ func TestFileListBorderSnapshots(t *testing.T) {
 			focused:    true,
 			files:      nil,
 			modeSlider: " Branch+Staged+Unstaged ",
-			wantTop:    "╭─── Branch+Staged+Unstaged ───╮",
-			wantBottom: "╰──────────────────────────────╯",
+			wantTop:    "╭── Branch+Staged+Unstaged ──╮",
+			wantBottom: "╰────────────────────────────╯",
 		},
 		{
 			name:       "narrow width 20/with files",
@@ -251,8 +251,8 @@ func TestFileListBorderSnapshots(t *testing.T) {
 			focused:    true,
 			files:      makeFiles("a.go"),
 			modeSlider: " Staged ",
-			wantTop:    "╭────── Staged ──────╮",
-			wantBottom: "╰────────────────────╯",
+			wantTop:    "╭───── Staged ─────╮",
+			wantBottom: "╰──────────────────╯",
 		},
 		{
 			name:       "wide width 50/branch mode",
@@ -261,8 +261,8 @@ func TestFileListBorderSnapshots(t *testing.T) {
 			focused:    false,
 			files:      makeFiles("a.go", "b.go", "c.go", "d.go"),
 			modeSlider: " Branch+Staged+Unstaged ",
-			wantTop:    "╭───────────── Branch+Staged+Unstaged ─────────────╮",
-			wantBottom: "╰──────────────────────────────────────────────────╯",
+			wantTop:    "╭──────────── Branch+Staged+Unstaged ────────────╮",
+			wantBottom: "╰────────────────────────────────────────────────╯",
 		},
 	}
 

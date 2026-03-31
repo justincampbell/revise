@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Syntax highlighting via chroma (token colors layered over diff backgrounds)
+- `--theme` flag with ten palettes across three color systems: `auto` (default), `auto-daltonized`, `charmtone-dark`, `charmtone-dark-daltonized`, `charmtone-light`, `charmtone-light-daltonized`, `github-dark`, `github-dark-daltonized`, `github-light`, `github-light-daltonized`
 - `make build` and `make install` produce a version-stamped copy (`revise@VERSION`) alongside `revise` for testing multiple versions side-by-side (#153)
 
 ### Changed

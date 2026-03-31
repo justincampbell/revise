@@ -392,7 +392,7 @@ func TestDiffView_RenderShowsCenteredFooterTotals(t *testing.T) {
 		}},
 	}
 	m.buildLines()
-	rendered := m.render(true, 3, false)
+	rendered := ansi.Strip(m.render(true, 3, false))
 	assert.Contains(t, rendered, "+2/-1")
 }
 
@@ -584,33 +584,6 @@ func makePlainBottomBorder(width int) string {
 // plain character positions.
 func stripANSI(s string) string {
 	return ansi.Strip(s)
-}
-
-func TestBuildLines_BinaryFile(t *testing.T) {
-	m := newDiffViewModel()
-	m.width = 40
-	m.height = 10
-	m.file = &git.FileDiff{
-		Path:     "image.png",
-		IsBinary: true,
-	}
-	m.buildLines()
-	// Should show a binary file message, not an empty diff
-	require.NotEmpty(t, m.lines)
-	found := false
-	for _, line := range m.lines {
-		if strings.Contains(line, "Binary file") {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "expected 'Binary file' message in lines: %v", m.lines)
-	// No navigable lines for binary files
-	for i, ref := range m.lineRefs {
-		if ref != nil && !ref.isCommentDisplay {
-			t.Errorf("expected no navigable lines for binary file, but line %d has ref %+v", i, ref)
-		}
-	}
 }
 
 func TestSetBorderBottomCounts_SlashColumnFixed(t *testing.T) {

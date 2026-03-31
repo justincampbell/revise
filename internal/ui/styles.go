@@ -1,44 +1,48 @@
 package ui
 
 import (
+	"image/color"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 var noColor = os.Getenv("NO_COLOR") != ""
 
-var activeTheme Theme = ThemeDark
+var activeTheme Theme = ThemeAuto
+var activeIsDark = true // default until terminal background is detected
 
 // colorBorder, colorCyan, and colorYellow are used directly in diffview.go and help.go
 // for dynamic border/style construction.
 var (
-	colorBorder lipgloss.Color = "#374151"
-	colorCyan   lipgloss.Color = "#06b6d4"
-	colorYellow lipgloss.Color = "#eab308"
+	colorBorder color.Color = lipgloss.Color("#374151")
+	colorCyan   color.Color = lipgloss.Color("#06b6d4")
+	colorYellow color.Color = lipgloss.Color("#eab308")
 )
 
-// SetTheme sets the active theme before the model is constructed. It must be
-// called before any style variable is used (i.e. before NewWithStorePath).
-func SetTheme(t Theme) {
+// SetTheme sets the active theme. Called from main.go for --theme overrides,
+// or with ThemeAuto + detected isDark on startup.
+func SetTheme(t Theme, isDark bool) {
 	activeTheme = t
-	applyTheme(paletteFor(t))
+	activeIsDark = isDark
+	applyTheme(paletteFor(t, isDark))
 	if noColor {
 		applyNoColor()
 	}
+	clearHighlightCache()
 }
 
 var (
 	// Line styles
-	addedStyle        lipgloss.Style
-	removedStyle      lipgloss.Style
-	contextStyle      lipgloss.Style
-	hunkStyle         lipgloss.Style
-	hunkBranchStyle   lipgloss.Style
-	hunkStagedStyle   lipgloss.Style
-	hunkUnstagedStyle lipgloss.Style
+	addedStyle         lipgloss.Style
+	removedStyle       lipgloss.Style
+	contextStyle       lipgloss.Style
+	hunkStyle          lipgloss.Style
+	hunkBranchStyle    lipgloss.Style
+	hunkStagedStyle    lipgloss.Style
+	hunkUnstagedStyle  lipgloss.Style
 	hunkSourceTagStyle lipgloss.Style
-	fileStyle         lipgloss.Style
+	fileStyle          lipgloss.Style
 
 	// Gutter styles
 	addedGutterStyle   lipgloss.Style
@@ -107,7 +111,7 @@ var (
 )
 
 func init() {
-	applyTheme(paletteFor(activeTheme))
+	applyTheme(paletteFor(activeTheme, activeIsDark))
 	if noColor {
 		applyNoColor()
 	}
@@ -128,8 +132,16 @@ func applyTheme(p themeColors) {
 	hunkSourceTagStyle = lipgloss.NewStyle().Foreground(p.dim).Italic(true)
 	fileStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)
 
-	addedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.addedFg).Width(6)
-	removedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg).Width(6)
+	gutterAdded := p.gutterAddedFg
+	if gutterAdded == nil {
+		gutterAdded = p.addedFg
+	}
+	gutterRemoved := p.gutterRemovedFg
+	if gutterRemoved == nil {
+		gutterRemoved = p.removedFg
+	}
+	addedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(gutterAdded).Width(6)
+	removedGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(gutterRemoved).Width(6)
 	contextGutterStyle = lipgloss.NewStyle().Bold(true).Foreground(p.dim).Width(6)
 
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)

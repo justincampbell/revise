@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/update"
 	"github.com/stretchr/testify/assert"
@@ -514,7 +515,7 @@ func TestModeSlider_UnstagedMode_SpaceDelimiters(t *testing.T) {
 	m.mode = ModeUnstaged
 	slider := m.renderModeSlider()
 	// Only Unstaged active — space delimiters between labels, no +
-	assert.Contains(t, slider, "Branch Staged Unstaged")
+	assert.Contains(t, ansi.Strip(slider), "Branch Staged Unstaged")
 }
 
 // --- Slider click tests ---
