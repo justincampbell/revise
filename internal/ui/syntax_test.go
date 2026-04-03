@@ -237,14 +237,14 @@ func TestChromaFormatter_CommentFgOverride(t *testing.T) {
 	it1, _ := lexer.Tokenise(nil, "// a comment")
 	var sb1 strings.Builder
 	f1 := chromaFormatter{bg: nil}
-	f1.Format(&sb1, style, it1)
+	_ = f1.Format(&sb1, style, it1)
 	without := sb1.String()
 
 	// With commentFg — overrides to our color
 	it2, _ := lexer.Tokenise(nil, "// a comment")
 	var sb2 strings.Builder
 	f2 := chromaFormatter{bg: nil, commentFg: lipgloss.Color("136")}
-	f2.Format(&sb2, style, it2)
+	_ = f2.Format(&sb2, style, it2)
 	with := sb2.String()
 
 	assert.NotEqual(t, without, with, "commentFg override should change output")
@@ -260,7 +260,7 @@ func TestChromaFormatter_CommentFgSkipsItalic(t *testing.T) {
 	it, _ := lexer.Tokenise(nil, "// a comment")
 	var sb strings.Builder
 	f := chromaFormatter{bg: nil, commentFg: lipgloss.Color("136")}
-	f.Format(&sb, style, it)
+	_ = f.Format(&sb, style, it)
 	result := sb.String()
 
 	// Italic is ANSI code 3; should NOT be present when commentFg is set

@@ -157,7 +157,7 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 
 		entry := style.Get(token.Type)
 		if entry.IsZero() {
-			fmt.Fprint(w, value)
+			_, _ = fmt.Fprint(w, value)
 			continue
 		}
 
@@ -184,7 +184,7 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 			s = s.Foreground(lipgloss.Color(entry.Colour.String()))
 		}
 
-		fmt.Fprint(w, s.Render(value))
+		_, _ = fmt.Fprint(w, s.Render(value))
 	}
 	return nil
 }
