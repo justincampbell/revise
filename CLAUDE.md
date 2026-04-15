@@ -102,14 +102,16 @@ main.go                        # entry point, flag parsing, program setup
 internal/
   git/
     types.go                   # Diff, FileDiff, Hunk, Line types
-    diff.go                    # GetDiff, branch detection, merge-base logic
+    diff.go                    # GetDiff, branch detection, merge-base logic, git commands
+    merge.go                   # diff composition: mergeFileDiffs, tagHunks, composeBranch/WorkingTree
     apply.go                   # stage/unstage/discard hunks via git apply
     parse.go                   # unified diff parser
     format.go                  # plain-text diff formatter (revise diff subcommand)
     untracked.go               # untracked file detection
+    merge_test.go              # mergeFileDiffs/compose unit tests
+    merge_bench_test.go        # merge performance benchmarks
     parse_test.go              # parser unit tests
     apply_test.go              # stage/unstage/discard integration tests
-    diff_test.go               # mergeFileDiffs unit tests
     format_test.go             # formatter tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
