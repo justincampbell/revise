@@ -1,0 +1,228 @@
+<lexer>
+  <config>
+    <name>HAML</name>
+    <alias>haml</alias>
+    <filename>*.haml</filename>
+    <mime_type>text/x-haml</mime_type>
+  </config>
+  <rules>
+    <!-- Ruby interpolation inside strings/text.
+         Nested braces are handled by pushing a new interpolation frame on {
+         so each level gets its own state and pops correctly on }. -->
+    <state name="interpolation">
+      <rule pattern="\}">
+        <token type="LiteralStringInterpol"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="\{">
+        <token type="LiteralStringOther"/>
+        <push state="interpolation"/>
+      </rule>
+      <rule pattern="[^{}]+">
+        <token type="LiteralStringOther"/>
+      </rule>
+    </state>
+
+    <!-- Double-quoted string -->
+    <state name="string-double">
+      <rule pattern="&#34;">
+        <token type="LiteralStringDouble"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="#\{">
+        <token type="LiteralStringInterpol"/>
+        <push state="interpolation"/>
+      </rule>
+      <rule pattern="[^&#34;#]+">
+        <token type="LiteralStringDouble"/>
+      </rule>
+    </state>
+
+    <!-- Single-quoted string -->
+    <state name="string-single">
+      <rule pattern="&#39;">
+        <token type="LiteralStringSingle"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[^&#39;]+">
+        <token type="LiteralStringSingle"/>
+      </rule>
+    </state>
+
+    <!-- HTML/Ruby attributes: (foo="bar") or {foo: bar} -->
+    <state name="attrs">
+      <rule pattern="[)]">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[}]">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[(]">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="[{]">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="[\w-]+(?=\s*=|\s*:)">
+        <token type="NameAttribute"/>
+      </rule>
+      <rule pattern="=&gt;|=">
+        <token type="Operator"/>
+      </rule>
+      <rule pattern=":[\w-]+">
+        <token type="NameAttribute"/>
+      </rule>
+      <rule pattern="&#34;">
+        <token type="LiteralStringDouble"/>
+        <push state="string-double"/>
+      </rule>
+      <rule pattern="&#39;">
+        <token type="LiteralStringSingle"/>
+        <push state="string-single"/>
+      </rule>
+      <rule pattern="#\{">
+        <token type="LiteralStringInterpol"/>
+        <push state="interpolation"/>
+      </rule>
+      <rule pattern="(true|false|nil)">
+        <token type="KeywordConstant"/>
+      </rule>
+      <rule pattern="[\w.]+">
+        <token type="LiteralStringOther"/>
+      </rule>
+      <rule pattern="[\s,]+">
+        <token type="Text"/>
+      </rule>
+    </state>
+
+    <!-- Tag line: %div, .class, #id and their attributes -->
+    <state name="tag">
+      <rule pattern="\.[a-zA-Z][\w-]*">
+        <token type="NameClass"/>
+      </rule>
+      <rule pattern="#[a-zA-Z][\w-]*">
+        <token type="NameFunction"/>
+      </rule>
+      <rule pattern="\(">
+        <token type="Punctuation"/>
+        <push state="attrs"/>
+      </rule>
+      <rule pattern="\{">
+        <token type="Punctuation"/>
+        <push state="attrs"/>
+      </rule>
+      <rule pattern="[/&lt;&gt;]">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="=">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[ \t]+.*">
+        <token type="Text"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="$">
+        <token type="Text"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+
+    <state name="root">
+      <!-- Doctype -->
+      <rule pattern="^!!!.*$">
+        <token type="KeywordDeclaration"/>
+      </rule>
+
+      <!-- HAML comment -->
+      <rule pattern="^([ \t]*)(-#)(.*)$">
+        <bygroups>
+          <token type="Text"/>
+          <token type="CommentSingle"/>
+          <token type="CommentSingle"/>
+        </bygroups>
+      </rule>
+
+      <!-- HTML comment -->
+      <rule pattern="^([ \t]*)(/)(.*)$">
+        <bygroups>
+          <token type="Text"/>
+          <token type="CommentSingle"/>
+          <token type="CommentSingle"/>
+        </bygroups>
+      </rule>
+
+      <!-- Filters: :javascript, :css, :ruby, etc. -->
+      <rule pattern="^([ \t]*)(:[a-zA-Z]\w*)$">
+        <bygroups>
+          <token type="Text"/>
+          <token type="NameDecorator"/>
+        </bygroups>
+      </rule>
+
+      <!-- Ruby output: = expr -->
+      <rule pattern="^([ \t]*)(=)([ \t]*)(.*)$">
+        <bygroups>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="LiteralStringOther"/>
+        </bygroups>
+      </rule>
+
+      <!-- Ruby code: - code -->
+      <rule pattern="^([ \t]*)(-)([ \t]*)(.*)$">
+        <bygroups>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+          <token type="LiteralStringOther"/>
+        </bygroups>
+      </rule>
+
+      <!-- Tag with % -->
+      <rule pattern="^([ \t]*)(%[a-zA-Z][\w:-]*)">
+        <bygroups>
+          <token type="Text"/>
+          <token type="NameTag"/>
+        </bygroups>
+        <push state="tag"/>
+      </rule>
+
+      <!-- Class shorthand .foo -->
+      <rule pattern="^([ \t]*)(\.[a-zA-Z][\w-]*)">
+        <bygroups>
+          <token type="Text"/>
+          <token type="NameClass"/>
+        </bygroups>
+        <push state="tag"/>
+      </rule>
+
+      <!-- ID shorthand #foo -->
+      <rule pattern="^([ \t]*)(#[a-zA-Z][\w-]*)">
+        <bygroups>
+          <token type="Text"/>
+          <token type="NameFunction"/>
+        </bygroups>
+        <push state="tag"/>
+      </rule>
+
+      <!-- Ruby interpolation in plain text -->
+      <rule pattern="#\{">
+        <token type="LiteralStringInterpol"/>
+        <push state="interpolation"/>
+      </rule>
+
+      <!-- Plain text -->
+      <rule pattern="[^\n]+">
+        <token type="Text"/>
+      </rule>
+
+      <rule pattern="\n">
+        <token type="Text"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>
