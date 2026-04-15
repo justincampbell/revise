@@ -6,14 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-15
+
 ### Added
 
-- Syntax highlighting via chroma (token colors layered over diff backgrounds)
+- Syntax highlighting via chroma (token colors layered over diff backgrounds) (#141)
 - `--theme` flag with ten palettes across three color systems: `auto` (default), `auto-daltonized`, `charmtone-dark`, `charmtone-dark-daltonized`, `charmtone-light`, `charmtone-light-daltonized`, `github-dark`, `github-dark-daltonized`, `github-light`, `github-light-daltonized`
+- Detect binary files and show placeholder instead of garbled content (#154)
 - `make build` and `make install` produce a version-stamped copy (`revise@VERSION`) alongside `revise` for testing multiple versions side-by-side (#153)
 
 ### Changed
 
+- Upgraded to lipgloss v2 with terminal background auto-detection
+- Default theme changed from `dark` to `auto` (adapts to terminal light/dark mode)
 - Lowered `go.mod` go directive from `1.25.3` to `1.24.11` (actual minimum), added `toolchain` directive (#151)
 - Added `lint-gomod` check to verify `go.mod` stays tidy and go version doesn't drift (#151)
 
