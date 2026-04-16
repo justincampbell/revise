@@ -116,6 +116,9 @@ internal/
   comments/
     store.go                   # JSON persistence for comments (Save/Load/StorePath)
     store_test.go              # persistence unit tests
+  devwatch/
+    devwatch.go                # poll a binary for changes, fire callback on replacement (--dev flag)
+    devwatch_test.go           # watcher unit tests
   update/
     update.go                  # self-update via go-selfupdate (CheckForUpdate, ApplyUpdate)
     update_test.go             # integration tests (skipped in short mode)

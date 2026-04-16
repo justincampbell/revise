@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `--dev` flag auto-restarts the running TUI when the binary is replaced (e.g. by `make install`), preserving argv and env (#160)
 - `setup-cache` subcommand to enable git's `core.untrackedCache` for faster refreshes; a startup tip surfaces in the status bar when the cache is disabled but the filesystem supports it (#160)
 
 ## [0.3.0] - 2026-04-15
