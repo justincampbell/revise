@@ -78,7 +78,7 @@ func main() {
 		case "styles":
 			ui.PrintStylesDemo()
 			return
-		case "diff":
+		case "diff", "setup-cache":
 			// Handled below after git repo check.
 		default:
 			// Positional argument: file review mode.
@@ -101,6 +101,10 @@ func main() {
 	// Subcommands that require a git repo.
 	if len(args) > 0 && args[0] == "diff" {
 		runDiff()
+		return
+	}
+	if len(args) > 0 && args[0] == "setup-cache" {
+		runSetupCache()
 		return
 	}
 
@@ -224,6 +228,22 @@ func runDiff() {
 	fmt.Print(git.Format(diff))
 }
 
+func runSetupCache() {
+	if git.UntrackedCacheEnabled() {
+		fmt.Println("core.untrackedCache is already enabled")
+		return
+	}
+	if err := git.TestUntrackedCacheSupport(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := git.EnableUntrackedCache(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("enabled core.untrackedCache for this repo")
+}
+
 func runUpdate(args []string) {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 	pre := fs.Bool("pre", false, "Include pre-release (dev) builds")
@@ -268,6 +288,7 @@ Flags:
 
 Commands:
   diff            Print unified diff (no TUI)
+  setup-cache     Enable git's core.untrackedCache for faster refreshes
   styles          Show file status color matrix
   update [--pre]  Update to the latest version
 

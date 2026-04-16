@@ -39,6 +39,10 @@ type updateCheckMsg struct {
 	err  error
 }
 
+// untrackedCacheTipMsg fires if the repo has core.untrackedCache disabled
+// and the filesystem supports enabling it — we surface a one-time tip.
+type untrackedCacheTipMsg struct{}
+
 // updateAppliedMsg is sent when an update download+install completes.
 type updateAppliedMsg struct {
 	newVersion string
@@ -214,6 +218,15 @@ func (m Model) Init() tea.Cmd {
 			return updateCheckMsg{info: info, err: err}
 		})
 	}
+	cmds = append(cmds, func() tea.Msg {
+		if git.UntrackedCacheEnabled() {
+			return nil
+		}
+		if git.TestUntrackedCacheSupport() != nil {
+			return nil
+		}
+		return untrackedCacheTipMsg{}
+	})
 	return tea.Batch(cmds...)
 }
 
@@ -586,6 +599,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fp, err := git.StatusFingerprint()
 			return pollResultMsg{fingerprint: fp, err: err}
 		}
+
+	case untrackedCacheTipMsg:
+		m.statusMsg = "Tip: enable core.untrackedCache for faster refresh — run 'revise setup-cache'"
+		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 
 	case updateCheckMsg:
 		if msg.err == nil && msg.info != nil && msg.info.IsNewer {
