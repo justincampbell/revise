@@ -2,14 +2,19 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/comments"
+	"github.com/justincampbell/revise/internal/devwatch"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
 	"github.com/justincampbell/revise/internal/update"
@@ -38,6 +43,7 @@ func main() {
 	versionFlag := flag.Bool("version", false, "Show version")
 	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
 	themeFlag := flag.String("theme", "auto", "Color theme: auto, auto-daltonized, charmtone-dark, charmtone-dark-daltonized, charmtone-light, charmtone-light-daltonized, github-dark, github-dark-daltonized, github-light, github-light-daltonized")
+	devFlag := flag.Bool("dev", false, "Auto-restart when the binary is replaced (for local development)")
 	flag.Parse()
 
 	if *helpFlag {
@@ -82,7 +88,7 @@ func main() {
 			// Handled below after git repo check.
 		default:
 			// Positional argument: file review mode.
-			runFileReview(args[0], *outputFlag)
+			runFileReview(args[0], *outputFlag, *devFlag)
 			return
 		}
 	}
@@ -138,7 +144,7 @@ func main() {
 	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(), tea.WithOutput(ttyOut))
 
-	finalModel, err := p.Run()
+	finalModel, err := runProgram(p, *devFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -150,7 +156,7 @@ func main() {
 	}
 }
 
-func runFileReview(filePath string, outputPath string) {
+func runFileReview(filePath string, outputPath string, devMode bool) {
 	diff, err := buildFileDiff(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -158,7 +164,7 @@ func runFileReview(filePath string, outputPath string) {
 	}
 	m := ui.NewFileReview(diff, filePath)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(ttyOut))
-	finalModel, err := p.Run()
+	finalModel, err := runProgram(p, devMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -168,6 +174,42 @@ func runFileReview(filePath string, outputPath string) {
 	if fm, ok := finalModel.(ui.Model); ok {
 		writeComments(fm, outputPath)
 	}
+}
+
+// runProgram runs a Bubbletea program. When devMode is true, it polls the
+// running binary for changes and re-execs the process when the binary is
+// replaced (e.g. after `make install`), preserving the original argv and env.
+func runProgram(p *tea.Program, devMode bool) (tea.Model, error) {
+	var (
+		restart  atomic.Bool
+		selfPath string
+	)
+	if devMode {
+		if exe, err := os.Executable(); err == nil {
+			if real, err := filepath.EvalSymlinks(exe); err == nil {
+				selfPath = real
+			} else {
+				selfPath = exe
+			}
+		}
+		if selfPath != "" {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			w := devwatch.New(selfPath, func() {
+				restart.Store(true)
+				p.Quit()
+			})
+			go w.Run(ctx)
+		}
+	}
+
+	finalModel, err := p.Run()
+	if restart.Load() && selfPath != "" {
+		// Re-exec the (now-updated) binary in place. On success, this never
+		// returns; on failure, fall through and surface the original result.
+		_ = syscall.Exec(selfPath, os.Args, os.Environ())
+	}
+	return finalModel, err
 }
 
 // writeComments outputs comments to --output file or stdout.
@@ -285,6 +327,7 @@ Flags:
                           github-dark, github-dark-daltonized
                           github-light, github-light-daltonized
   --output <file>       Write comments to file on exit
+  --dev                 Auto-restart when the binary is replaced (development)
 
 Commands:
   diff            Print unified diff (no TUI)
