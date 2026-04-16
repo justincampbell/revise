@@ -63,6 +63,7 @@ Comments are also output on exit in normal git diff mode.
 | Command | Description |
 |---------|-------------|
 | `revise <file>` | Review a file with comments |
+| `revise setup-cache` | Enable git's `core.untrackedCache` for faster refreshes |
 | `revise styles` | Show file status color matrix for all staging states |
 | `revise update [--pre]` | Update to the latest version |
 
