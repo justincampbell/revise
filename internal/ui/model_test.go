@@ -1557,6 +1557,27 @@ func TestFocus_ResumesPolling(t *testing.T) {
 	assert.NotNil(t, cmd, "focus should schedule a poll tick")
 }
 
+// Regression for #144: on refocus, the poll must fire immediately rather
+// than waiting a full pollInterval, so users see fresh state right away
+// when they switch back to revise.
+func TestFocus_TriggersImmediatePoll(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	_, cmd := m.Update(tea.FocusMsg{})
+	require.NotNil(t, cmd)
+
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		_, ok := msg.(pollTickMsg)
+		assert.True(t, ok, "focus cmd should return pollTickMsg immediately, got %T", msg)
+	case <-time.After(1 * time.Second):
+		t.Fatal("focus cmd did not complete within 1s — still gated by pollInterval")
+	}
+}
+
 func TestPollResult_SkipsNextTickWhenUnfocused(t *testing.T) {
 	m := makeModel("a.go")
 	m.polling = true

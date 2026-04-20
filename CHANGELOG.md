@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Right arrow no longer toggles fullscreen — it scrolls right when the diff is focused. Use `f` to toggle fullscreen. Left arrow scrolls left first, then falls back to focusing the file list when already at column 0 (#121)
 
+### Fixed
+
+- Refresh fires immediately when the terminal regains focus instead of waiting a full poll interval, so switching back to revise shows current state right away (#144)
+
 ## [0.3.0] - 2026-04-15
 
 ### Added

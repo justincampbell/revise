@@ -600,8 +600,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.FocusMsg:
 		m.focused = true
-		// Resume polling now that we have focus again.
-		return m, tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		// Poll immediately on refocus so users see fresh state right away
+		// rather than waiting a full pollInterval (see #144).
+		return m, func() tea.Msg { return pollTickMsg{} }
 
 	case tea.BlurMsg:
 		m.focused = false
