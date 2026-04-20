@@ -551,11 +551,17 @@ const inputBoxHeight = 3 // border top + content + border bottom
 func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool, modeSlider ...string) string {
 	viewH := m.viewHeight()
 	maxWidth := m.viewWidth()
+	// Clamp a stale offset (e.g. after a resize or a shorter refreshed diff)
+	// so a scroll position from a wider state doesn't over-truncate now.
+	hOffset := m.hOffset
+	if max := m.maxHScroll(); hOffset > max {
+		hOffset = max
+	}
 
 	renderLine := func(absIdx int) string {
 		line := m.lines[absIdx]
-		if m.hOffset > 0 {
-			line = ansi.TruncateLeft(line, m.hOffset, "")
+		if hOffset > 0 {
+			line = ansi.TruncateLeft(line, hOffset, "")
 		}
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
