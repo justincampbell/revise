@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,15 +152,17 @@ func TestModelLeftKey_ExitsFullscreen(t *testing.T) {
 	assert.Equal(t, focusFileList, m.focus)
 }
 
-func TestModelRightKey_WhenAlreadyFocused_TogglesFullscreen(t *testing.T) {
+func TestModelRightKey_WhenAlreadyFocused_DoesNotToggleFullscreen(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "l") // focus diff
-	assert.Equal(t, focusDiffView, m.focus)
-	assert.False(t, m.fullscreen)
-	m = sendKey(m, "l") // right again → fullscreen
-	assert.True(t, m.fullscreen)
-	m = sendKey(m, "l") // right again → exit fullscreen
-	assert.False(t, m.fullscreen)
+	require.Equal(t, focusDiffView, m.focus)
+	require.False(t, m.fullscreen)
+	m = sendKey(m, "l") // right again → must NOT toggle fullscreen
+	assert.False(t, m.fullscreen, "right arrow must not toggle fullscreen")
+	m = sendKey(m, "f") // enter fullscreen explicitly
+	require.True(t, m.fullscreen)
+	m = sendKey(m, "l") // right again → must NOT exit fullscreen
+	assert.True(t, m.fullscreen, "right arrow must not exit fullscreen")
 }
 
 func TestModelRightKey_WhenFileListFocused_FocusesDiff(t *testing.T) {
@@ -168,6 +171,65 @@ func TestModelRightKey_WhenFileListFocused_FocusesDiff(t *testing.T) {
 	m = sendKey(m, "l")
 	assert.Equal(t, focusDiffView, m.focus)
 	assert.False(t, m.fullscreen)
+}
+
+func TestModelRightKey_WhenDiffFocused_ScrollsRight(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: strings.Repeat("A", 500), NewNum: 1},
+	})
+	m = sendKey(m, "l") // focus diff
+	require.Equal(t, focusDiffView, m.focus)
+	require.Equal(t, 0, m.diffView.hOffset)
+	m = sendKey(m, "l") // right again → scroll right
+	assert.Greater(t, m.diffView.hOffset, 0, "right arrow should scroll right")
+}
+
+func TestModelLeftKey_WhenScrolledRight_ScrollsLeft(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: strings.Repeat("A", 500), NewNum: 1},
+	})
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	m = sendKey(m, "l")
+	require.Greater(t, m.diffView.hOffset, 0)
+	prev := m.diffView.hOffset
+	m = sendKey(m, "h") // left while scrolled right → scroll left, not focus change
+	assert.Less(t, m.diffView.hOffset, prev)
+	assert.Equal(t, focusDiffView, m.focus, "left must not change focus while scrolled")
+}
+
+func TestModelLeftKey_AtZeroScroll_FocusesFileList(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "short", NewNum: 1},
+	})
+	m = sendKey(m, "l")
+	require.Equal(t, focusDiffView, m.focus)
+	require.Equal(t, 0, m.diffView.hOffset)
+	m = sendKey(m, "h")
+	assert.Equal(t, focusFileList, m.focus)
+}
+
+func TestModelMouseWheelRight_ScrollsDiffRight(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: strings.Repeat("A", 500), NewNum: 1},
+	})
+	m = sendKey(m, "l")
+	require.Equal(t, 0, m.diffView.hOffset)
+	// Click inside the diff pane (x past file list width + gap).
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelRight, X: 50, Y: 5})
+	m = updated.(Model)
+	assert.Greater(t, m.diffView.hOffset, 0)
+}
+
+func TestModelMouseWheelLeft_ScrollsDiffLeft(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: strings.Repeat("A", 500), NewNum: 1},
+	})
+	m = sendKey(m, "l")
+	m.diffView.hOffset = 20
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelLeft, X: 50, Y: 5})
+	m = updated.(Model)
+	assert.Less(t, m.diffView.hOffset, 20)
 }
 
 func TestModelHelpDismissedByAnyKey(t *testing.T) {

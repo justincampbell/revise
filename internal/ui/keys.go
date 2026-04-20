@@ -17,8 +17,8 @@ type BindingGroup struct {
 // The help overlay and --help output are generated from this list.
 var allBindings = []BindingGroup{
 	{"General", []Binding{
-		{Key: "← (h)", Desc: "Focus file list", GitOnly: true},
-		{Key: "→ (l)", Desc: "Focus diff view", GitOnly: true},
+		{Key: "← (h)", Desc: "Focus file list / scroll left", GitOnly: true},
+		{Key: "→ (l)", Desc: "Focus diff view / scroll right", GitOnly: true},
 		{Key: "n/N", Desc: "Next/prev file", GitOnly: true},
 		{Key: "Tab/S-Tab", Desc: "Cycle diff mode", GitOnly: true},
 		{Key: "f", Desc: "Toggle fullscreen diff", GitOnly: true},

@@ -23,6 +23,65 @@ func makeDiffViewModel(lineCount, height int) diffViewModel {
 	return m
 }
 
+func TestDiffViewScrollRight_Clamps(t *testing.T) {
+	m := makeDiffViewModel(3, 10)
+	m.width = 20 // viewWidth = 17
+	m.lines[0] = strings.Repeat("a", 30)
+	// max = 30 - 17 = 13
+	m.scrollRight(100)
+	assert.Equal(t, 13, m.hOffset)
+}
+
+func TestDiffViewScrollRight_NoScrollWhenContentFits(t *testing.T) {
+	m := makeDiffViewModel(3, 10)
+	m.width = 50
+	m.lines[0] = "short"
+	m.scrollRight(10)
+	assert.Equal(t, 0, m.hOffset)
+}
+
+func TestDiffViewScrollLeft_Clamps(t *testing.T) {
+	m := makeDiffViewModel(3, 10)
+	m.hOffset = 5
+	m.scrollLeft(100)
+	assert.Equal(t, 0, m.hOffset)
+}
+
+func TestDiffViewSetFile_ResetsHOffset(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 40
+	m.hOffset = 10
+	m.setFile(&git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "hi", NewNum: 1}},
+		}},
+	})
+	assert.Equal(t, 0, m.hOffset)
+}
+
+func TestDiffViewRender_AppliesHOffset(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 20
+	m.height = 5
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+
+	before := ansi.Strip(m.render(true, 3, false))
+	m.hOffset = 10
+	after := ansi.Strip(m.render(true, 3, false))
+	// With hOffset, the rendered content should shift — fewer leading 'A' chars visible.
+	assert.NotEqual(t, before, after, "render should change when hOffset changes")
+}
+
 func TestDiffViewScrollDown_Clamps(t *testing.T) {
 	m := makeDiffViewModel(10, 6) // viewHeight = 6, max offset = 4
 	m.scrollDown(100)

@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `--dev` flag auto-restarts the running TUI when the binary is replaced (e.g. by `make install`), preserving argv and env (#160)
 - `setup-cache` subcommand to enable git's `core.untrackedCache` for faster refreshes; a startup tip surfaces in the status bar when the cache is disabled but the filesystem supports it (#160)
+- Horizontal scroll in the diff view via →/← (or h/l) and mouse wheel left/right (#121)
+
+### Changed
+
+- Right arrow no longer toggles fullscreen — it scrolls right when the diff is focused. Use `f` to toggle fullscreen. Left arrow scrolls left first, then falls back to focusing the file list when already at column 0 (#121)
 
 ## [0.3.0] - 2026-04-15
 
