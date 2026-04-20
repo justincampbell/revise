@@ -492,21 +492,45 @@ func TestDiffRefresh_UpdatesOnDefaultBranch(t *testing.T) {
 	assert.Equal(t, []DiffMode{ModeBranch, ModeStaged, ModeStagedOnly, ModeUnstaged}, m.availableModes())
 }
 
-func TestDiffRefresh_SwitchesToFeatureBranch_KeepsCurrentMode(t *testing.T) {
-	// Start on default branch in ModeStaged
+// Regression for #148: when the branch diverges from default while revise is
+// running (e.g. user committed on a fresh branch), promote mode to ModeBranch
+// so the new committed changes become visible — unless the user has explicitly
+// chosen a different mode.
+func TestDiffRefresh_SwitchesToFeatureBranch_PromotesToBranchMode(t *testing.T) {
 	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
 	require.Equal(t, ModeStaged, m.mode)
+	require.False(t, m.modeExplicitlySet)
 
-	// Switch to feature branch — mode should stay ModeStaged (still valid)
 	updated, _ = m.Update(diffLoadedMsg{
 		diff:            &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
 		onDefaultBranch: false,
 	})
 	m = updated.(Model)
 
-	assert.Equal(t, ModeStaged, m.mode, "should keep current mode when it's still valid")
+	assert.Equal(t, ModeBranch, m.mode, "should promote to ModeBranch when branch diverges and mode is the default")
+}
+
+// If the user explicitly picked a mode on the default branch, respect that
+// choice across the transition — don't auto-promote to ModeBranch.
+func TestDiffRefresh_SwitchesToFeatureBranch_PreservesExplicitMode(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+
+	// Simulate Tab/Shift+Tab — cycleMode marks mode as explicit.
+	m.cycleMode(+1)
+	require.Equal(t, ModeStagedOnly, m.mode)
+	require.True(t, m.modeExplicitlySet)
+
+	updated, _ = m.Update(diffLoadedMsg{
+		diff:            &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		onDefaultBranch: false,
+	})
+	m = updated.(Model)
+
+	assert.Equal(t, ModeStagedOnly, m.mode, "should preserve explicitly-chosen mode across branch divergence")
 }
 
 func TestDiffRefresh_SwitchesToDefaultBranch_ClampsMode(t *testing.T) {

@@ -93,10 +93,11 @@ type Model struct {
 	height     int
 	ready      bool
 
-	mode            DiffMode
-	onDefaultBranch bool
-	contextLines    int
-	hideWhitespace  bool
+	mode              DiffMode
+	modeExplicitlySet bool // true once the user has manually picked a mode (#148)
+	onDefaultBranch   bool
+	contextLines      int
+	hideWhitespace    bool
 
 	comments           comments
 	marks              marks
@@ -464,6 +465,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Y == m.height-1 {
 				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode {
 					m.mode = mode
+					m.modeExplicitlySet = true
 					return m, m.loadDiff()
 				}
 				return m, nil
@@ -531,7 +533,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update default-branch status so Branch mode becomes
 		// available (or unavailable) dynamically.
+		wasOnDefaultBranch := m.onDefaultBranch
 		m.onDefaultBranch = msg.onDefaultBranch
+		// When the branch diverges from default while revise is running
+		// (e.g. user committed on a fresh branch), promote mode to
+		// ModeBranch so the new commits are visible — but only if the
+		// user hasn't explicitly picked a different mode (see #148).
+		if wasOnDefaultBranch && !m.onDefaultBranch && !m.modeExplicitlySet {
+			m.mode = ModeBranch
+		}
 		// If the current mode is no longer valid, clamp it.
 		modes := m.availableModes()
 		modeValid := false
@@ -1198,6 +1208,7 @@ func (m *Model) cycleMode(direction int) {
 	}
 	nextIdx := (currentIdx + direction + len(modes)) % len(modes)
 	m.mode = modes[nextIdx]
+	m.modeExplicitlySet = true
 }
 
 // loadDiff returns a command that fetches the diff for the current mode.
