@@ -642,6 +642,50 @@ func TestBranchDiff_ThreeSourceCombination(t *testing.T) {
 	assert.Contains(t, sources, SourceUnstaged)
 }
 
+// When a file is modified on the branch and then staged with changes to the
+// same lines, BranchDiff should show hunks from both sources. This documents
+// the current overlap behavior (hunks are not deduplicated).
+func TestBranchDiff_SameFileSameLinesBranchAndStaged(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("shared.go", "package main\n\nfunc shared() {\n\treturn\n}\n")
+	r.Add("shared.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	// Branch commit: modify the function body
+	r.WriteFile("shared.go", "package main\n\nfunc shared() {\n\t// branch change\n\treturn\n}\n")
+	r.Add("shared.go")
+	r.Commit("branch change")
+
+	// Staged: modify the same line again
+	r.WriteFile("shared.go", "package main\n\nfunc shared() {\n\t// staged change\n\treturn\n}\n")
+	r.Add("shared.go")
+	r.Chdir()
+
+	diff, err := BranchDiff(DefaultContextLines)
+	require.NoError(t, err)
+
+	f := fileByPath(diff, "shared.go")
+	require.NotNil(t, f)
+
+	// File should appear exactly once
+	count := 0
+	for _, fd := range diff.Files {
+		if fd.Path == "shared.go" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "shared.go should appear exactly once")
+
+	// Should have hunks from both Branch and Staged sources
+	var sources []HunkSource
+	for _, h := range f.Hunks {
+		sources = append(sources, h.Source)
+	}
+	assert.Contains(t, sources, SourceBranch)
+	assert.Contains(t, sources, SourceStaged)
+}
+
 // Untracked file hunks should be tagged as SourceUnstaged.
 func TestUntrackedFiles_TaggedAsUnstaged(t *testing.T) {
 	r := baseRepo(t)

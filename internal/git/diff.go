@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // RemoteName returns the name of the tracking remote.
@@ -292,18 +294,31 @@ func resolveMergeBase() (string, error) {
 }
 
 // BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
+// The working tree diff runs concurrently with the branch diff computation.
 func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
 	if !hideWhitespace {
 		return BranchDiff(contextLines)
 	}
 
+	// Start working tree diff immediately — it's independent of the branch diff.
+	var wtDiff *Diff
+	var g errgroup.Group
+	g.Go(func() error {
+		var err error
+		wtDiff, err = WorkingTreeDiffOptions(contextLines, true)
+		return err
+	})
+
+	// Meanwhile, compute branch diff.
 	mergeBase, err := resolveMergeBase()
 	if err != nil {
+		_ = g.Wait()
 		return nil, err
 	}
 
 	head, err := CurrentRef()
 	if err != nil {
+		_ = g.Wait()
 		return nil, err
 	}
 
@@ -311,45 +326,61 @@ func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
 	if mergeBase == head {
 		branch, err := DefaultBranch()
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 		remote := RemoteName()
 		if remote == "" {
+			_ = g.Wait()
 			return nil, fmt.Errorf("no remote configured")
 		}
 		raw, err = RawDiffBetweenIgnoreWhitespace(head, remote+"/"+branch, contextLines)
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 	} else {
 		raw, err = RawDiffBetweenIgnoreWhitespace(mergeBase, "HEAD", contextLines)
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 	}
 
 	diff := Parse(raw)
-	tagHunks(diff.Files, SourceBranch)
 
-	wtDiff, err := WorkingTreeDiffOptions(contextLines, true)
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
+
+	diff.Files = composeBranch(diff.Files, wtDiff.Files)
 	return diff, nil
 }
 
 // BranchDiff returns the merge-base diff merged with all working tree changes.
 // This is the broadest view — committed + staged + unstaged + untracked.
 // On the default branch behind the remote, it shows the remote's changes.
+// The working tree diff runs concurrently with the branch diff computation.
 func BranchDiff(contextLines int) (*Diff, error) {
+	// Start working tree diff immediately — it's independent of the branch diff.
+	var wtDiff *Diff
+	var g errgroup.Group
+	g.Go(func() error {
+		var err error
+		wtDiff, err = WorkingTreeDiff(contextLines)
+		return err
+	})
+
+	// Meanwhile, compute branch diff.
 	mergeBase, err := resolveMergeBase()
 	if err != nil {
+		_ = g.Wait()
 		return nil, err
 	}
 
 	head, err := CurrentRef()
 	if err != nil {
+		_ = g.Wait()
 		return nil, err
 	}
 
@@ -359,32 +390,34 @@ func BranchDiff(contextLines int) (*Diff, error) {
 		// has different commits. Diff HEAD against the remote ref.
 		branch, err := DefaultBranch()
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 		remote := RemoteName()
 		if remote == "" {
+			_ = g.Wait()
 			return nil, fmt.Errorf("no remote configured")
 		}
 		raw, err = RawDiffBetween(head, remote+"/"+branch, contextLines)
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 	} else {
 		raw, err = RawDiff(mergeBase, contextLines)
 		if err != nil {
+			_ = g.Wait()
 			return nil, err
 		}
 	}
 
 	diff := Parse(raw)
-	tagHunks(diff.Files, SourceBranch)
 
-	wtDiff, err := WorkingTreeDiff(contextLines)
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	// WorkingTreeDiff already tags its hunks as Staged/Unstaged
-	diff.Files = mergeFileDiffs(diff.Files, wtDiff.Files)
+
+	diff.Files = composeBranch(diff.Files, wtDiff.Files)
 	return diff, nil
 }
 
@@ -492,98 +525,42 @@ func GetDiff() (*Diff, error) {
 }
 
 // getWorkingTreeDiff returns staged + unstaged + untracked changes.
+// The three git operations run concurrently for faster results.
 func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
 	var stagedRaw, unstagedRaw string
-	var err error
-	if hideWhitespace {
-		stagedRaw, err = StagedDiffIgnoreWhitespace(contextLines)
-		if err != nil {
-			return nil, err
+	var untracked []FileDiff
+
+	var g errgroup.Group
+	g.Go(func() error {
+		var err error
+		if hideWhitespace {
+			stagedRaw, err = StagedDiffIgnoreWhitespace(contextLines)
+		} else {
+			stagedRaw, err = StagedDiff(contextLines)
 		}
-		unstagedRaw, err = UnstagedDiffIgnoreWhitespace(contextLines)
-		if err != nil {
-			return nil, err
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		if hideWhitespace {
+			unstagedRaw, err = UnstagedDiffIgnoreWhitespace(contextLines)
+		} else {
+			unstagedRaw, err = UnstagedDiff(contextLines)
 		}
-	} else {
-		stagedRaw, err = StagedDiff(contextLines)
-		if err != nil {
-			return nil, err
-		}
-		unstagedRaw, err = UnstagedDiff(contextLines)
-		if err != nil {
-			return nil, err
-		}
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		untracked, err = UntrackedFiles()
+		return err
+	})
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	staged := Parse(stagedRaw)
-	tagHunks(staged.Files, SourceStaged)
 	unstaged := Parse(unstagedRaw)
-	tagHunks(unstaged.Files, SourceUnstaged)
-	// Merge so same-path files appear once with hunks from both.
-	staged.Files = mergeFileDiffs(staged.Files, unstaged.Files)
 
-	untracked, err := UntrackedFiles()
-	if err != nil {
-		return nil, err
-	}
-	staged.Files = append(staged.Files, untracked...)
-
-	return staged, nil
+	return &Diff{Files: composeWorkingTree(staged.Files, unstaged.Files, untracked)}, nil
 }
 
-// tagHunks sets the Source field on all hunks in the given file diffs.
-func tagHunks(files []FileDiff, source HunkSource) {
-	for i := range files {
-		for j := range files[i].Hunks {
-			files[i].Hunks[j].Source = source
-		}
-	}
-}
-
-// mergeFileDiffs combines two sets of file diffs.
-// For the same path, hunks from both are combined (base first, then overlay).
-// New paths are appended. The inputs are not mutated.
-// If a file was added in base and deleted in overlay, it is removed entirely
-// (net zero change — e.g. file added on branch then deleted in working tree).
-func mergeFileDiffs(base, overlay []FileDiff) []FileDiff {
-	result := make([]FileDiff, len(base))
-	copy(result, base)
-
-	seen := make(map[string]int, len(result))
-	baseStatus := make(map[string]FileStatus, len(result))
-	for i, f := range result {
-		seen[f.Path] = i
-		baseStatus[f.Path] = f.Status
-	}
-
-	remove := make(map[int]bool)
-	for _, f := range overlay {
-		if idx, ok := seen[f.Path]; ok {
-			if f.Status == StatusDeleted && baseStatus[f.Path] == StatusAdded {
-				// Added in base, deleted in overlay — net zero
-				remove[idx] = true
-			} else {
-				// Same file — combine hunks
-				combined := make([]Hunk, len(result[idx].Hunks), len(result[idx].Hunks)+len(f.Hunks))
-				copy(combined, result[idx].Hunks)
-				combined = append(combined, f.Hunks...)
-				result[idx].Hunks = combined
-			}
-		} else {
-			result = append(result, f)
-			seen[f.Path] = len(result) - 1
-		}
-	}
-
-	if len(remove) > 0 {
-		filtered := make([]FileDiff, 0, len(result)-len(remove))
-		for i, f := range result {
-			if !remove[i] {
-				filtered = append(filtered, f)
-			}
-		}
-		return filtered
-	}
-
-	return result
-}
