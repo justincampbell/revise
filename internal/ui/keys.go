@@ -36,6 +36,7 @@ var allBindings = []BindingGroup{
 		{Key: "D", Desc: "Discard file", GitOnly: true},
 	}},
 	{"Diff View", []Binding{
+		{Key: "←/→ (h/l)", Desc: "Scroll horizontally"},
 		{Key: "j/k, ↑/↓", Desc: "Move cursor"},
 		{Key: "}/{ (]/[)", Desc: "Next/prev hunk"},
 		{Key: "+/-", Desc: "More/fewer context lines", GitOnly: true},

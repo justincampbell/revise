@@ -34,7 +34,8 @@ type diffViewModel struct {
 	lines    []string   // pre-rendered display lines
 	lineRefs []*lineRef // parallel to lines
 	cursor   int        // absolute index into lines[]
-	offset   int        // scroll offset
+	offset   int        // vertical scroll offset (top line index)
+	hOffset  int        // horizontal scroll offset (columns clipped from the left)
 	height   int
 	width    int
 	comments comments
@@ -60,6 +61,7 @@ func (m *diffViewModel) setFile(f *git.FileDiff) {
 	m.file = f
 	m.cursor = 0
 	m.offset = 0
+	m.hOffset = 0
 	m.buildLines()
 	m.goToFirstNavigable()
 }
@@ -266,6 +268,45 @@ func (m *diffViewModel) scrollDown(n int) {
 		m.offset = max
 	}
 	m.clampCursorToView()
+}
+
+// viewWidth returns the width available for a rendered line's content,
+// excluding the panel border and cursor prefix column.
+func (m *diffViewModel) viewWidth() int {
+	w := m.width - 3 // border (2) + cursor prefix (1)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// maxHScroll returns the largest hOffset that keeps some content visible.
+func (m *diffViewModel) maxHScroll() int {
+	maxW := 0
+	for _, line := range m.lines {
+		if w := ansi.StringWidth(line); w > maxW {
+			maxW = w
+		}
+	}
+	max := maxW - m.viewWidth()
+	if max < 0 {
+		return 0
+	}
+	return max
+}
+
+func (m *diffViewModel) scrollRight(n int) {
+	m.hOffset += n
+	if max := m.maxHScroll(); m.hOffset > max {
+		m.hOffset = max
+	}
+}
+
+func (m *diffViewModel) scrollLeft(n int) {
+	m.hOffset -= n
+	if m.hOffset < 0 {
+		m.hOffset = 0
+	}
 }
 
 func (m *diffViewModel) goToTop() {
@@ -509,13 +550,19 @@ const inputBoxHeight = 3 // border top + content + border bottom
 
 func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool, modeSlider ...string) string {
 	viewH := m.viewHeight()
-	maxWidth := m.width - 3 // panel border (2) + cursor prefix (1)
-	if maxWidth < 1 {
-		maxWidth = 1
+	maxWidth := m.viewWidth()
+	// Clamp a stale offset (e.g. after a resize or a shorter refreshed diff)
+	// so a scroll position from a wider state doesn't over-truncate now.
+	hOffset := m.hOffset
+	if max := m.maxHScroll(); hOffset > max {
+		hOffset = max
 	}
 
 	renderLine := func(absIdx int) string {
 		line := m.lines[absIdx]
+		if hOffset > 0 {
+			line = ansi.TruncateLeft(line, hOffset, "")
+		}
 		if ansi.StringWidth(line) > maxWidth {
 			line = ansi.Truncate(line, maxWidth, "")
 		}

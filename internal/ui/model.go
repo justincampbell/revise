@@ -78,6 +78,9 @@ const (
 
 const fileListWidth = 30
 
+// hScrollStep is the horizontal scroll distance per key/wheel event.
+const hScrollStep = 8
+
 type Model struct {
 	diff       *git.Diff
 	fileList   fileListModel
@@ -274,27 +277,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "right", "l":
 			if m.fileReviewMode {
+				m.diffView.scrollRight(hScrollStep)
 				return m, nil
 			}
 			if m.focus == focusDiffView {
-				m.fullscreen = !m.fullscreen
-				m.updateLayout()
+				m.diffView.scrollRight(hScrollStep)
 			} else {
 				m.focus = focusDiffView
 			}
 			return m, nil
 
-		case "left", "h", "f", "esc":
+		case "left", "h":
+			if m.fileReviewMode {
+				m.diffView.scrollLeft(hScrollStep)
+				return m, nil
+			}
+			if m.focus == focusDiffView && m.diffView.hOffset > 0 {
+				m.diffView.scrollLeft(hScrollStep)
+				return m, nil
+			}
+			if m.fullscreen {
+				m.fullscreen = false
+				m.updateLayout()
+			}
+			m.focus = focusFileList
+			return m, nil
+
+		case "f", "esc":
 			if m.fileReviewMode {
 				return m, nil
 			}
 			switch msg.String() {
-			case "left", "h":
-				if m.fullscreen {
-					m.fullscreen = false
-					m.updateLayout()
-				}
-				m.focus = focusFileList
 			case "f":
 				m.fullscreen = !m.fullscreen
 				if m.fullscreen {
@@ -434,6 +447,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.fileList.moveDown()
 				m.syncSelectedFile()
+			}
+		case tea.MouseButtonWheelLeft:
+			if m.mouseFocusDiff(msg) {
+				m.diffView.scrollLeft(hScrollStep)
+			}
+		case tea.MouseButtonWheelRight:
+			if m.mouseFocusDiff(msg) {
+				m.diffView.scrollRight(hScrollStep)
 			}
 		case tea.MouseButtonLeft:
 			if msg.Action != tea.MouseActionPress {
