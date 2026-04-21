@@ -560,13 +560,14 @@ func TestModeSlider_FeatureBranch_BranchMode_AllLit(t *testing.T) {
 	assert.Contains(t, slider, "Unstaged")
 }
 
-func TestModeSlider_DefaultBranch_OmitsBranch(t *testing.T) {
+func TestModeSlider_DefaultBranch_ShowsBranchDisabled(t *testing.T) {
 	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
 
 	slider := m.renderModeSlider()
-	assert.NotContains(t, slider, "Branch")
+	// Branch is always shown — greyed out / disabled when unavailable.
+	assert.Contains(t, ansi.Strip(slider), "Branch")
 	assert.Contains(t, slider, "Staged")
 	assert.Contains(t, slider, "Unstaged")
 }
@@ -637,18 +638,37 @@ func TestSliderModeAt_DefaultBranch_ClickStaged(t *testing.T) {
 	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	// "Staged·Unstaged" — "Staged" at positions 0-5
-	assert.Equal(t, ModeStaged, m.sliderModeAt(0))
-	assert.Equal(t, ModeStaged, m.sliderModeAt(5))
+	// "Branch Staged Unstaged" — "Staged" at positions 7-12 (Branch is shown but disabled)
+	assert.Equal(t, ModeStaged, m.sliderModeAt(7))
+	assert.Equal(t, ModeStaged, m.sliderModeAt(12))
 }
 
 func TestSliderModeAt_DefaultBranch_ClickUnstaged(t *testing.T) {
 	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	// "Staged·Unstaged" — "Unstaged" at positions 7-14
-	assert.Equal(t, ModeUnstaged, m.sliderModeAt(7))
+	// "Branch Staged Unstaged" — "Unstaged" at positions 14-21
 	assert.Equal(t, ModeUnstaged, m.sliderModeAt(14))
+	assert.Equal(t, ModeUnstaged, m.sliderModeAt(21))
+}
+
+// Clicking the Branch label while on the default branch (where it's disabled)
+// should be a no-op — mode unchanged, no diff reload.
+func TestMouseClickSlider_DefaultBranch_BranchDisabled_NoOp(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	require.Equal(t, ModeStaged, m.mode)
+
+	mouseMsg := tea.MouseMsg{
+		X:      0, // "Branch" label
+		Y:      m.height - 1,
+		Button: tea.MouseButtonLeft,
+	}
+	updated, cmd := m.Update(mouseMsg)
+	m = updated.(Model)
+	assert.Equal(t, ModeStaged, m.mode, "click on disabled Branch should not change mode")
+	assert.Nil(t, cmd, "click on disabled Branch should not reload")
 }
 
 func TestSliderModeAt_OutsideLabels(t *testing.T) {

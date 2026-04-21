@@ -94,6 +94,7 @@ var (
 	// Mode slider styles
 	modeActiveStyle   lipgloss.Style
 	modeInactiveStyle lipgloss.Style
+	modeDisabledStyle lipgloss.Style // mode not available on current branch
 
 	// Status bar
 	statusBarStyle lipgloss.Style
@@ -186,6 +187,7 @@ func applyTheme(p themeColors) {
 
 	modeActiveStyle = lipgloss.NewStyle().Foreground(p.cyan).Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle().Foreground(p.dim)
+	modeDisabledStyle = lipgloss.NewStyle().Foreground(p.dim).Faint(true).Italic(true)
 
 	statusBarStyle = lipgloss.NewStyle().Foreground(p.dim)
 
@@ -244,6 +246,7 @@ func applyNoColor() {
 	commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	modeActiveStyle = lipgloss.NewStyle().Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle()
+	modeDisabledStyle = lipgloss.NewStyle().Faint(true).Italic(true)
 	statusBarStyle = lipgloss.NewStyle()
 	helpKeyStyle = lipgloss.NewStyle().Bold(true)
 	helpTextStyle = lipgloss.NewStyle()

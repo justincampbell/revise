@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Right arrow no longer toggles fullscreen — it scrolls right when the diff is focused. Use `f` to toggle fullscreen. Left arrow scrolls left first, then falls back to focusing the file list when already at column 0 (#121)
 
+### Changed
+
+- The `Branch` label in the mode slider is always shown — greyed out (faint italic) when on the default branch where Branch mode isn't available — so its position stays stable and users can see the mode exists (#148)
+
 ### Fixed
 
 - When a fresh branch diverges from default while revise is running (e.g. after a commit), the mode auto-promotes from Staged to Branch so new commits become visible, unless the user has explicitly picked a mode (#148)
