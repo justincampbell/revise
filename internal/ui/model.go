@@ -93,10 +93,11 @@ type Model struct {
 	height     int
 	ready      bool
 
-	mode            DiffMode
-	onDefaultBranch bool
-	contextLines    int
-	hideWhitespace  bool
+	mode              DiffMode
+	modeExplicitlySet bool // true once the user has manually picked a mode (#148)
+	onDefaultBranch   bool
+	contextLines      int
+	hideWhitespace    bool
 
 	comments           comments
 	marks              marks
@@ -462,8 +463,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Check for status bar slider click
 			if msg.Y == m.height-1 {
-				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode {
+				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode && m.modeAvailable(mode) {
 					m.mode = mode
+					m.modeExplicitlySet = true
 					return m, m.loadDiff()
 				}
 				return m, nil
@@ -531,7 +533,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update default-branch status so Branch mode becomes
 		// available (or unavailable) dynamically.
+		wasOnDefaultBranch := m.onDefaultBranch
 		m.onDefaultBranch = msg.onDefaultBranch
+		// When the branch diverges from default while revise is running
+		// (e.g. user committed on a fresh branch), promote mode to
+		// ModeBranch so the new commits are visible — but only if the
+		// user hasn't explicitly picked a different mode (see #148).
+		if wasOnDefaultBranch && !m.onDefaultBranch && !m.modeExplicitlySet {
+			m.mode = ModeBranch
+		}
 		// If the current mode is no longer valid, clamp it.
 		modes := m.availableModes()
 		modeValid := false
@@ -1147,7 +1157,9 @@ func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
 }
 
 // sliderModeAt returns the DiffMode at the given X position in the slider,
-// or -1 if the click is outside the slider labels.
+// or -1 if the click is outside the slider labels. Branch is always included
+// in the layout, even when disabled — callers should check availableModes()
+// before acting on the result.
 func (m Model) sliderModeAt(x int) DiffMode {
 	type region struct {
 		start, end int
@@ -1156,18 +1168,21 @@ func (m Model) sliderModeAt(x int) DiffMode {
 	var regions []region
 	pos := 0
 
-	if !m.onDefaultBranch {
-		label := "Branch"
-		regions = append(regions, region{pos, pos + len(label) - 1, ModeBranch})
-		pos += len(label) + 1 // +1 for "·" separator
+	labels := []struct {
+		name string
+		mode DiffMode
+	}{
+		{"Branch", ModeBranch},
+		{"Staged", ModeStaged},
+		{"Unstaged", ModeUnstaged},
 	}
-
-	label := "Staged"
-	regions = append(regions, region{pos, pos + len(label) - 1, ModeStaged})
-	pos += len(label) + 1
-
-	label = "Unstaged"
-	regions = append(regions, region{pos, pos + len(label) - 1, ModeUnstaged})
+	for i, l := range labels {
+		regions = append(regions, region{pos, pos + len(l.name) - 1, l.mode})
+		pos += len(l.name)
+		if i < len(labels)-1 {
+			pos++ // separator
+		}
+	}
 
 	for _, r := range regions {
 		if x >= r.start && x <= r.end {
@@ -1186,6 +1201,17 @@ func (m Model) availableModes() []DiffMode {
 	return []DiffMode{ModeBranch, ModeStaged, ModeStagedOnly, ModeUnstaged}
 }
 
+// modeAvailable reports whether the given mode is selectable in the current
+// branch state.
+func (m Model) modeAvailable(mode DiffMode) bool {
+	for _, am := range m.availableModes() {
+		if am == mode {
+			return true
+		}
+	}
+	return false
+}
+
 // cycleMode advances the mode by direction (+1 or -1), wrapping around.
 func (m *Model) cycleMode(direction int) {
 	modes := m.availableModes()
@@ -1198,6 +1224,7 @@ func (m *Model) cycleMode(direction int) {
 	}
 	nextIdx := (currentIdx + direction + len(modes)) % len(modes)
 	m.mode = modes[nextIdx]
+	m.modeExplicitlySet = true
 }
 
 // loadDiff returns a command that fetches the diff for the current mode.
@@ -1251,41 +1278,43 @@ func (m *Model) prevFile() {
 }
 
 func (m Model) renderModeSlider() string {
-	render := func(name string, active bool) string {
-		if active {
+	render := func(name string, active, disabled bool) string {
+		switch {
+		case disabled:
+			return modeDisabledStyle.Render(name)
+		case active:
 			return modeActiveStyle.Render(name)
+		default:
+			return modeInactiveStyle.Render(name)
 		}
-		return modeInactiveStyle.Render(name)
 	}
 
 	type label struct {
-		name   string
-		active bool
+		name     string
+		active   bool
+		disabled bool
 	}
-	var labels []label
 
 	// Cumulative: broadest mode (ModeBranch) lights all,
 	// narrower modes drop components from the left.
 	// ModeStagedOnly lights only Staged; ModeUnstaged lights only Unstaged.
-	if !m.onDefaultBranch {
-		labels = append(labels, label{"Branch", m.mode == ModeBranch})
+	// Branch is always shown — greyed out on the default branch.
+	labels := []label{
+		{"Branch", m.mode == ModeBranch, m.onDefaultBranch},
+		{"Staged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeStagedOnly, false},
+		{"Unstaged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeUnstaged, false},
 	}
-	labels = append(labels,
-		label{"Staged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeStagedOnly},
-		label{"Unstaged", m.mode == ModeBranch || m.mode == ModeStaged || m.mode == ModeUnstaged},
-	)
 
 	var result string
 	for i, l := range labels {
 		if i > 0 {
-			// Use + between two active labels, space otherwise
 			if labels[i-1].active && l.active {
 				result += modeActiveStyle.Render("+")
 			} else {
 				result += modeInactiveStyle.Render(" ")
 			}
 		}
-		result += render(l.name, l.active)
+		result += render(l.name, l.active, l.disabled)
 	}
 
 	return result
