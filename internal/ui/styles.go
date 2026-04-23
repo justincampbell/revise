@@ -187,7 +187,7 @@ func applyTheme(p themeColors) {
 
 	modeActiveStyle = lipgloss.NewStyle().Foreground(p.cyan).Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle().Foreground(p.dim)
-	modeDisabledStyle = lipgloss.NewStyle().Foreground(p.dim).Faint(true).Italic(true)
+	modeDisabledStyle = lipgloss.NewStyle().Foreground(p.dim).Faint(true).Strikethrough(true)
 
 	statusBarStyle = lipgloss.NewStyle().Foreground(p.dim)
 
@@ -246,7 +246,7 @@ func applyNoColor() {
 	commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	modeActiveStyle = lipgloss.NewStyle().Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle()
-	modeDisabledStyle = lipgloss.NewStyle().Faint(true).Italic(true)
+	modeDisabledStyle = lipgloss.NewStyle().Faint(true).Strikethrough(true)
 	statusBarStyle = lipgloss.NewStyle()
 	helpKeyStyle = lipgloss.NewStyle().Bold(true)
 	helpTextStyle = lipgloss.NewStyle()

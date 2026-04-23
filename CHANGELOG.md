@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- The `Branch` label in the mode slider is always shown — greyed out (faint italic) when on the default branch where Branch mode isn't available — so its position stays stable and users can see the mode exists (#148)
+- The `Branch` label in the mode slider is always shown — greyed out (faint + strikethrough) when on the default branch where Branch mode isn't available — so its position stays stable and users can see the mode exists (#148)
 
 ### Fixed
 
