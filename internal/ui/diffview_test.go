@@ -277,6 +277,27 @@ func TestLinePrefix_WithFileSelected_NotFocused(t *testing.T) {
 	assert.Equal(t, " ", m.linePrefix(2, false)) // cursor hidden when not focused
 }
 
+func TestLinePrefix_MarkedLine(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.marks = marks{commentKey{file: "foo.go", lineNum: 10, isOld: false}: true}
+	m.cursor = 99 // cursor not on this line
+	// Marked lines render a heavy left half-block in the prefix column,
+	// acting as a bookmark stripe at the leftmost edge.
+	assert.Contains(t, m.linePrefix(0, true), "▌")
+}
+
+func TestLinePrefix_MarkedLineUnderCursorShowsCursor(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.marks = marks{commentKey{file: "foo.go", lineNum: 10, isOld: false}: true}
+	m.cursor = 0
+	// Cursor takes priority over the mark indicator.
+	assert.Contains(t, m.linePrefix(0, true), "▶")
+}
+
 func TestLineRef_CommentKey_Added(t *testing.T) {
 	r := lineRef{newNum: 10, oldNum: 0, lineType: git.LineAdded}
 	key := r.commentKey("foo.go")

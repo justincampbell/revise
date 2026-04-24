@@ -210,6 +210,7 @@ type themeColors struct {
 	gutterRemovedFg color.Color
 
 	markBg color.Color
+	markFg color.Color // foreground for the leading bookmark stripe
 }
 
 // paletteFor returns the color palette for the given theme.
@@ -255,7 +256,8 @@ func autoPalette() themeColors {
 		dimYellow:       lipgloss.Yellow,
 		gutterAddedFg:   lipgloss.Color("28"),
 		gutterRemovedFg: lipgloss.Color("88"),
-		markBg:          lipgloss.Color("#1a1f2e"),
+		markBg:          lipgloss.Color("#2d4a7a"),
+		markFg:          lipgloss.Color("#5b9bd5"),
 	}
 }
 
@@ -264,6 +266,8 @@ func autoDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Blue
 	p.addedBg = lipgloss.Color("#1a1f2e")
 	p.gutterAddedFg = lipgloss.Color("27") // ANSI 256: muted blue
+	p.markBg = lipgloss.Color("#5a2d6e") // purple — distinct from blue addedBg
+	p.markFg = lipgloss.Color("#c084fc")
 	return p
 }
 
@@ -281,7 +285,8 @@ func charmtoneDarkPalette() themeColors {
 		dimGreen:  lipgloss.Color("#00A475"), // Pickle
 		dimRed:    lipgloss.Color("#AB2454"), // Pom
 		dimYellow: lipgloss.Color("#858392"), // Squid
-		markBg:    lipgloss.Color("#18463D"), // Gator
+		markBg:    lipgloss.Color("#2d4a7a"), // saturated blue, distinct from green/red diff bgs
+		markFg:    lipgloss.Color("#4FBEFE"), // Sardine
 	}
 }
 
@@ -290,7 +295,8 @@ func charmtoneDarkDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Color("#4FBEFE") // Sardine (blue)
 	p.addedBg = lipgloss.Color("#0F2A4A") // deep navy
 	p.dimGreen = lipgloss.Color("#007AB8") // Damson
-	p.markBg = lipgloss.Color("#0F2A4A")
+	p.markBg = lipgloss.Color("#5a2d6e") // purple — distinct from blue addedBg
+	p.markFg = lipgloss.Color("#c084fc")
 	return p
 }
 
@@ -309,6 +315,7 @@ func charmtoneLightPalette() themeColors {
 		dimRed:    lipgloss.Color("#9f1239"),
 		dimYellow: lipgloss.Color("#92400e"),
 		markBg:    lipgloss.Color("#dbeafe"),
+		markFg:    lipgloss.Color("#1d4ed8"),
 	}
 }
 
@@ -317,6 +324,8 @@ func charmtoneLightDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Color("#1d4ed8")
 	p.addedBg = lipgloss.Color("#dbeafe")
 	p.dimGreen = lipgloss.Color("#1e40af")
+	p.markBg = lipgloss.Color("#f3e8ff") // light purple — distinct from blue addedBg
+	p.markFg = lipgloss.Color("#7c3aed")
 	return p
 }
 
@@ -334,7 +343,8 @@ func githubDarkPalette() themeColors {
 		dimGreen:  lipgloss.Color("#196c2e"),
 		dimRed:    lipgloss.Color("#67060c"),
 		dimYellow: lipgloss.Color("#9e6a03"),
-		markBg:    lipgloss.Color("#0d1f3d"),
+		markBg:    lipgloss.Color("#1f4a8a"),
+		markFg:    lipgloss.Color("#58a6ff"),
 	}
 }
 
@@ -343,6 +353,8 @@ func githubDarkDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Color("#58a6ff") // GitHub blue
 	p.addedBg = lipgloss.Color("#0d1f3d") // dark blue bg
 	p.dimGreen = lipgloss.Color("#1f6feb")
+	p.markBg = lipgloss.Color("#5a2d6e") // purple — distinct from blue addedBg
+	p.markFg = lipgloss.Color("#c084fc")
 	return p
 }
 
@@ -361,6 +373,7 @@ func githubLightPalette() themeColors {
 		dimRed:    lipgloss.Color("#9f1239"),
 		dimYellow: lipgloss.Color("#92400e"),
 		markBg:    lipgloss.Color("#dbeafe"),
+		markFg:    lipgloss.Color("#1d4ed8"),
 	}
 }
 
@@ -369,5 +382,7 @@ func githubLightDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Color("#1d4ed8")
 	p.addedBg = lipgloss.Color("#dbeafe")
 	p.dimGreen = lipgloss.Color("#1e40af")
+	p.markBg = lipgloss.Color("#f3e8ff") // light purple — distinct from blue addedBg
+	p.markFg = lipgloss.Color("#7c3aed")
 	return p
 }

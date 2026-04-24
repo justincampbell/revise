@@ -507,13 +507,29 @@ func hunkContext(header string) string {
 	return strings.TrimSpace(parts[2])
 }
 
-// linePrefix returns the 1-character cursor indicator for a display line.
-// The cursor is only shown when the diff pane is focused.
+// linePrefix returns the 1-character indicator for a display line — cursor
+// (when focused), else a mark stripe for marked lines, else a blank.
 func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 	if focused && m.file != nil && absIdx == m.cursor {
 		return cursorStyle.Render("▶")
 	}
+	if m.lineMarked(absIdx) {
+		return markPrefixStyle.Render("▌")
+	}
 	return " "
+}
+
+// lineMarked reports whether the given display line corresponds to a marked
+// source line.
+func (m diffViewModel) lineMarked(absIdx int) bool {
+	if m.file == nil || absIdx < 0 || absIdx >= len(m.lineRefs) {
+		return false
+	}
+	ref := m.lineRefs[absIdx]
+	if ref == nil || ref.isCommentDisplay {
+		return false
+	}
+	return m.marks[ref.commentKey(m.file.Path)]
 }
 
 // currentHunkIndex returns the index of the hunk containing the cursor line,

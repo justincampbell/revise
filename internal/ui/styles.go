@@ -87,6 +87,7 @@ var (
 	markGutterAdded   lipgloss.Style
 	markGutterRemoved lipgloss.Style
 	markGutterContext lipgloss.Style
+	markPrefixStyle   lipgloss.Style // bookmark stripe in the leading 1-char prefix column
 
 	// Inline comment input box
 	commentInputStyle lipgloss.Style
@@ -179,6 +180,7 @@ func applyTheme(p themeColors) {
 	markGutterAdded = lipgloss.NewStyle().Bold(true).Foreground(p.addedFg).Background(p.markBg).Width(6)
 	markGutterRemoved = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg).Background(p.markBg).Width(6)
 	markGutterContext = lipgloss.NewStyle().Bold(true).Foreground(p.white).Background(p.markBg).Width(6)
+	markPrefixStyle = lipgloss.NewStyle().Bold(true).Foreground(p.markFg)
 
 	commentInputStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -243,6 +245,7 @@ func applyNoColor() {
 	markGutterAdded = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
 	markGutterRemoved = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
 	markGutterContext = lipgloss.NewStyle().Bold(true).Reverse(true).Width(6)
+	markPrefixStyle = lipgloss.NewStyle().Bold(true)
 	commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
 	modeActiveStyle = lipgloss.NewStyle().Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle()
