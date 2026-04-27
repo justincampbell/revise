@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - When a fresh branch diverges from default while revise is running (e.g. after a commit), the mode auto-promotes from Staged to Branch so new commits become visible, unless the user has explicitly picked a mode (#148)
 - Marked lines are now visibly distinct: brighter mark backgrounds and a colored `▌` bookmark stripe in the leading prefix column. Daltonized themes use a purple mark color so the highlight no longer collides with the blue "added" background (#173)
+- Commented lines also get a yellow `▌` bookmark stripe in the leading prefix column, matching the mark-line treatment (#173)
 
 ## [0.3.0] - 2026-04-15
 

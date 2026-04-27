@@ -298,6 +298,16 @@ func TestLinePrefix_MarkedLineUnderCursorShowsCursor(t *testing.T) {
 	assert.Contains(t, m.linePrefix(0, true), "▶")
 }
 
+func TestLinePrefix_CommentedLine(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.comments = comments{commentKey{file: "foo.go", lineNum: 10}: "nit"}
+	m.cursor = 99
+	// Commented lines render a yellow left half-block as a bookmark stripe.
+	assert.Contains(t, m.linePrefix(0, true), "▌")
+}
+
 func TestLineRef_CommentKey_Added(t *testing.T) {
 	r := lineRef{newNum: 10, oldNum: 0, lineType: git.LineAdded}
 	key := r.commentKey("foo.go")

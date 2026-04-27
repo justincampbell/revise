@@ -508,10 +508,15 @@ func hunkContext(header string) string {
 }
 
 // linePrefix returns the 1-character indicator for a display line — cursor
-// (when focused), else a mark stripe for marked lines, else a blank.
+// (when focused), else a bookmark stripe for commented or marked lines, else
+// a blank. Comments win over marks because they carry richer information;
+// the mark's colored gutter background is still visible.
 func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 	if focused && m.file != nil && absIdx == m.cursor {
 		return cursorStyle.Render("▶")
+	}
+	if m.lineCommented(absIdx) {
+		return commentPrefixStyle.Render("▌")
 	}
 	if m.lineMarked(absIdx) {
 		return markPrefixStyle.Render("▌")
@@ -522,14 +527,35 @@ func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 // lineMarked reports whether the given display line corresponds to a marked
 // source line.
 func (m diffViewModel) lineMarked(absIdx int) bool {
-	if m.file == nil || absIdx < 0 || absIdx >= len(m.lineRefs) {
-		return false
-	}
-	ref := m.lineRefs[absIdx]
-	if ref == nil || ref.isCommentDisplay {
+	ref := m.codeLineRef(absIdx)
+	if ref == nil {
 		return false
 	}
 	return m.marks[ref.commentKey(m.file.Path)]
+}
+
+// lineCommented reports whether the given display line corresponds to a
+// source line that has a saved comment.
+func (m diffViewModel) lineCommented(absIdx int) bool {
+	ref := m.codeLineRef(absIdx)
+	if ref == nil {
+		return false
+	}
+	_, ok := m.comments[ref.commentKey(m.file.Path)]
+	return ok
+}
+
+// codeLineRef returns the lineRef for a real code line at absIdx, or nil
+// if the index is out of range, points at a non-code row, or no file is open.
+func (m diffViewModel) codeLineRef(absIdx int) *lineRef {
+	if m.file == nil || absIdx < 0 || absIdx >= len(m.lineRefs) {
+		return nil
+	}
+	ref := m.lineRefs[absIdx]
+	if ref == nil || ref.isCommentDisplay {
+		return nil
+	}
+	return ref
 }
 
 // currentHunkIndex returns the index of the hunk containing the cursor line,
