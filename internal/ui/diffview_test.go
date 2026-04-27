@@ -277,6 +277,51 @@ func TestLinePrefix_WithFileSelected_NotFocused(t *testing.T) {
 	assert.Equal(t, " ", m.linePrefix(2, false)) // cursor hidden when not focused
 }
 
+func TestLinePrefix_MarkedLine(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.marks = marks{commentKey{file: "foo.go", lineNum: 10, isOld: false}: true}
+	m.cursor = 99 // cursor not on this line
+	// Marked lines render a heavy left half-block in the prefix column,
+	// acting as a bookmark stripe at the leftmost edge.
+	assert.Equal(t, markPrefixStyle.Render("▌"), m.linePrefix(0, true))
+}
+
+func TestLinePrefix_MarkedLineUnderCursorShowsCursor(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.marks = marks{commentKey{file: "foo.go", lineNum: 10, isOld: false}: true}
+	m.cursor = 0
+	// Cursor takes priority over the mark indicator.
+	assert.Equal(t, cursorStyle.Render("▶"), m.linePrefix(0, true))
+}
+
+func TestLinePrefix_CommentedLine(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	m.comments = comments{commentKey{file: "foo.go", lineNum: 10}: "nit"}
+	m.cursor = 99
+	// Commented lines render a yellow left half-block as a bookmark stripe.
+	assert.Equal(t, commentPrefixStyle.Render("▌"), m.linePrefix(0, true))
+}
+
+func TestLinePrefix_CommentedAndMarked_CommentWins(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	key := commentKey{file: "foo.go", lineNum: 10, isOld: false}
+	m.marks = marks{key: true}
+	m.comments = comments{key: "nit"}
+	m.cursor = 99
+	// Comment style wins; equality alone proves precedence in colored mode.
+	// (In NO_COLOR mode comment and mark styles render identically, so a
+	// NotEqual check would be incorrect.)
+	assert.Equal(t, commentPrefixStyle.Render("▌"), m.linePrefix(0, true))
+}
+
 func TestLineRef_CommentKey_Added(t *testing.T) {
 	r := lineRef{newNum: 10, oldNum: 0, lineType: git.LineAdded}
 	key := r.commentKey("foo.go")
