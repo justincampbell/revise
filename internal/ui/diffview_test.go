@@ -308,6 +308,19 @@ func TestLinePrefix_CommentedLine(t *testing.T) {
 	assert.Contains(t, m.linePrefix(0, true), "▌")
 }
 
+func TestLinePrefix_CommentedAndMarked_CommentWins(t *testing.T) {
+	m := newDiffViewModel()
+	m.file = &git.FileDiff{Path: "foo.go"}
+	m.lineRefs = []*lineRef{{newNum: 10, lineType: git.LineAdded}}
+	key := commentKey{file: "foo.go", lineNum: 10, isOld: false}
+	m.marks = marks{key: true}
+	m.comments = comments{key: "nit"}
+	m.cursor = 99
+	got := m.linePrefix(0, true)
+	assert.Equal(t, commentPrefixStyle.Render("▌"), got)
+	assert.NotEqual(t, markPrefixStyle.Render("▌"), got)
+}
+
 func TestLineRef_CommentKey_Added(t *testing.T) {
 	r := lineRef{newNum: 10, oldNum: 0, lineType: git.LineAdded}
 	key := r.commentKey("foo.go")
