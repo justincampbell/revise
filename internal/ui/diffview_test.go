@@ -285,7 +285,7 @@ func TestLinePrefix_MarkedLine(t *testing.T) {
 	m.cursor = 99 // cursor not on this line
 	// Marked lines render a heavy left half-block in the prefix column,
 	// acting as a bookmark stripe at the leftmost edge.
-	assert.Contains(t, m.linePrefix(0, true), "▌")
+	assert.Equal(t, markPrefixStyle.Render("▌"), m.linePrefix(0, true))
 }
 
 func TestLinePrefix_MarkedLineUnderCursorShowsCursor(t *testing.T) {
@@ -295,7 +295,7 @@ func TestLinePrefix_MarkedLineUnderCursorShowsCursor(t *testing.T) {
 	m.marks = marks{commentKey{file: "foo.go", lineNum: 10, isOld: false}: true}
 	m.cursor = 0
 	// Cursor takes priority over the mark indicator.
-	assert.Contains(t, m.linePrefix(0, true), "▶")
+	assert.Equal(t, cursorStyle.Render("▶"), m.linePrefix(0, true))
 }
 
 func TestLinePrefix_CommentedLine(t *testing.T) {
@@ -305,7 +305,7 @@ func TestLinePrefix_CommentedLine(t *testing.T) {
 	m.comments = comments{commentKey{file: "foo.go", lineNum: 10}: "nit"}
 	m.cursor = 99
 	// Commented lines render a yellow left half-block as a bookmark stripe.
-	assert.Contains(t, m.linePrefix(0, true), "▌")
+	assert.Equal(t, commentPrefixStyle.Render("▌"), m.linePrefix(0, true))
 }
 
 func TestLinePrefix_CommentedAndMarked_CommentWins(t *testing.T) {
@@ -316,9 +316,10 @@ func TestLinePrefix_CommentedAndMarked_CommentWins(t *testing.T) {
 	m.marks = marks{key: true}
 	m.comments = comments{key: "nit"}
 	m.cursor = 99
-	got := m.linePrefix(0, true)
-	assert.Equal(t, commentPrefixStyle.Render("▌"), got)
-	assert.NotEqual(t, markPrefixStyle.Render("▌"), got)
+	// Comment style wins; equality alone proves precedence in colored mode.
+	// (In NO_COLOR mode comment and mark styles render identically, so a
+	// NotEqual check would be incorrect.)
+	assert.Equal(t, commentPrefixStyle.Render("▌"), m.linePrefix(0, true))
 }
 
 func TestLineRef_CommentKey_Added(t *testing.T) {

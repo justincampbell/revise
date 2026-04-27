@@ -163,7 +163,7 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 
 // isNavigable reports whether the line at idx can receive the cursor.
 // Only code lines (non-nil, non-comment-display) are navigable.
-func (m *diffViewModel) isNavigable(idx int) bool {
+func (m diffViewModel) isNavigable(idx int) bool {
 	if idx < 0 || idx >= len(m.lineRefs) {
 		return false
 	}
@@ -548,14 +548,10 @@ func (m diffViewModel) lineCommented(absIdx int) bool {
 // codeLineRef returns the lineRef for a real code line at absIdx, or nil
 // if the index is out of range, points at a non-code row, or no file is open.
 func (m diffViewModel) codeLineRef(absIdx int) *lineRef {
-	if m.file == nil || absIdx < 0 || absIdx >= len(m.lineRefs) {
+	if m.file == nil || !m.isNavigable(absIdx) {
 		return nil
 	}
-	ref := m.lineRefs[absIdx]
-	if ref == nil || ref.isCommentDisplay {
-		return nil
-	}
-	return ref
+	return m.lineRefs[absIdx]
 }
 
 // currentHunkIndex returns the index of the hunk containing the cursor line,
