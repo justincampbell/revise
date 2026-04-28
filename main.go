@@ -110,7 +110,7 @@ func main() {
 
 	// Subcommands that require a git repo.
 	if len(args) > 0 && args[0] == "diff" {
-		runDiff()
+		runDiff(args[1:])
 		return
 	}
 	if len(args) > 0 && args[0] == "setup-cache" {
@@ -292,14 +292,37 @@ func buildFileDiff(filePath string) (*git.Diff, error) {
 	}, nil
 }
 
-func runDiff() {
-	diff, err := git.GetDiff()
+func runDiff(args []string) {
+	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	modeFlag := fs.String("mode", "", "Diff mode: branch, staged, staged-only, unstaged (default: auto-detect)")
+	_ = fs.Parse(args)
+
+	diff, err := loadDiffForMode(*modeFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Print(git.Format(diff))
+}
+
+// loadDiffForMode returns a *git.Diff for the given mode string. An empty
+// mode auto-detects (branch on feature branches, working-tree on default).
+func loadDiffForMode(mode string) (*git.Diff, error) {
+	switch mode {
+	case "":
+		return git.GetDiff()
+	case "branch":
+		return git.BranchDiff(git.DefaultContextLines)
+	case "staged":
+		return git.WorkingTreeDiff(git.DefaultContextLines)
+	case "staged-only":
+		return git.StagedOnlyDiff(git.DefaultContextLines)
+	case "unstaged":
+		return git.UnstagedOnlyDiff(git.DefaultContextLines)
+	default:
+		return nil, fmt.Errorf("unknown --mode %q (valid: branch, staged, staged-only, unstaged)", mode)
+	}
 }
 
 func runSetupCache() {
@@ -364,7 +387,9 @@ Flags:
   --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)
 
 Commands:
-  diff            Print unified diff (no TUI)
+  diff [--mode]   Print unified diff (no TUI)
+                    --mode branch | staged | staged-only | unstaged
+                    (default: auto-detect — same as launching the TUI)
   setup-cache     Enable git's core.untrackedCache for faster refreshes
   styles          Show file status color matrix
   update [--pre]  Update to the latest version
