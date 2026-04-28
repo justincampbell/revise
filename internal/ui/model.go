@@ -11,22 +11,37 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
+	"github.com/justincampbell/revise/internal/fswatch"
 	"github.com/justincampbell/revise/internal/git"
+	"github.com/justincampbell/revise/internal/refresh"
 	"github.com/justincampbell/revise/internal/update"
 )
 
 type clearStatusMsg struct{}
 
-// pollTickMsg triggers a periodic check for working tree changes.
-type pollTickMsg struct{}
-
-// pollResultMsg carries the result of a fingerprint check.
-type pollResultMsg struct {
-	fingerprint string
-	err         error
+// refreshTickMsg triggers a fingerprint check. The gen field is a
+// generation counter — when requestRefresh schedules a new poll, it
+// bumps gen so any earlier in-flight tea.Tick is invalidated. This
+// removes the dead zone where a long-pending tick would block a more
+// recent focus/fsEvent from firing right away.
+type refreshTickMsg struct {
+	gen uint64
 }
 
-const pollInterval = 30 * time.Second
+// refreshResultMsg carries the result of a fingerprint check, plus how
+// long it took. The duration feeds the adaptive cadence in
+// refresh.Policy: slow polls schedule the next tick further out so 10-20
+// concurrent revise instances on shared-repo worktrees don't pile up I/O.
+type refreshResultMsg struct {
+	fingerprint string
+	err         error
+	duration    time.Duration
+}
+
+// fsEventMsg is delivered when fswatch.Watcher reports a change. The
+// handler must re-issue the listen command in exactly one place to keep
+// the channel pump alive.
+type fsEventMsg struct{}
 
 // hunkApplyMsg is sent when an async hunk stage/unstage/discard completes.
 type hunkApplyMsg struct {
@@ -54,8 +69,14 @@ type diffLoadedMsg struct {
 	diff            *git.Diff
 	err             error
 	onDefaultBranch bool
-	fromPoll        bool // true when triggered by auto-refresh polling
+	fromPoll        bool          // true when triggered by auto-refresh polling
+	duration        time.Duration // time the diff load took (used by --debug overlay)
 }
+
+// debugTickMsg fires once per second in --debug mode so the debug strip
+// can re-render with up-to-date "Xs ago" / "next in Ys" values without
+// waiting for an unrelated message to redraw the screen.
+type debugTickMsg struct{}
 
 // DiffMode represents which diff view is active.
 // Modes are cumulative: Unstaged is always included,
@@ -112,9 +133,25 @@ type Model struct {
 
 	confirmClear bool // waiting for confirmation to clear all comments
 
-	lastFingerprint string // last seen git status fingerprint for auto-refresh
-	polling         bool   // true while a fingerprint check is in flight
-	focused         bool   // true when the terminal has focus; polling pauses on blur
+	// Auto-refresh state. The flow is:
+	//   FocusMsg / fsEventMsg / scheduled tick → requestRefresh()
+	//     → refreshTickMsg (if not stale, not polling, focused)
+	//     → fingerprint check → refreshResultMsg
+	//     → if changed: loadDiffFromPoll()
+	//     → schedule next tick via refreshPolicy.NextDelay(lastPollDuration)
+	// pollGen invalidates earlier-scheduled ticks (see refreshTickMsg).
+	refreshPolicy        refresh.Policy
+	lastFingerprint      string
+	lastPollStart        time.Time
+	lastPollDuration     time.Duration
+	lastDiffLoadStart    time.Time
+	lastDiffLoadDuration time.Duration
+	nextTickAt           time.Time // when the next scheduled refreshTickMsg is due (for --debug overlay)
+	polling              bool
+	focused              bool
+	pollGen              uint64
+	fsWatcher            *fswatch.Watcher // nil if disabled or init failed
+	debug                bool             // true in --debug mode; renders refresh debug strip
 
 	currentVersion string              // version string from build
 	updateInfo     *update.UpdateInfo  // populated after update check
@@ -202,18 +239,52 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
 		contextLines:    git.DefaultContextLines,
+		refreshPolicy:   refresh.Default,
 		lastFingerprint: initialFP,
 		focused:         true,
 		currentVersion:  version,
 	}
 }
 
+// WithFSWatcher attaches an fswatch.Watcher so file changes wake the
+// refresh loop directly, instead of waiting for the next scheduled tick.
+// Pass nil (or skip the call) for timer-only auto-refresh — that's the
+// fallback when fswatch.New fails or the user passed --no-watch.
+func (m Model) WithFSWatcher(w *fswatch.Watcher) Model {
+	m.fsWatcher = w
+	return m
+}
+
+// WithDebug enables the refresh-debug strip above the status bar. It
+// shows live refresh timings: time since the last fingerprint check and
+// diff reload, durations of those operations, time until the next
+// scheduled tick, and whether fsnotify is wired up. Useful for tuning
+// refresh.Policy or debugging "why isn't this updating".
+//
+// Independent of --dev: --dev auto-restarts on binary replacement,
+// --debug surfaces refresh internals. They compose freely.
+func (m Model) WithDebug(debug bool) Model {
+	m.debug = debug
+	return m
+}
+
 func (m Model) Init() tea.Cmd {
 	if m.fileReviewMode {
 		return nil
 	}
+	// Schedule the first auto-refresh tick. pollGen=0 so a fresh tick
+	// (also gen=0) is accepted; subsequent requestRefresh calls bump
+	// the counter and supersede this one.
 	cmds := []tea.Cmd{
-		tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} }),
+		tea.Tick(m.refreshPolicy.Min, func(time.Time) tea.Msg {
+			return refreshTickMsg{gen: 0}
+		}),
+	}
+	if cmd := listenFSEvents(m.fsWatcher); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	if m.debug {
+		cmds = append(cmds, tea.Tick(time.Second, func(time.Time) tea.Msg { return debugTickMsg{} }))
 	}
 	if m.currentVersion != "" && update.IsSemver(m.currentVersion) {
 		ver := m.currentVersion
@@ -525,6 +596,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case diffLoadedMsg:
+		m.lastDiffLoadDuration = msg.duration
 		if msg.err != nil {
 			m.statusMsg = "Error: " + msg.err.Error()
 			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
@@ -608,27 +680,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = ""
 		return m, nil
 
+	case debugTickMsg:
+		// In --debug mode, drive a once-per-second redraw so the debug
+		// strip's relative timestamps stay current. Outside --debug the
+		// tick is never scheduled, so this is dead code at runtime.
+		if !m.debug {
+			return m, nil
+		}
+		return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return debugTickMsg{} })
+
 	case tea.FocusMsg:
 		m.focused = true
-		// Resume polling now that we have focus again.
-		return m, tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+		return m, m.requestRefresh()
 
 	case tea.BlurMsg:
 		m.focused = false
 		return m, nil
 
-	case pollTickMsg:
-		// Skip if unfocused or if a fingerprint check is already in
-		// flight to avoid piling up git status processes (see #129).
-		// On blur, polling stops entirely; FocusMsg restarts it.
-		// The in-flight check's pollResultMsg will schedule the next tick.
-		if !m.focused || m.polling {
+	case fsEventMsg:
+		// File changed under the watcher. Request a refresh (subject to
+		// debounce) and re-issue the listen Cmd to keep the channel
+		// pump alive. The re-issue lives here, in exactly one place.
+		return m, tea.Batch(m.requestRefresh(), listenFSEvents(m.fsWatcher))
+
+	case refreshTickMsg:
+		// Drop ticks superseded by a later requestRefresh (gen counter).
+		// Drop if a check is already in flight or we're unfocused.
+		if msg.gen != m.pollGen || m.polling || !m.focused {
 			return m, nil
 		}
 		m.polling = true
+		m.lastPollStart = time.Now()
+		start := m.lastPollStart
 		return m, func() tea.Msg {
 			fp, err := git.StatusFingerprint()
-			return pollResultMsg{fingerprint: fp, err: err}
+			return refreshResultMsg{
+				fingerprint: fp,
+				err:         err,
+				duration:    time.Since(start),
+			}
 		}
 
 	case untrackedCacheTipMsg:
@@ -653,12 +743,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = fmt.Sprintf("Updated to %s — restart revise to use the new version", msg.newVersion)
 		return m, tea.Tick(10*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 
-	case pollResultMsg:
+	case refreshResultMsg:
 		m.polling = false
-		// Don't schedule the next tick if unfocused; FocusMsg will restart it.
+		m.lastPollDuration = msg.duration
+		// Schedule next tick at policy.NextDelay(duration) so cadence
+		// self-throttles under contention (10-20 instances). On blur
+		// we don't reschedule; FocusMsg will request the next refresh.
 		var nextTick tea.Cmd
 		if m.focused {
-			nextTick = tea.Tick(pollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
+			m.pollGen++
+			gen := m.pollGen
+			delay := m.refreshPolicy.NextDelay(msg.duration)
+			m.nextTickAt = time.Now().Add(delay)
+			nextTick = tea.Tick(delay, func(time.Time) tea.Msg {
+				return refreshTickMsg{gen: gen}
+			})
+		} else {
+			m.nextTickAt = time.Time{}
 		}
 		if msg.err != nil {
 			return m, nextTick
@@ -678,6 +779,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) updateLayout() {
 	panelH := m.height - 3 // leave 1 row for status bar
+	if m.debug {
+		panelH-- // debug strip sits directly above the status bar
+	}
 
 	if m.fullscreen {
 		m.diffView.width = m.width - 2
@@ -1227,6 +1331,51 @@ func (m *Model) cycleMode(direction int) {
 	m.modeExplicitlySet = true
 }
 
+// requestRefresh is the single funnel for "something says state may have
+// changed — please poll" (FocusMsg, fsEventMsg, etc.). It bumps pollGen
+// so any earlier scheduled tick is invalidated, then either fires a
+// refreshTickMsg right away (if debounce permits) or schedules one for
+// when debounce expires.
+//
+// Returns nil when an in-flight poll is already running — its result
+// will reschedule the next tick, so a duplicate request is redundant.
+func (m *Model) requestRefresh() tea.Cmd {
+	if m.polling {
+		return nil
+	}
+	m.pollGen++
+	gen := m.pollGen
+	now := time.Now()
+	wait := m.refreshPolicy.Debounce(m.lastPollStart, now)
+	if wait == 0 {
+		m.nextTickAt = now
+		return func() tea.Msg { return refreshTickMsg{gen: gen} }
+	}
+	m.nextTickAt = now.Add(wait)
+	return tea.Tick(wait, func(time.Time) tea.Msg { return refreshTickMsg{gen: gen} })
+}
+
+// listenFSEvents returns a Cmd that blocks on the watcher's Events
+// channel and emits one fsEventMsg per Event. The fsEventMsg handler is
+// responsible for re-issuing this Cmd to keep the pump alive — and that
+// is the only place that re-issues, to avoid double-listen races.
+//
+// Returns nil if the watcher is disabled (nil) so callers can safely
+// batch unconditionally.
+func listenFSEvents(w *fswatch.Watcher) tea.Cmd {
+	if w == nil {
+		return nil
+	}
+	ch := w.Events()
+	return func() tea.Msg {
+		_, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return fsEventMsg{}
+	}
+}
+
 // loadDiff returns a command that fetches the diff for the current mode.
 func (m *Model) loadDiff() tea.Cmd {
 	return m.loadDiffWithOptions(false)
@@ -1242,6 +1391,8 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 	mode := m.mode
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
+	m.lastDiffLoadStart = time.Now()
+	start := m.lastDiffLoadStart
 	return func() tea.Msg {
 		// Re-check whether we're on the default branch so the UI can
 		// enable/disable Branch mode dynamically (e.g. after git checkout -b).
@@ -1259,7 +1410,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
-		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, fromPoll: fromPoll}
+		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, fromPoll: fromPoll, duration: time.Since(start)}
 	}
 }
 
@@ -1320,6 +1471,107 @@ func (m Model) renderModeSlider() string {
 	return result
 }
 
+// renderDebugStrip is the --debug mode strip above the status bar. It
+// surfaces refresh timings live so you can answer "is auto-refresh
+// working?" / "why is the policy backing off so far?" without grepping
+// logs. Empty string when not in --debug mode.
+func (m Model) renderDebugStrip() string {
+	if !m.debug {
+		return ""
+	}
+
+	now := time.Now()
+
+	field := func(label, value string) string {
+		return devLabelStyle.Render(label+":") + " " + devValueStyle.Render(value)
+	}
+
+	fs := "off"
+	if m.fsWatcher != nil {
+		fs = "on"
+	}
+	focus := "blur"
+	if m.focused {
+		focus = "focus"
+	}
+	polling := "idle"
+	if m.polling {
+		polling = "in-flight"
+	}
+
+	// "next" shows what's actually going to happen, not just the
+	// scheduled tick time: while polling, the tick is moot (a poll
+	// is already running); while blurred, no tick will fire until
+	// FocusMsg requests one. Without these overrides, a tick that
+	// fires-and-drops (e.g. blurred) leaves nextTickAt in the past
+	// and the field reads "now" forever.
+	var nextDisplay string
+	switch {
+	case m.polling:
+		nextDisplay = "polling…"
+	case !m.focused:
+		nextDisplay = "blurred"
+	default:
+		nextDisplay = untilOrDash(m.nextTickAt, now)
+	}
+
+	parts := []string{
+		devLabelStyle.Render("[DEV]"),
+		field("focus", focus),
+		field("fs", fs),
+		field("status", polling),
+		field("poll", agoAndDur(m.lastPollStart, m.lastPollDuration, now)),
+		field("diff", agoAndDur(m.lastDiffLoadStart, m.lastDiffLoadDuration, now)),
+		field("next", nextDisplay),
+		field("gen", fmt.Sprintf("%d", m.pollGen)),
+	}
+
+	return statusBarStyle.Width(m.width).Render(strings.Join(parts, "  "))
+}
+
+// agoAndDur formats "Xs ago (Yms)" — when an operation last started and
+// how long it took. Returns "—" if the operation has never run.
+func agoAndDur(start time.Time, dur time.Duration, now time.Time) string {
+	if start.IsZero() {
+		return "—"
+	}
+	return fmt.Sprintf("%s ago (%s)", shortDuration(now.Sub(start)), shortDuration(dur))
+}
+
+// untilOrDash formats "Xs" until a future time, or "now" if past, or "—"
+// if zero. Used for the "next scheduled tick" indicator.
+func untilOrDash(t, now time.Time) string {
+	if t.IsZero() {
+		return "—"
+	}
+	d := t.Sub(now)
+	if d <= 0 {
+		return "now"
+	}
+	return shortDuration(d)
+}
+
+// shortDuration is a compact form of d for the debug strip:
+//   - sub-millisecond shows microseconds (e.g. "320µs")
+//   - sub-second shows milliseconds (e.g. "45ms")
+//   - sub-minute shows seconds with one decimal (e.g. "2.3s")
+//   - longer shows minutes (e.g. "3m12s")
+func shortDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Millisecond:
+		return fmt.Sprintf("%dµs", d.Microseconds())
+	case d < time.Second:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	case d < time.Minute:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	default:
+		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+}
+
 func (m Model) renderStatusBar() string {
 	if m.commentInputActive {
 		hint := helpKeyStyle.Render("Enter") + statusBarStyle.Render(": save  ") +
@@ -1349,21 +1601,30 @@ func (m Model) View() string {
 	}
 
 	statusBar := m.renderStatusBar()
+	debugStrip := m.renderDebugStrip()
 
 	slider := m.renderModeSlider()
 	if m.fileReviewMode {
 		slider = m.fileReviewPath
 	}
 
+	bottomChunks := []string{statusBar}
+	if debugStrip != "" {
+		// Debug strip sits directly above the status bar. updateLayout()
+		// shrinks panel height by one row when m.debug is true so the
+		// debug strip doesn't overflow the screen.
+		bottomChunks = []string{debugStrip, statusBar}
+	}
+
 	var screen string
 	if m.fullscreen {
 		panels := m.diffView.render(true, m.contextLines, m.hideWhitespace, slider)
-		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
+		screen = lipgloss.JoinVertical(lipgloss.Left, append([]string{panels}, bottomChunks...)...)
 	} else {
 		left := m.fileList.render(m.focus == focusFileList, slider)
 		right := m.diffView.render(m.focus == focusDiffView, m.contextLines, m.hideWhitespace)
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-		screen = lipgloss.JoinVertical(lipgloss.Left, panels, statusBar)
+		screen = lipgloss.JoinVertical(lipgloss.Left, append([]string{panels}, bottomChunks...)...)
 	}
 
 	if m.confirmDiscard || m.confirmClear {

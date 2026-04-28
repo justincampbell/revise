@@ -10,11 +10,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/devwatch"
+	"github.com/justincampbell/revise/internal/fswatch"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/ui"
 	"github.com/justincampbell/revise/internal/update"
@@ -44,6 +46,8 @@ func main() {
 	flag.BoolVar(versionFlag, "v", false, "Show version (shorthand)")
 	themeFlag := flag.String("theme", "auto", "Color theme: auto, auto-daltonized, charmtone-dark, charmtone-dark-daltonized, charmtone-light, charmtone-light-daltonized, github-dark, github-dark-daltonized, github-light, github-light-daltonized")
 	devFlag := flag.Bool("dev", false, "Auto-restart when the binary is replaced (for local development)")
+	debugFlag := flag.Bool("debug", false, "Show a refresh-debug strip with live timings above the status bar")
+	noWatchFlag := flag.Bool("no-watch", false, "Disable fsnotify-based refresh; auto-refresh runs on a timer only")
 	flag.Parse()
 
 	if *helpFlag {
@@ -141,7 +145,20 @@ func main() {
 		storePath = comments.StorePath(repoRoot, branch)
 	}
 
-	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version)
+	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version).
+		WithDebug(*debugFlag)
+
+	// Attach an fsnotify-based watcher so file edits wake the refresh
+	// loop directly (instead of waiting for the next scheduled tick).
+	// Soft-fail to timer-only on any error — fsnotify can fail on
+	// network filesystems, FD-limited environments, or unusual repos.
+	if !*noWatchFlag && os.Getenv("REVISE_NO_WATCH") == "" {
+		if watcher, werr := startWatcher(); werr == nil {
+			defer watcher.Close() //nolint:errcheck // best-effort on shutdown
+			m = m.WithFSWatcher(watcher)
+		}
+	}
+
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(), tea.WithOutput(ttyOut))
 
 	finalModel, err := runProgram(p, *devFlag)
@@ -174,6 +191,21 @@ func runFileReview(filePath string, outputPath string, devMode bool) {
 	if fm, ok := finalModel.(ui.Model); ok {
 		writeComments(fm, outputPath)
 	}
+}
+
+// startWatcher initializes the fswatch.Watcher pointed at the current
+// repo's working tree and git directory. Returns an error if either
+// path lookup or fsnotify init fails — callers fall back to timer-only.
+func startWatcher() (*fswatch.Watcher, error) {
+	workTree, err := git.RepoRoot()
+	if err != nil {
+		return nil, err
+	}
+	gitDir, err := git.GitDir()
+	if err != nil {
+		return nil, err
+	}
+	return fswatch.New(workTree, gitDir, 100*time.Millisecond)
 }
 
 // runProgram runs a Bubbletea program. When devMode is true, it polls the
@@ -328,6 +360,8 @@ Flags:
                           github-light, github-light-daltonized
   --output <file>       Write comments to file on exit
   --dev                 Auto-restart when the binary is replaced (development)
+  --debug               Show a refresh-debug strip with live timings above the status bar
+  --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)
 
 Commands:
   diff            Print unified diff (no TUI)
