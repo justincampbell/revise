@@ -101,6 +101,10 @@ var (
 	// Status bar
 	statusBarStyle lipgloss.Style
 
+	// --debug mode strip above the status bar
+	devLabelStyle lipgloss.Style
+	devValueStyle lipgloss.Style
+
 	// Help styles
 	helpKeyStyle   lipgloss.Style
 	helpTextStyle  lipgloss.Style
@@ -195,6 +199,9 @@ func applyTheme(p themeColors) {
 
 	statusBarStyle = lipgloss.NewStyle().Foreground(p.dim)
 
+	devLabelStyle = lipgloss.NewStyle().Foreground(p.yellow).Bold(true)
+	devValueStyle = lipgloss.NewStyle().Foreground(p.dim)
+
 	helpKeyStyle = lipgloss.NewStyle().Bold(true).Foreground(p.cyan)
 	helpTextStyle = lipgloss.NewStyle().Foreground(p.white)
 	helpGroupStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)
@@ -254,6 +261,8 @@ func applyNoColor() {
 	modeInactiveStyle = lipgloss.NewStyle()
 	modeDisabledStyle = lipgloss.NewStyle().Faint(true).Strikethrough(true)
 	statusBarStyle = lipgloss.NewStyle()
+	devLabelStyle = lipgloss.NewStyle().Bold(true)
+	devValueStyle = lipgloss.NewStyle()
 	helpKeyStyle = lipgloss.NewStyle().Bold(true)
 	helpTextStyle = lipgloss.NewStyle()
 	helpGroupStyle = lipgloss.NewStyle().Bold(true)

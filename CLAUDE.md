@@ -115,6 +115,12 @@ internal/
     format_test.go             # formatter tests
     diff_integration_test.go   # GetDiff/StagedDiff/etc integration tests (real git repos)
     testhelper_test.go         # TestRepo helper for integration tests
+  refresh/
+    policy.go                  # adaptive cadence policy (NextDelay, Debounce); pure logic
+    policy_test.go             # table-driven unit tests
+  fswatch/
+    watcher.go                 # fsnotify wrapper: watches tracked dirs + git dir, coalesces bursts
+    watcher_test.go            # integration tests using real git tempdirs
   comments/
     store.go                   # JSON persistence for comments (Save/Load/StorePath)
     store_test.go              # persistence unit tests
@@ -192,6 +198,16 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256(repoRoot + ":" + branchName)[:16]`. Auto-saved on every add/edit/delete, loaded on startup. The `internal/comments/` package handles storage; `internal/ui/comment.go` handles serialization between the internal `commentKey` struct and string-keyed JSON.
 
 File-level comments use `lineNum: 0` in the `commentKey` struct (diff line numbers are always >= 1). They are displayed at the top of the diff view before hunks, and exported as "File comment: ..." in the export format.
+
+### Auto-refresh
+
+Three pieces, each with one job:
+
+- **`internal/refresh/`** — pure cadence policy. `NextDelay(lastDuration)` clamps `multiplier × lastDuration` to `[Min, Max]` so cadence self-throttles when `git status` is slow (10-20 revise instances on worktrees of one repo cause I/O contention; see #129). `Debounce(lastStart, now)` returns the wait until the next refresh request can fire.
+- **`internal/fswatch/`** — fsnotify wrapper. Watches the parent directories of tracked files (via `git ls-files`, so it's gitignore-correct without walking node_modules) plus the git directory itself (filtered to `index`/`HEAD`). Coalesces event bursts into a single emitted `Event`.
+- **`internal/ui/model.go`** — wires them together. `requestRefresh()` is the single funnel for FocusMsg, fsEventMsg, and scheduled ticks. It bumps a `pollGen` counter on every request so any earlier in-flight `tea.Tick` becomes stale and is dropped (eliminates the "scheduled at +25s, focus at +24.9s" dead zone).
+
+The fs watcher is attached via `Model.WithFSWatcher(w)`. If `fswatch.New` fails (network FS, FD limits) or `--no-watch` / `REVISE_NO_WATCH=1` is set, the model gets no watcher and auto-refresh runs on a timer only.
 
 ### Diff Parsing
 

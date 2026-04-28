@@ -179,6 +179,18 @@ func RepoRoot() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// GitDir returns the absolute path to the git directory for the current
+// working tree. In a worktree this is `<main-repo>/.git/worktrees/<name>/`,
+// not the worktree's `.git` file. Used by fswatch to monitor index/HEAD
+// changes (per-worktree, not the main repo's).
+func GitDir() (string, error) {
+	out, err := exec.Command("git", "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --absolute-git-dir: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // IsGitRepo checks if the current directory is inside a git repository.
 func IsGitRepo() bool {
 	err := exec.Command("git", "rev-parse", "--is-inside-work-tree").Run()

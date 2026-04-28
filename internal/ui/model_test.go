@@ -1499,20 +1499,20 @@ func TestUpdateApplied_SetsStatusAndClearsAfterTimeout(t *testing.T) {
 	assert.NotNil(t, cmd, "should return a clear timer command")
 }
 
-func TestPollResult_SameFingerprint_NoReload(t *testing.T) {
+func TestRefreshResult_SameFingerprint_NoReload(t *testing.T) {
 	m := makeModel("a.go")
 	m.lastFingerprint = "M a.go\n"
 
-	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	updated, cmd := m.Update(refreshResultMsg{fingerprint: "M a.go\n", duration: 100 * time.Millisecond})
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "same fingerprint should still schedule next tick")
 }
 
-func TestPollResult_DifferentFingerprint_TriggersReload(t *testing.T) {
+func TestRefreshResult_DifferentFingerprint_TriggersReload(t *testing.T) {
 	m := makeModel("a.go")
 	m.lastFingerprint = "M a.go\n"
 
-	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n?? new.go\n"})
+	updated, cmd := m.Update(refreshResultMsg{fingerprint: "M a.go\n?? new.go\n", duration: 100 * time.Millisecond})
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "different fingerprint should trigger a reload")
 	assert.Equal(t, "M a.go\n?? new.go\n", m.lastFingerprint)
@@ -1543,42 +1543,52 @@ func TestPollRefresh_PreservesCursorPosition(t *testing.T) {
 	assert.Equal(t, savedOffset, m.diffView.offset, "poll refresh should preserve offset")
 }
 
-func TestPollResult_Error_NoReload(t *testing.T) {
+func TestRefreshResult_Error_NoReload(t *testing.T) {
 	m := makeModel("a.go")
 	m.lastFingerprint = "M a.go\n"
 
-	_, cmd := m.Update(pollResultMsg{err: fmt.Errorf("git error")})
+	_, cmd := m.Update(refreshResultMsg{err: fmt.Errorf("git error"), duration: 50 * time.Millisecond})
 	assert.NotNil(t, cmd, "error should still schedule next tick")
 }
 
-func TestPollTick_SetsPollingFlag(t *testing.T) {
+func TestRefreshTick_SetsPollingFlag(t *testing.T) {
 	m := makeModel("a.go")
 	assert.False(t, m.polling)
 
-	updated, cmd := m.Update(pollTickMsg{})
+	updated, cmd := m.Update(refreshTickMsg{gen: m.pollGen})
 	m = updated.(Model)
 	assert.True(t, m.polling, "polling flag should be set")
 	assert.NotNil(t, cmd, "should return fingerprint check command")
 }
 
-func TestPollTick_SkipsWhenAlreadyPolling(t *testing.T) {
+func TestRefreshTick_SkipsWhenAlreadyPolling(t *testing.T) {
 	m := makeModel("a.go")
 	m.polling = true
 
-	updated, cmd := m.Update(pollTickMsg{})
+	updated, cmd := m.Update(refreshTickMsg{gen: m.pollGen})
 	m = updated.(Model)
 	assert.True(t, m.polling, "polling flag should remain true")
 	assert.Nil(t, cmd, "should not schedule anything when already polling")
 }
 
-func TestPollTick_SkipsWhenUnfocused(t *testing.T) {
+func TestRefreshTick_SkipsWhenUnfocused(t *testing.T) {
 	m := makeModel("a.go")
 	m.focused = false
 
-	updated, cmd := m.Update(pollTickMsg{})
+	updated, cmd := m.Update(refreshTickMsg{gen: m.pollGen})
 	m = updated.(Model)
 	assert.False(t, m.polling, "should not start polling when unfocused")
 	assert.Nil(t, cmd, "should not schedule anything when unfocused")
+}
+
+func TestRefreshTick_StaleGenIsDropped(t *testing.T) {
+	m := makeModel("a.go")
+	m.pollGen = 5
+
+	updated, cmd := m.Update(refreshTickMsg{gen: 3})
+	m = updated.(Model)
+	assert.False(t, m.polling, "stale tick should not start a poll")
+	assert.Nil(t, cmd, "stale tick should not produce a command")
 }
 
 func TestBlur_StopsPolling(t *testing.T) {
@@ -1601,31 +1611,138 @@ func TestFocus_ResumesPolling(t *testing.T) {
 	assert.NotNil(t, cmd, "focus should schedule a poll tick")
 }
 
-func TestPollResult_SkipsNextTickWhenUnfocused(t *testing.T) {
+func TestFocus_PollsImmediately(t *testing.T) {
+	m := makeModel("a.go")
+	m.focused = false
+
+	_, cmd := m.Update(tea.FocusMsg{})
+	require.NotNil(t, cmd, "focus should return a command")
+
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		_, ok := msg.(refreshTickMsg)
+		assert.True(t, ok, "focus should fire refreshTickMsg immediately, got %T", msg)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("focus did not fire refreshTickMsg within 500ms — likely scheduled via tea.Tick instead")
+	}
+}
+
+func TestFSEvent_RequestsRefreshAndRelistens(t *testing.T) {
+	m := makeModel("a.go")
+
+	// No watcher attached, so listenFSEvents returns nil; the relisten
+	// path is exercised in main.go integration. This test focuses on the
+	// requestRefresh side: an fsEvent should produce a Cmd that fires a
+	// refreshTickMsg promptly (subject to debounce — and lastPollStart is
+	// zero so debounce permits immediate firing).
+	_, cmd := m.Update(fsEventMsg{})
+	require.NotNil(t, cmd, "fsEventMsg should request a refresh")
+
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		_, ok := msg.(refreshTickMsg)
+		assert.True(t, ok, "fsEvent should fire refreshTickMsg immediately, got %T", msg)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("fsEvent did not produce refreshTickMsg promptly")
+	}
+}
+
+func TestRequestRefresh_SkipsWhilePolling(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+
+	_, cmd := m.Update(tea.FocusMsg{})
+	assert.Nil(t, cmd, "in-flight poll should suppress new requests; result will reschedule")
+}
+
+func TestRequestRefresh_BumpsGenToInvalidateOldTicks(t *testing.T) {
+	m := makeModel("a.go")
+	startGen := m.pollGen
+
+	updated, _ := m.Update(tea.FocusMsg{})
+	m = updated.(Model)
+	gen1 := m.pollGen
+	assert.Greater(t, gen1, startGen, "FocusMsg should bump pollGen")
+
+	updated, _ = m.Update(fsEventMsg{})
+	m = updated.(Model)
+	assert.Greater(t, m.pollGen, gen1, "fsEventMsg should bump pollGen again")
+}
+
+func TestRefreshResult_SkipsNextTickWhenUnfocused(t *testing.T) {
 	m := makeModel("a.go")
 	m.polling = true
 	m.focused = false
 	m.lastFingerprint = "M a.go\n"
 
-	updated, cmd := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	updated, cmd := m.Update(refreshResultMsg{fingerprint: "M a.go\n", duration: 50 * time.Millisecond})
 	m = updated.(Model)
 	assert.False(t, m.polling, "polling flag should be cleared")
 	assert.Nil(t, cmd, "should not schedule next tick when unfocused")
 }
 
-func TestPollResult_ClearsPollingFlag(t *testing.T) {
+func TestRefreshResult_ClearsPollingFlag(t *testing.T) {
 	m := makeModel("a.go")
 	m.polling = true
 	m.lastFingerprint = "M a.go\n"
 
-	updated, _ := m.Update(pollResultMsg{fingerprint: "M a.go\n"})
+	updated, _ := m.Update(refreshResultMsg{fingerprint: "M a.go\n", duration: 50 * time.Millisecond})
 	m = updated.(Model)
 	assert.False(t, m.polling, "polling flag should be cleared after result")
 }
 
-func TestPollInterval_IsAtLeast30Seconds(t *testing.T) {
-	assert.GreaterOrEqual(t, pollInterval, 30*time.Second,
-		"poll interval must be >= 30s to avoid I/O contention (see #129)")
+func TestShortDuration(t *testing.T) {
+	cases := []struct {
+		in   time.Duration
+		want string
+	}{
+		{0, "0µs"},
+		{500 * time.Microsecond, "500µs"},
+		{45 * time.Millisecond, "45ms"},
+		{2300 * time.Millisecond, "2.3s"},
+		{125 * time.Second, "2m05s"},
+		{-time.Second, "0µs"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, shortDuration(tc.in), "shortDuration(%s)", tc.in)
+	}
+}
+
+func TestAgoAndDur_ZeroStartReturnsDash(t *testing.T) {
+	assert.Equal(t, "—", agoAndDur(time.Time{}, 0, time.Now()))
+}
+
+func TestUntilOrDash(t *testing.T) {
+	now := time.Now()
+	assert.Equal(t, "—", untilOrDash(time.Time{}, now))
+	assert.Equal(t, "now", untilOrDash(now.Add(-1*time.Second), now))
+	assert.Equal(t, "1.5s", untilOrDash(now.Add(1500*time.Millisecond), now))
+}
+
+func TestDebugTickMsg_OnlyReschedulesInDebugMode(t *testing.T) {
+	m := makeModel("a.go")
+	m.debug = false
+
+	_, cmd := m.Update(debugTickMsg{})
+	assert.Nil(t, cmd, "debugTickMsg outside --debug should be a no-op")
+
+	m.debug = true
+	_, cmd = m.Update(debugTickMsg{})
+	assert.NotNil(t, cmd, "debugTickMsg in --debug should reschedule")
+}
+
+func TestRefreshResult_RecordsDurationForBackoff(t *testing.T) {
+	m := makeModel("a.go")
+	m.polling = true
+
+	updated, _ := m.Update(refreshResultMsg{fingerprint: "x", duration: 7 * time.Second})
+	m = updated.(Model)
+	assert.Equal(t, 7*time.Second, m.lastPollDuration,
+		"lastPollDuration drives the next NextDelay() — slow polls must record their duration")
 }
 
 // --- File review mode tests ---
