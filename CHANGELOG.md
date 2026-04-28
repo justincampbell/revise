@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `--dev` flag auto-restarts the running TUI when the binary is replaced (e.g. by `make install`), preserving argv and env (#160)
-- `setup-cache` subcommand to enable git's `core.untrackedCache` for faster refreshes; a startup tip surfaces in the status bar when the cache is disabled but the filesystem supports it (#160)
+- `setup-cache` subcommand to enable git's `core.untrackedCache` for faster refreshes; a startup tip surfaces in the status bar when the cache is disabled (#160)
 - Horizontal scroll in the diff view via →/← (or h/l) and mouse wheel left/right (#121)
 - `revise diff --mode=<branch|staged|staged-only|unstaged>` selects which diff to print non-interactively (default: auto-detect, same as launching the TUI) (#177)
 - `revise diff --hunks` prints TUI-style output — file path header, `[source]` tag with function context, and a line-number gutter — instead of unified diff format (#177)
@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Commented lines also get a yellow `▌` bookmark stripe in the leading prefix column, matching the mark-line treatment (#173)
 - fswatch now installs a watch on newly-created directories on the fly, so `mkdir new-feature && touch new-feature/foo.go` triggers a refresh immediately instead of waiting for the next periodic poll (#144)
 - Auto-refresh now wakes on file changes (via fsnotify) and on terminal focus, instead of waiting up to 30s for the next polling tick. Cadence is adaptive — it self-throttles based on how long the last `git status` took, so running 10-20 revise instances on shared-repo worktrees no longer piles up I/O. Pass `--no-watch` (or set `REVISE_NO_WATCH=1`) to disable the fsnotify path and fall back to timer-only refreshes (#144)
+- Startup no longer runs `git update-index --test-untracked-cache`, which created `mtime-test-XXXXXX/` directories in the working tree (and left them behind if the process exited before cleanup). The startup tip now fires on any repo with `core.untrackedCache` disabled; the FS test still runs on demand inside `revise setup-cache` (#178)
 
 ### Added
 
