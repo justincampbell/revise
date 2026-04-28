@@ -295,6 +295,7 @@ func buildFileDiff(filePath string) (*git.Diff, error) {
 func runDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
 	modeFlag := fs.String("mode", "", "Diff mode: branch, staged, staged-only, unstaged (default: auto-detect)")
+	hunksFlag := fs.Bool("hunks", false, "Print TUI-style hunks (file path header, line-number gutter) instead of unified diff")
 	_ = fs.Parse(args)
 
 	diff, err := loadDiffForMode(*modeFlag)
@@ -303,6 +304,10 @@ func runDiff(args []string) {
 		os.Exit(1)
 	}
 
+	if *hunksFlag {
+		fmt.Print(git.FormatHunks(diff))
+		return
+	}
 	fmt.Print(git.Format(diff))
 }
 
@@ -387,9 +392,11 @@ Flags:
   --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)
 
 Commands:
-  diff [--mode]   Print unified diff (no TUI)
+  diff [flags]    Print diff (no TUI)
                     --mode branch | staged | staged-only | unstaged
-                    (default: auto-detect — same as launching the TUI)
+                      (default: auto-detect — same as launching the TUI)
+                    --hunks  TUI-style output (path header, line-number gutter)
+                      instead of unified diff format
   setup-cache     Enable git's core.untrackedCache for faster refreshes
   styles          Show file status color matrix
   update [--pre]  Update to the latest version

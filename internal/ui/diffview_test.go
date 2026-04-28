@@ -126,21 +126,6 @@ func TestDiffViewViewHeight_MinimumOne(t *testing.T) {
 	assert.Equal(t, 1, m.viewHeight())
 }
 
-func TestFormatGutter_Added(t *testing.T) {
-	l := git.Line{Type: git.LineAdded, NewNum: 42}
-	assert.Equal(t, "   42 ", formatGutter(l))
-}
-
-func TestFormatGutter_Removed(t *testing.T) {
-	l := git.Line{Type: git.LineRemoved, OldNum: 7}
-	assert.Equal(t, "    7 ", formatGutter(l))
-}
-
-func TestFormatGutter_Context(t *testing.T) {
-	l := git.Line{Type: git.LineContext, OldNum: 3, NewNum: 5}
-	assert.Equal(t, "    5 ", formatGutter(l))
-}
-
 func TestDiffViewCursorMovesDown(t *testing.T) {
 	m := makeDiffViewModel(10, 6) // viewHeight = 6
 	m.moveCursorDown(1)
@@ -397,20 +382,6 @@ func TestRenderHunkHeader_EmptyContext_StillShowsTag(t *testing.T) {
 	assert.Contains(t, got, "[staged]")
 }
 
-func TestHunkContext_ExtractsTrailingContext(t *testing.T) {
-	got := hunkContext("@@ -10,6 +12,7 @@ func renderStatusBar() string {")
-	assert.Equal(t, "func renderStatusBar() string {", got)
-}
-
-func TestHunkContext_NoAtAt(t *testing.T) {
-	got := hunkContext("some random text")
-	assert.Equal(t, "some random text", got)
-}
-
-func TestHunkContext_EmptyContext(t *testing.T) {
-	got := hunkContext("@@ -1,1 +1,1 @@")
-	assert.Equal(t, "", got)
-}
 
 func TestDiffView_TitleInBorder(t *testing.T) {
 	m := newDiffViewModel()
