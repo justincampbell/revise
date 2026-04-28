@@ -12,6 +12,7 @@ package fswatch
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -143,6 +144,7 @@ func (w *Watcher) run() {
 			if !ok {
 				return
 			}
+			w.maybeWatchNewDir(ev)
 			if !w.relevant(ev) {
 				continue
 			}
@@ -167,6 +169,9 @@ func (w *Watcher) run() {
 
 // drainBurst consumes events for w.coalesce duration without emitting,
 // so a flurry of related events results in only one downstream Event.
+// We still inspect each event for new-directory creates so a
+// `mkdir -p a/b/c && touch a/b/c/foo` burst leaves all of a/, a/b/,
+// a/b/c/ watched.
 func (w *Watcher) drainBurst() {
 	deadline := time.NewTimer(w.coalesce)
 	defer deadline.Stop()
@@ -180,9 +185,30 @@ func (w *Watcher) drainBurst() {
 			if !ok {
 				return
 			}
-			_ = ev // discarded — coalesced
+			w.maybeWatchNewDir(ev)
 		}
 	}
+}
+
+// maybeWatchNewDir installs a watch on a newly-created directory so
+// subsequent edits inside it fire events. Without this, the user's
+// `mkdir new-feature && touch new-feature/foo.go` would be invisible
+// to fsnotify until the next periodic poll picked it up — usually
+// fine, but slow on a 30s-clamped policy.
+//
+// We don't filter against gitignore here; gitignored content (e.g. an
+// errant `node_modules`) won't change `git status` output, so the
+// fingerprint check stays stable and no diff reload happens. The cost
+// is a few extra fsnotify watches.
+func (w *Watcher) maybeWatchNewDir(ev fsnotify.Event) {
+	if ev.Op&fsnotify.Create == 0 {
+		return
+	}
+	info, err := os.Stat(ev.Name)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	_ = w.fsn.Add(ev.Name)
 }
 
 // relevant reports whether an fsnotify event should trigger a refresh.

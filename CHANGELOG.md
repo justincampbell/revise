@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - When a fresh branch diverges from default while revise is running (e.g. after a commit), the mode auto-promotes from Staged to Branch so new commits become visible, unless the user has explicitly picked a mode (#148)
 - Marked lines are now visibly distinct: brighter mark backgrounds and a colored `▌` bookmark stripe in the leading prefix column. Daltonized themes use a purple mark color so the highlight no longer collides with the blue "added" background (#173)
 - Commented lines also get a yellow `▌` bookmark stripe in the leading prefix column, matching the mark-line treatment (#173)
+- fswatch now installs a watch on newly-created directories on the fly, so `mkdir new-feature && touch new-feature/foo.go` triggers a refresh immediately instead of waiting for the next periodic poll (#144)
 - Auto-refresh now wakes on file changes (via fsnotify) and on terminal focus, instead of waiting up to 30s for the next polling tick. Cadence is adaptive — it self-throttles based on how long the last `git status` took, so running 10-20 revise instances on shared-repo worktrees no longer piles up I/O. Pass `--no-watch` (or set `REVISE_NO_WATCH=1`) to disable the fsnotify path and fall back to timer-only refreshes (#144)
 
 ### Added

@@ -160,6 +160,31 @@ func TestWatcher_CoalescesBurst(t *testing.T) {
 	expectNoEvent(t, w, 200*time.Millisecond)
 }
 
+func TestWatcher_FiresOnFileInNewlyCreatedDir(t *testing.T) {
+	workTree, gitDir := gitInit(t)
+	commitFile(t, workTree, "foo.go", "package main\n")
+
+	w, err := New(workTree, gitDir, testCoalesce)
+	require.NoError(t, err)
+	defer w.Close() //nolint:errcheck
+
+	// `mkdir new-feature && touch new-feature/foo.go` — the dir didn't
+	// exist when New ran, so it wasn't in the initial watch set. The
+	// watcher must pick it up dynamically, otherwise the second event
+	// (file write inside the new dir) is invisible.
+	require.NoError(t, os.MkdirAll(filepath.Join(workTree, "new-feature"), 0o755))
+
+	// Drain the CREATE-of-dir event itself.
+	expectEvent(t, w, 1*time.Second)
+
+	// Give the watcher a moment to install the dynamic watch on
+	// new-feature/ before we write inside it.
+	time.Sleep(50 * time.Millisecond)
+
+	writeFile(t, filepath.Join(workTree, "new-feature", "foo.go"), "package newfeature\n")
+	expectEvent(t, w, 1*time.Second)
+}
+
 func TestWatcher_CloseIsIdempotent(t *testing.T) {
 	workTree, gitDir := gitInit(t)
 	commitFile(t, workTree, "foo.go", "package main\n")
