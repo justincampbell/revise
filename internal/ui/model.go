@@ -54,8 +54,10 @@ type updateCheckMsg struct {
 	err  error
 }
 
-// untrackedCacheTipMsg fires if the repo has core.untrackedCache disabled
-// and the filesystem supports enabling it — we surface a one-time tip.
+// untrackedCacheTipMsg fires if the repo has core.untrackedCache disabled —
+// we surface a one-time tip. We avoid the FS support test on startup because
+// `git update-index --test-untracked-cache` leaves mtime-test-XXXXXX/ dirs in
+// CWD if the process is killed mid-test; the real test runs in `setup-cache`.
 type untrackedCacheTipMsg struct{}
 
 // updateAppliedMsg is sent when an update download+install completes.
@@ -295,9 +297,6 @@ func (m Model) Init() tea.Cmd {
 	}
 	cmds = append(cmds, func() tea.Msg {
 		if git.UntrackedCacheEnabled() {
-			return nil
-		}
-		if git.TestUntrackedCacheSupport() != nil {
 			return nil
 		}
 		return untrackedCacheTipMsg{}
