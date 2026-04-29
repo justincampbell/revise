@@ -416,7 +416,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 }
 
 func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
-	gutter := formatGutter(l)
+	gutter := git.FormatGutter(l)
 	if marked {
 		content := l.Content
 		// Pad content to fill the available width so background covers the line.
@@ -455,38 +455,23 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p t
 	return l.Content
 }
 
-func formatGutter(l git.Line) string {
-	n := l.NewNum
-	if l.Type == git.LineRemoved {
-		n = l.OldNum
-	}
-	switch l.Type {
-	case git.LineAdded, git.LineRemoved, git.LineContext:
-		return fmt.Sprintf("%5d ", n)
-	}
-	return "      "
-}
-
 func renderHunkHeader(h git.Hunk) string {
-	header := hunkContext(h.Header)
-
-	style := hunkStyle
-	var label string
-	switch h.Source {
-	case git.SourceBranch:
-		style = hunkBranchStyle
-		label = "branch"
-	case git.SourceStaged:
-		style = hunkStagedStyle
-		label = "staged"
-	case git.SourceUnstaged:
-		style = hunkUnstagedStyle
-		label = "unstaged"
-	}
+	header := git.HunkContextText(h.Header)
+	label := git.HunkSourceLabel(h.Source)
 
 	// No source and no header context — nothing to show (e.g. file review mode).
 	if label == "" && header == "" {
 		return ""
+	}
+
+	style := hunkStyle
+	switch h.Source {
+	case git.SourceBranch:
+		style = hunkBranchStyle
+	case git.SourceStaged:
+		style = hunkStagedStyle
+	case git.SourceUnstaged:
+		style = hunkUnstagedStyle
 	}
 
 	tag := hunkSourceTagStyle.Render("[" + label + "]")
@@ -497,14 +482,6 @@ func renderHunkHeader(h git.Hunk) string {
 		return style.Render(header)
 	}
 	return tag + " " + style.Render(header)
-}
-
-func hunkContext(header string) string {
-	parts := strings.SplitN(header, "@@", 3)
-	if len(parts) < 3 {
-		return strings.TrimSpace(header)
-	}
-	return strings.TrimSpace(parts[2])
 }
 
 // linePrefix returns the 1-character indicator for a display line — cursor
