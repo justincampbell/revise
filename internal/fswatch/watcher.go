@@ -12,15 +12,26 @@ package fswatch
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// MaxWatches caps the number of fsnotify watches installed by New.
+// Each watch holds an fd on macOS (kqueue) and Linux (inotify), so
+// large repos × many concurrent revise instances can exhaust the
+// system fd limit (kern.maxfiles on macOS). When the unique tracked-
+// directory count would exceed this cap, New returns an error so the
+// caller can fall back to timer-only refresh. Exported as a var so
+// tests can override it.
+var MaxWatches = 500
 
 // Event is a wakeup signal — it carries no data. The caller re-checks
 // state via whatever primitive is appropriate (e.g. git.StatusFingerprint).
@@ -36,8 +47,15 @@ type Watcher struct {
 
 	out chan Event
 
+	// watchCount tracks the number of installed fsnotify watches so
+	// dynamic adds in maybeWatchNewDir don't blow past MaxWatches at
+	// runtime (e.g. an `npm install` creating thousands of dirs).
+	// Atomic so tests can read it without racing the run goroutine.
+	watchCount atomic.Int64
+
 	closeOnce sync.Once
 	done      chan struct{}
+	wg        sync.WaitGroup
 }
 
 // New starts a watcher over the working tree and git directory.
@@ -76,12 +94,14 @@ func New(workTree, gitDir string, coalesce time.Duration) (*Watcher, error) {
 		_ = fsn.Close()
 		return nil, err
 	}
+	w.watchCount.Store(1)
 
 	if err := w.addTrackedDirs(); err != nil {
 		_ = fsn.Close()
 		return nil, err
 	}
 
+	w.wg.Add(1)
 	go w.run()
 	return w, nil
 }
@@ -90,21 +110,24 @@ func New(workTree, gitDir string, coalesce time.Duration) (*Watcher, error) {
 // channel is closed when the Watcher is Closed.
 func (w *Watcher) Events() <-chan Event { return w.out }
 
-// Close stops the watcher and releases its resources. Safe to call
-// multiple times.
+// Close stops the watcher, waits for the run goroutine to exit, and
+// releases resources. Safe to call multiple times.
 func (w *Watcher) Close() error {
 	var err error
 	w.closeOnce.Do(func() {
 		close(w.done)
 		err = w.fsn.Close()
+		w.wg.Wait()
 	})
 	return err
 }
 
 // addTrackedDirs adds fsnotify watches on the unique parent directories
-// of files reported by `git ls-files`. Failures on individual Adds are
-// non-fatal — a missing watch just means missed events for that dir,
-// not a broken watcher.
+// of files reported by `git ls-files`. The unique set is computed before
+// any Add calls so we can refuse cleanly when the count would exceed
+// MaxWatches — adding partial watches and then bailing would leak fds.
+// Failures on individual Adds are non-fatal — a missing watch just means
+// missed events for that dir, not a broken watcher.
 func (w *Watcher) addTrackedDirs() error {
 	cmd := exec.Command("git", "-C", w.workTree, "ls-files")
 	out, err := cmd.Output()
@@ -115,18 +138,23 @@ func (w *Watcher) addTrackedDirs() error {
 	seen := make(map[string]struct{})
 	// Always watch the working tree root so top-level files are covered.
 	seen[w.workTree] = struct{}{}
-	_ = w.fsn.Add(w.workTree)
 
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		dir := filepath.Join(w.workTree, filepath.Dir(line))
-		if _, ok := seen[dir]; ok {
-			continue
-		}
 		seen[dir] = struct{}{}
-		_ = w.fsn.Add(dir)
+	}
+
+	if len(seen) > MaxWatches {
+		return fmt.Errorf("fswatch: %d tracked dirs exceeds watch cap of %d", len(seen), MaxWatches)
+	}
+
+	for dir := range seen {
+		if err := w.fsn.Add(dir); err == nil {
+			w.watchCount.Add(1)
+		}
 	}
 	return nil
 }
@@ -134,6 +162,7 @@ func (w *Watcher) addTrackedDirs() error {
 // run is the watcher goroutine: it filters incoming fsnotify events,
 // coalesces bursts within w.coalesce, and emits one Event per burst.
 func (w *Watcher) run() {
+	defer w.wg.Done()
 	defer close(w.out)
 
 	for {
@@ -198,17 +227,24 @@ func (w *Watcher) drainBurst() {
 //
 // We don't filter against gitignore here; gitignored content (e.g. an
 // errant `node_modules`) won't change `git status` output, so the
-// fingerprint check stays stable and no diff reload happens. The cost
-// is a few extra fsnotify watches.
+// fingerprint check stays stable and no diff reload happens. We do
+// enforce MaxWatches though — a runaway burst of dir creation (npm
+// install dropping thousands of node_modules subdirs) would otherwise
+// reintroduce the fd-exhaustion this cap exists to prevent.
 func (w *Watcher) maybeWatchNewDir(ev fsnotify.Event) {
 	if ev.Op&fsnotify.Create == 0 {
+		return
+	}
+	if w.watchCount.Load() >= int64(MaxWatches) {
 		return
 	}
 	info, err := os.Stat(ev.Name)
 	if err != nil || !info.IsDir() {
 		return
 	}
-	_ = w.fsn.Add(ev.Name)
+	if err := w.fsn.Add(ev.Name); err == nil {
+		w.watchCount.Add(1)
+	}
 }
 
 // relevant reports whether an fsnotify event should trigger a refresh.
