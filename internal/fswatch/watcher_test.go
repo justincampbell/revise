@@ -1,6 +1,7 @@
 package fswatch
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,6 +214,40 @@ func TestWatcher_NoEventsAfterClose(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("Events channel was not closed after Close")
 	}
+}
+
+func TestWatcher_RefusesAboveWatchCap(t *testing.T) {
+	workTree, gitDir := gitInit(t)
+	// Each commit lands in its own directory, producing 10 unique tracked dirs.
+	for i := 0; i < 10; i++ {
+		commitFile(t, workTree, fmt.Sprintf("d%d/f.go", i), "package x\n")
+	}
+
+	orig := MaxWatches
+	MaxWatches = 5
+	defer func() { MaxWatches = orig }()
+
+	w, err := New(workTree, gitDir, testCoalesce)
+	if w != nil {
+		_ = w.Close()
+	}
+	require.Error(t, err, "New should refuse when tracked dirs exceed MaxWatches")
+	assert.Contains(t, err.Error(), "watch cap")
+}
+
+func TestWatcher_AcceptsAtOrBelowWatchCap(t *testing.T) {
+	workTree, gitDir := gitInit(t)
+	for i := 0; i < 3; i++ {
+		commitFile(t, workTree, fmt.Sprintf("d%d/f.go", i), "package x\n")
+	}
+
+	orig := MaxWatches
+	MaxWatches = 100
+	defer func() { MaxWatches = orig }()
+
+	w, err := New(workTree, gitDir, testCoalesce)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
 }
 
 // drainEvents reads any pending Events for d duration, discarding them.

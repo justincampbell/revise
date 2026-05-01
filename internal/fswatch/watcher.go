@@ -12,6 +12,7 @@ package fswatch
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,15 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 )
+
+// MaxWatches caps the number of fsnotify watches installed by New.
+// Each watch holds an fd on macOS (kqueue) and Linux (inotify), so
+// large repos × many concurrent revise instances can exhaust the
+// system fd limit (kern.maxfiles on macOS). When the unique tracked-
+// directory count would exceed this cap, New returns an error so the
+// caller can fall back to timer-only refresh. Exported as a var so
+// tests can override it.
+var MaxWatches = 500
 
 // Event is a wakeup signal — it carries no data. The caller re-checks
 // state via whatever primitive is appropriate (e.g. git.StatusFingerprint).
@@ -102,9 +112,11 @@ func (w *Watcher) Close() error {
 }
 
 // addTrackedDirs adds fsnotify watches on the unique parent directories
-// of files reported by `git ls-files`. Failures on individual Adds are
-// non-fatal — a missing watch just means missed events for that dir,
-// not a broken watcher.
+// of files reported by `git ls-files`. The unique set is computed before
+// any Add calls so we can refuse cleanly when the count would exceed
+// MaxWatches — adding partial watches and then bailing would leak fds.
+// Failures on individual Adds are non-fatal — a missing watch just means
+// missed events for that dir, not a broken watcher.
 func (w *Watcher) addTrackedDirs() error {
 	cmd := exec.Command("git", "-C", w.workTree, "ls-files")
 	out, err := cmd.Output()
@@ -115,17 +127,20 @@ func (w *Watcher) addTrackedDirs() error {
 	seen := make(map[string]struct{})
 	// Always watch the working tree root so top-level files are covered.
 	seen[w.workTree] = struct{}{}
-	_ = w.fsn.Add(w.workTree)
 
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		dir := filepath.Join(w.workTree, filepath.Dir(line))
-		if _, ok := seen[dir]; ok {
-			continue
-		}
 		seen[dir] = struct{}{}
+	}
+
+	if len(seen) > MaxWatches {
+		return fmt.Errorf("fswatch: %d tracked dirs exceeds watch cap of %d", len(seen), MaxWatches)
+	}
+
+	for dir := range seen {
 		_ = w.fsn.Add(dir)
 	}
 	return nil

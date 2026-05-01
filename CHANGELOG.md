@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - fswatch now installs a watch on newly-created directories on the fly, so `mkdir new-feature && touch new-feature/foo.go` triggers a refresh immediately instead of waiting for the next periodic poll (#144)
 - Auto-refresh now wakes on file changes (via fsnotify) and on terminal focus, instead of waiting up to 30s for the next polling tick. Cadence is adaptive — it self-throttles based on how long the last `git status` took, so running 10-20 revise instances on shared-repo worktrees no longer piles up I/O. Pass `--no-watch` (or set `REVISE_NO_WATCH=1`) to disable the fsnotify path and fall back to timer-only refreshes (#144)
 - Startup no longer runs `git update-index --test-untracked-cache`, which created `mtime-test-XXXXXX/` directories in the working tree (and left them behind if the process exited before cleanup). The startup tip now fires on any repo with `core.untrackedCache` disabled; the FS test still runs on demand inside `revise setup-cache` (#178)
+- fswatch now refuses to install when a repo has more than 500 unique tracked directories, falling back to timer-only refresh. Each fsnotify watch holds an fd on macOS (kqueue) and Linux (inotify); large repos × concurrent revise instances could exhaust the system fd limit and crash startup with `too many open files in system` (#183)
 
 ### Added
 
