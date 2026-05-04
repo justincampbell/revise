@@ -82,6 +82,202 @@ func TestDiffViewRender_AppliesHOffset(t *testing.T) {
 	assert.NotEqual(t, before, after, "render should change when hOffset changes")
 }
 
+func TestSoftWrap_BuildLinesEmitsContinuationRows(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30 // viewWidth = 27, content width ≈ 21
+	m.height = 20
+	m.softWrap = true
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines: []git.Line{{
+				Type:    git.LineAdded,
+				Content: strings.Repeat("a", 80),
+				NewNum:  1,
+			}},
+		}},
+	}
+	m.buildLines()
+
+	// Locate the navigable diff line; everything immediately after it that
+	// shares the line metadata must be marked as a continuation.
+	var navIdx int
+	for i, ref := range m.lineRefs {
+		if ref != nil && !ref.isCommentDisplay && !ref.isContinuation {
+			navIdx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, len(m.lineRefs)-navIdx, 2, "expected at least one continuation row")
+
+	contRef := m.lineRefs[navIdx+1]
+	require.NotNil(t, contRef)
+	assert.True(t, contRef.isContinuation, "row after navigable should be a continuation")
+	assert.False(t, m.isNavigable(navIdx+1), "continuation rows must be non-navigable")
+	assert.Equal(t, 1, contRef.newNum, "continuation should share newNum with parent")
+}
+
+func TestSoftWrap_NoExpansionWhenContentFits(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 100
+	m.height = 20
+	m.softWrap = true
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: "short", NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+
+	for _, ref := range m.lineRefs {
+		if ref == nil {
+			continue
+		}
+		assert.False(t, ref.isContinuation, "no continuations should be emitted when content fits")
+	}
+}
+
+func TestSoftWrap_OffMatchesPriorBehavior(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30
+	m.height = 20
+	m.softWrap = false
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines: []git.Line{{
+				Type:    git.LineAdded,
+				Content: strings.Repeat("a", 80),
+				NewNum:  1,
+			}},
+		}},
+	}
+	m.buildLines()
+
+	for _, ref := range m.lineRefs {
+		if ref == nil {
+			continue
+		}
+		assert.False(t, ref.isContinuation, "no continuations should ever appear when wrap is off")
+	}
+}
+
+func TestSoftWrap_CursorMovementSkipsContinuations(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30
+	m.height = 20
+	m.softWrap = true
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,2 +1,2 @@",
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: strings.Repeat("a", 80), NewNum: 1},
+				{Type: git.LineAdded, Content: "short", NewNum: 2},
+			},
+		}},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+
+	startCursor := m.cursor
+	assert.Equal(t, 1, m.lineRefs[startCursor].newNum)
+
+	// One step down should land on the next navigable line, not on a
+	// continuation row of the wrapped first line.
+	m.moveCursorDown(1)
+	require.True(t, m.isNavigable(m.cursor))
+	assert.Equal(t, 2, m.lineRefs[m.cursor].newNum,
+		"j should jump over continuation rows to the next logical line")
+
+	// Going back up should land on the first logical line, not its continuation.
+	m.moveCursorUp(1)
+	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum)
+	assert.False(t, m.lineRefs[m.cursor].isContinuation)
+}
+
+func TestSoftWrap_HunkStartsUnaffectedByContinuations(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30
+	m.height = 40
+	m.softWrap = true
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{
+			{
+				Header: "@@ -1,1 +1,1 @@",
+				Lines:  []git.Line{{Type: git.LineAdded, Content: strings.Repeat("a", 80), NewNum: 1}},
+			},
+			{
+				Header: "@@ -10,1 +10,1 @@",
+				Lines:  []git.Line{{Type: git.LineAdded, Content: strings.Repeat("b", 80), NewNum: 10}},
+			},
+		},
+	}
+	m.buildLines()
+
+	starts := m.hunkStarts()
+	assert.Len(t, starts, 2, "wrap must not introduce phantom hunk starts")
+	for _, idx := range starts {
+		ref := m.lineRefs[idx]
+		require.NotNil(t, ref)
+		assert.False(t, ref.isContinuation, "hunk start should be a navigable row, not a continuation")
+	}
+}
+
+func TestSoftWrap_RebuildOnWidthChange(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30
+	m.height = 20
+	m.softWrap = true
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines: []git.Line{{
+				Type:    git.LineAdded,
+				Content: strings.Repeat("a", 80),
+				NewNum:  1,
+			}},
+		}},
+	}
+	m.buildLines()
+	narrowRowCount := len(m.lines)
+
+	m.width = 200
+	m.rebuildIfWidthChanged()
+
+	assert.Less(t, len(m.lines), narrowRowCount,
+		"widening the panel should reduce row count by un-wrapping content")
+}
+
+func TestSoftWrap_HOffsetForcedToZero(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 30
+	m.height = 5
+	m.hOffset = 50
+	m.softWrap = false
+	m.file = &git.FileDiff{
+		Path: "foo.go",
+		Hunks: []git.Hunk{{
+			Header: "@@ -1,1 +1,1 @@",
+			Lines:  []git.Line{{Type: git.LineAdded, Content: strings.Repeat("a", 80), NewNum: 1}},
+		}},
+	}
+	m.buildLines()
+	m.goToFirstNavigable()
+
+	beforeWrap := m.render(true, 3, false)
+	m.setSoftWrap(true)
+	afterWrap := m.render(true, 3, false)
+	assert.NotEqual(t, ansi.Strip(beforeWrap), ansi.Strip(afterWrap),
+		"toggling wrap on should change the rendered output (hOffset is ignored)")
+}
+
 func TestDiffViewScrollDown_Clamps(t *testing.T) {
 	m := makeDiffViewModel(10, 6) // viewHeight = 6, max offset = 4
 	m.scrollDown(100)

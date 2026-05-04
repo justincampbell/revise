@@ -12,12 +12,15 @@ import (
 
 // lineRef tracks the source line metadata for a rendered display line.
 // isCommentDisplay is true for comment annotation lines inserted below code lines.
+// isContinuation is true for soft-wrap continuation rows that share their
+// metadata with the parent navigable row above them.
 // nil is used for non-content lines (file header, hunk header, blank separators).
 type lineRef struct {
 	newNum           int
 	oldNum           int
 	lineType         git.LineType
 	isCommentDisplay bool
+	isContinuation   bool
 }
 
 // commentKey returns the storage key for a comment on this line.
@@ -30,16 +33,18 @@ func (r *lineRef) commentKey(file string) commentKey {
 }
 
 type diffViewModel struct {
-	file     *git.FileDiff
-	lines    []string   // pre-rendered display lines
-	lineRefs []*lineRef // parallel to lines
-	cursor   int        // absolute index into lines[]
-	offset   int        // vertical scroll offset (top line index)
-	hOffset  int        // horizontal scroll offset (columns clipped from the left)
-	height   int
-	width    int
-	comments comments
-	marks    marks
+	file           *git.FileDiff
+	lines          []string   // pre-rendered display lines
+	lineRefs       []*lineRef // parallel to lines
+	cursor         int        // absolute index into lines[]
+	offset         int        // vertical scroll offset (top line index)
+	hOffset        int        // horizontal scroll offset (columns clipped from the left)
+	height         int
+	width          int
+	lastBuildWidth int // width used the last time buildLines ran; triggers wrap-aware rebuild on resize
+	softWrap       bool
+	comments       comments
+	marks          marks
 
 	commentInputActive bool
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
@@ -69,6 +74,7 @@ func (m *diffViewModel) setFile(f *git.FileDiff) {
 func (m *diffViewModel) buildLines() {
 	m.lines = nil
 	m.lineRefs = nil
+	m.lastBuildWidth = m.width
 
 	if m.file == nil {
 		m.lines = []string{"No file selected"}
@@ -113,7 +119,17 @@ func (m *diffViewModel) buildLines() {
 			if fillWidth < 1 {
 				fillWidth = 1
 			}
-			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize), ref)
+			rows := renderDiffLineRows(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.softWrap)
+			add(rows[0], ref)
+			for _, contRow := range rows[1:] {
+				contRef := &lineRef{
+					newNum:         line.NewNum,
+					oldNum:         line.OldNum,
+					lineType:       line.Type,
+					isContinuation: true,
+				}
+				add(contRow, contRef)
+			}
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -144,31 +160,63 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 		return
 	}
 	for i, ref := range m.lineRefs {
-		if ref != nil && !ref.isCommentDisplay &&
+		if ref != nil && !ref.isCommentDisplay && !ref.isContinuation &&
 			ref.newNum == saved.newNum &&
 			ref.oldNum == saved.oldNum &&
 			ref.lineType == saved.lineType {
 			m.cursor = i
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
+			m.scrollCursorIntoView()
 			return
 		}
 	}
 }
 
+// setSoftWrap toggles soft wrap and rebuilds display lines.
+func (m *diffViewModel) setSoftWrap(on bool) {
+	if m.softWrap == on {
+		return
+	}
+	m.softWrap = on
+	if on {
+		m.hOffset = 0
+	}
+	m.rebuildLinesPreservingCursor()
+}
+
+// rebuildIfWidthChanged rebuilds lines when softWrap is on and the panel
+// width has changed since the last build, since wrap output depends on width.
+func (m *diffViewModel) rebuildIfWidthChanged() {
+	if m.softWrap && m.lastBuildWidth != m.width {
+		m.rebuildLinesPreservingCursor()
+	}
+}
+
+// lastContinuationOf returns the index of the last continuation row of the
+// logical line at idx (or idx itself when there are no continuations or idx
+// is not navigable).
+func (m diffViewModel) lastContinuationOf(idx int) int {
+	if idx < 0 || idx >= len(m.lineRefs) {
+		return idx
+	}
+	last := idx
+	for last+1 < len(m.lineRefs) {
+		next := m.lineRefs[last+1]
+		if next == nil || !next.isContinuation {
+			break
+		}
+		last++
+	}
+	return last
+}
+
 // isNavigable reports whether the line at idx can receive the cursor.
-// Only code lines (non-nil, non-comment-display) are navigable.
+// Only code lines (non-nil, non-comment-display, non-continuation) are navigable.
 func (m diffViewModel) isNavigable(idx int) bool {
 	if idx < 0 || idx >= len(m.lineRefs) {
 		return false
 	}
 	ref := m.lineRefs[idx]
-	return ref != nil && !ref.isCommentDisplay
+	return ref != nil && !ref.isCommentDisplay && !ref.isContinuation
 }
 
 func (m *diffViewModel) isCommentDisplayLine(idx int) bool {
@@ -215,10 +263,7 @@ func (m *diffViewModel) moveCursorDown(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor > 0 {
 		m.cursor--
 	}
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	m.scrollCursorIntoView()
 }
 
 func (m *diffViewModel) moveCursorUp(n int) {
@@ -232,8 +277,27 @@ func (m *diffViewModel) moveCursorUp(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor < len(m.lineRefs)-1 {
 		m.cursor++
 	}
+	m.scrollCursorIntoView()
+}
+
+// scrollCursorIntoView adjusts offset so the cursor — and, in soft-wrap
+// mode, all of its continuation rows — are visible. If the wrapped line is
+// taller than the viewport, the cursor's first row is pinned to the top.
+func (m *diffViewModel) scrollCursorIntoView() {
+	viewH := m.viewHeight()
 	if m.cursor < m.offset {
 		m.offset = m.cursor
+		return
+	}
+	lastRow := m.lastContinuationOf(m.cursor)
+	if lastRow >= m.offset+viewH {
+		m.offset = lastRow - viewH + 1
+	}
+	if m.offset > m.cursor {
+		m.offset = m.cursor
+	}
+	if m.offset < 0 {
+		m.offset = 0
 	}
 }
 
@@ -354,19 +418,13 @@ func (m *diffViewModel) nextHunk() {
 	for _, idx := range starts {
 		if idx > m.cursor {
 			m.cursor = idx
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
+			m.scrollCursorIntoView()
 			return
 		}
 	}
 	// No next hunk found — jump to last navigable line (past the last hunk).
 	m.goToLastNavigable()
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	m.scrollCursorIntoView()
 }
 
 // prevHunk moves the cursor to the first navigable line of the previous hunk.
@@ -377,9 +435,7 @@ func (m *diffViewModel) prevHunk() {
 	for i := len(starts) - 1; i >= 0; i-- {
 		if starts[i] < m.cursor {
 			m.cursor = starts[i]
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
+			m.scrollCursorIntoView()
 			return
 		}
 	}
@@ -400,7 +456,8 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	if !m.commentInputActive {
 		return m.offset + clickY
 	}
-	codeAbove := m.cursor - m.offset + 1
+	cursorEnd := m.lastContinuationOf(m.cursor)
+	codeAbove := cursorEnd - m.offset + 1
 	if clickY < codeAbove {
 		return m.offset + clickY
 	}
@@ -408,51 +465,95 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 		return -1 // inside the input box
 	}
 	// Below the input box — map back to lines[], skipping the box rows.
-	nextIdx := m.cursor + 1
+	nextIdx := cursorEnd + 1
 	if m.isCommentDisplayLine(nextIdx) {
 		nextIdx++ // this display line was skipped in the render
 	}
 	return nextIdx + (clickY - codeAbove - inputBoxHeight)
 }
 
+// gutterWidth is the visible column count for FormatGutter output (5-char
+// number + 1 space). Continuation rows use a blank string of this width to
+// keep wrapped content aligned under the original.
+const gutterWidth = 6
+
+// renderDiffLine returns one styled string for a diff line. Use
+// renderDiffLineRows for soft-wrap aware multi-row output.
 func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
+	gutterStr, contentStr := renderDiffLineParts(l, marked, fillWidth, filePath, p, indentSize)
+	return gutterStr + contentStr
+}
+
+// renderDiffLineParts builds the styled gutter and content separately so
+// callers can wrap or otherwise combine them (e.g. continuation rows in
+// soft-wrap mode reuse the gutter slot for blank padding).
+func renderDiffLineParts(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) (string, string) {
 	gutter := git.FormatGutter(l)
 	if marked {
 		content := l.Content
-		// Pad content to fill the available width so background covers the line.
-		gutterWidth := 6 // matches gutter style Width(6)
 		contentWidth := fillWidth - gutterWidth
 		if contentWidth > 0 && len(content) < contentWidth {
 			content += strings.Repeat(" ", contentWidth-len(content))
 		}
 		switch l.Type {
 		case git.LineAdded:
-			return markGutterAdded.Render(gutter) + markAddedStyle.Render(content)
+			return markGutterAdded.Render(gutter), markAddedStyle.Render(content)
 		case git.LineRemoved:
-			return markGutterRemoved.Render(gutter) + markRemovedStyle.Render(content)
+			return markGutterRemoved.Render(gutter), markRemovedStyle.Render(content)
 		case git.LineContext:
-			return markGutterContext.Render(gutter) + markContextStyle.Render(content)
+			return markGutterContext.Render(gutter), markContextStyle.Render(content)
 		}
-		return l.Content
+		return "", l.Content
 	}
 	switch l.Type {
 	case git.LineAdded:
 		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize); ok {
-			return addedGutterStyle.Render(gutter) + highlighted
+			return addedGutterStyle.Render(gutter), highlighted
 		}
-		return addedGutterStyle.Render(gutter) + addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
+		return addedGutterStyle.Render(gutter), addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 	case git.LineRemoved:
 		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize); ok {
-			return removedGutterStyle.Render(gutter) + highlighted
+			return removedGutterStyle.Render(gutter), highlighted
 		}
-		return removedGutterStyle.Render(gutter) + removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
+		return removedGutterStyle.Render(gutter), removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 	case git.LineContext:
 		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize); ok {
-			return contextGutterStyle.Render(gutter) + highlighted
+			return contextGutterStyle.Render(gutter), highlighted
 		}
-		return contextGutterStyle.Render(gutter) + contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
+		return contextGutterStyle.Render(gutter), contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
 	}
-	return l.Content
+	return "", l.Content
+}
+
+// renderDiffLineRows returns one or more styled rows for a diff line. With
+// softWrap=false or content that fits within fillWidth, it returns a single
+// row (gutter + content). With wrap on, content is hard-wrapped at
+// (fillWidth - gutterWidth) and continuation rows are prefixed with a
+// blank-padded gutter so wrapped content stays aligned.
+func renderDiffLineRows(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, softWrap bool) []string {
+	gutterStr, contentStr := renderDiffLineParts(l, marked, fillWidth, filePath, p, indentSize)
+	if !softWrap {
+		return []string{gutterStr + contentStr}
+	}
+	contentLimit := fillWidth - gutterWidth
+	if contentLimit < 1 {
+		return []string{gutterStr + contentStr}
+	}
+	if ansi.StringWidth(contentStr) <= contentLimit {
+		return []string{gutterStr + contentStr}
+	}
+	wrapped := ansi.Hardwrap(contentStr, contentLimit, false)
+	parts := strings.Split(wrapped, "\n")
+	rows := make([]string, 0, len(parts))
+	blankGutter := strings.Repeat(" ", gutterWidth)
+	for i, part := range parts {
+		if i == 0 {
+			rows = append(rows, gutterStr+part)
+		} else {
+			rows = append(rows, blankGutter+part)
+		}
+	}
+	return rows
 }
 
 func renderHunkHeader(h git.Hunk) string {
@@ -569,7 +670,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	// Clamp a stale offset (e.g. after a resize or a shorter refreshed diff)
 	// so a scroll position from a wider state doesn't over-truncate now.
 	hOffset := m.hOffset
-	if max := m.maxHScroll(); hOffset > max {
+	if m.softWrap {
+		hOffset = 0
+	} else if max := m.maxHScroll(); hOffset > max {
 		hOffset = max
 	}
 
@@ -611,7 +714,10 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 			renderedLines = append(renderedLines, renderLine(absIdx))
 		}
 	} else if m.commentInputActive && len(m.lines) > 0 {
-		codeAbove := m.cursor - m.offset + 1
+		// In soft-wrap mode the cursor's logical line may span multiple
+		// display rows; the input box appears below the last continuation.
+		cursorEnd := m.lastContinuationOf(m.cursor)
+		codeAbove := cursorEnd - m.offset + 1
 		if codeAbove < 0 {
 			codeAbove = 0
 		}
@@ -625,7 +731,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 
 		// Skip any existing comment display line for this code line —
 		// the input box replaces it while editing.
-		nextIdx := m.cursor + 1
+		nextIdx := cursorEnd + 1
 		if m.isCommentDisplayLine(nextIdx) {
 			nextIdx++
 		}
@@ -681,6 +787,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		if slider != "" {
 			rendered = setBorderTitleCentered(rendered, fileStyle.Render(" "+slider+" "), focused)
 		}
+		if m.softWrap {
+			rendered = setBorderBottomRight(rendered, modeActiveStyle.Render(" Wrap "), focused)
+		}
 		return rendered
 	}
 
@@ -709,13 +818,16 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		ctxLabel = modeActiveStyle.Render(ctxText)
 	}
 	rendered = setBorderBottomLeft(rendered, ctxLabel, focused)
+	var rightLabel string
 	if hideWhitespace {
-		wsLabel := modeActiveStyle.Render(" Whitespace hidden ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+		rightLabel = modeActiveStyle.Render(" Whitespace hidden ")
 	} else {
-		wsLabel := statusBarStyle.Render(" Whitespace ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+		rightLabel = statusBarStyle.Render(" Whitespace ")
 	}
+	if m.softWrap {
+		rightLabel = modeActiveStyle.Render(" Wrap ") + rightLabel
+	}
+	rendered = setBorderBottomRight(rendered, rightLabel, focused)
 	return rendered
 }
 

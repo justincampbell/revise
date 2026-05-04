@@ -65,6 +65,15 @@ func TestModelInitialFocus(t *testing.T) {
 	assert.Equal(t, focusFileList, m.focus)
 }
 
+func TestModelShiftW_TogglesSoftWrap(t *testing.T) {
+	m := makeModel("a.go")
+	assert.False(t, m.diffView.softWrap, "wrap should start off")
+	m = sendKey(m, "W")
+	assert.True(t, m.diffView.softWrap, "shift+w should turn wrap on")
+	m = sendKey(m, "W")
+	assert.False(t, m.diffView.softWrap, "shift+w again should turn it off")
+}
+
 func TestModelRightKey_FocusesDiff(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendSpecialKey(m, tea.KeyRight)

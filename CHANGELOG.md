@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Horizontal scroll in the diff view via →/← (or h/l) and mouse wheel left/right (#121)
 - `revise diff --mode=<branch|staged|staged-only|unstaged>` selects which diff to print non-interactively (default: auto-detect, same as launching the TUI) (#177)
 - `revise diff --hunks` prints TUI-style output — file path header, `[source]` tag with function context, and a line-number gutter — instead of unified diff format (#177)
+- `W` toggles soft wrap so long diff lines wrap at the viewport width with continuation rows aligned under their gutter, instead of being clipped or requiring horizontal scroll. Indicator " Wrap " shows on the bottom-right border when on (#163)
 
 ### Changed
 

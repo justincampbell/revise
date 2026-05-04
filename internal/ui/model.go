@@ -346,6 +346,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showHelp = !m.showHelp
 			return m, nil
 
+		case "W":
+			m.diffView.setSoftWrap(!m.diffView.softWrap)
+			return m, nil
+
 		case "right", "l":
 			if m.fileReviewMode {
 				m.diffView.scrollRight(hScrollStep)
@@ -785,6 +789,7 @@ func (m *Model) updateLayout() {
 	if m.fullscreen {
 		m.diffView.width = m.width - 2
 		m.diffView.height = panelH
+		m.diffView.rebuildIfWidthChanged()
 		return
 	}
 
@@ -797,6 +802,7 @@ func (m *Model) updateLayout() {
 	m.fileList.height = panelH
 	m.diffView.width = m.width - listW - 3 // file list right border (1) + gap (1) + diff left border (1)
 	m.diffView.height = panelH
+	m.diffView.rebuildIfWidthChanged()
 }
 
 func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
