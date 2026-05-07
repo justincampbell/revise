@@ -622,8 +622,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (e.g. user committed on a fresh branch), promote mode to
 		// ModeBranch so the new commits are visible — but only if the
 		// user hasn't explicitly picked a different mode (see #148).
+		// The diff in this msg was loaded under the OLD mode, so kick off
+		// a follow-up reload under the new mode; otherwise the user sees
+		// Branch mode with stale (often empty) contents.
+		var followup tea.Cmd
 		if wasOnDefaultBranch && !m.onDefaultBranch && !m.modeExplicitlySet {
 			m.mode = ModeBranch
+			followup = m.loadDiffFromPoll()
 		}
 		// If the current mode is no longer valid, clamp it.
 		modes := m.availableModes()
@@ -678,7 +683,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffView.offset = 0
 			m.diffView.goToTop()
 		}
-		return m, nil
+		return m, followup
 
 	case hunkApplyMsg:
 		if msg.err != nil {
