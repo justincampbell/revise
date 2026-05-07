@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Horizontal scroll in the diff view via →/← (or h/l) and mouse wheel left/right (#121)
 - `revise diff --mode=<branch|staged|staged-only|unstaged>` selects which diff to print non-interactively (default: auto-detect, same as launching the TUI) (#177)
 - `revise diff --hunks` prints TUI-style output — file path header, `[source]` tag with function context, and a line-number gutter — instead of unified diff format (#177)
+- `r` key forces a diff reload, as an escape hatch when auto-refresh has gotten stuck (e.g. fingerprint stable, polling wedged, focus reporting flaky)
 
 ### Changed
 
