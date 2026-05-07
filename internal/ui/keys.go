@@ -23,6 +23,7 @@ var allBindings = []BindingGroup{
 		{Key: "Tab/S-Tab", Desc: "Cycle diff mode", GitOnly: true},
 		{Key: "f", Desc: "Toggle fullscreen diff", GitOnly: true},
 		{Key: "Esc", Desc: "Back to file list", GitOnly: true},
+		{Key: "r", Desc: "Force refresh diff", GitOnly: true},
 		{Key: "?", Desc: "Toggle help"},
 		{Key: "q", Desc: "Quit"},
 	}},

@@ -428,6 +428,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prevFile()
 			return m, nil
 
+		// Hard refresh — reload diff regardless of fingerprint, so the user
+		// has an escape hatch when auto-refresh hasn't picked up a change.
+		case "r":
+			if m.fileReviewMode {
+				return m, nil
+			}
+			m.statusMsg = "Refreshing…"
+			return m, tea.Batch(
+				m.loadDiff(),
+				tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
+			)
+
 		// Report issue opens GitHub new issue page
 		case "!":
 			const issueURL = "https://github.com/justincampbell/revise/issues/new/choose"

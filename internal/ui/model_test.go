@@ -745,6 +745,25 @@ func TestModelReportIssue_SetsStatusAndReturnsCmd(t *testing.T) {
 	assert.NotNil(t, cmd, "should return a command to open the URL")
 }
 
+func TestModelHardRefresh_SetsStatusAndReturnsCmd(t *testing.T) {
+	m := makeModel("a.go")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "Refreshing")
+	assert.NotNil(t, cmd, "should return a command to reload the diff")
+}
+
+func TestModelHardRefresh_NoOpInFileReviewMode(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, false)
+	m.fileReviewMode = true
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updated.(Model)
+	assert.Empty(t, m.statusMsg)
+	assert.Nil(t, cmd)
+}
+
 func TestModelReportIssue_WorksFromDiffView(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "l") // focus diff
