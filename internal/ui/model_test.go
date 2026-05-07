@@ -512,6 +512,28 @@ func TestDiffRefresh_SwitchesToFeatureBranch_PromotesToBranchMode(t *testing.T) 
 	assert.Equal(t, ModeBranch, m.mode, "should promote to ModeBranch when branch diverges and mode is the default")
 }
 
+// When mode auto-promotes to ModeBranch on the default→feature transition,
+// the diffLoadedMsg being applied was loaded under the OLD mode (e.g.
+// ModeStaged), so its contents are wrong for the new mode. The handler must
+// return a follow-up reload command — otherwise the user sees Branch mode
+// with empty contents until they manually refresh.
+func TestDiffRefresh_AutoPromote_KicksOffReload(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, true)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	require.True(t, m.onDefaultBranch)
+	require.Equal(t, ModeStaged, m.mode)
+
+	updated, cmd := m.Update(diffLoadedMsg{
+		diff:            &git.Diff{},
+		onDefaultBranch: false,
+		fromPoll:        true,
+	})
+	m = updated.(Model)
+	require.Equal(t, ModeBranch, m.mode)
+	require.NotNil(t, cmd, "should return a follow-up command to reload the diff under the new mode")
+}
+
 // If the user explicitly picked a mode on the default branch, respect that
 // choice across the transition — don't auto-promote to ModeBranch.
 func TestDiffRefresh_SwitchesToFeatureBranch_PreservesExplicitMode(t *testing.T) {
