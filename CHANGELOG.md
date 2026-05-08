@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Startup no longer runs `git update-index --test-untracked-cache`, which created `mtime-test-XXXXXX/` directories in the working tree (and left them behind if the process exited before cleanup). The startup tip now fires on any repo with `core.untrackedCache` disabled; the FS test still runs on demand inside `revise setup-cache` (#178)
 - fswatch now caps fsnotify watches at 500 — refuses to install when a repo has more tracked directories at startup, and refuses runtime adds (e.g. directories created by `npm install`) once the cap is hit. Without the cap, large repos × concurrent revise instances could exhaust the system fd limit and crash startup with `too many open files in system` (#183)
 - When a commit on the default branch causes auto-promotion to ModeBranch, the diff is now reloaded under the new mode instead of leaving stale (often empty) contents on screen until the user manually refreshes
+- File list and diff view now always render to the same total height, so the status bar no longer "jumps up" when switching between long and short files or viewing a repo with few changes (#169)
 
 ### Added
 
