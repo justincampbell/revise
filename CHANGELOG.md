@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-08
+
 ### Added
 
 - `--dev` flag auto-restarts the running TUI when the binary is replaced (e.g. by `make install`), preserving argv and env (#160)
@@ -13,31 +15,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Horizontal scroll in the diff view via →/← (or h/l) and mouse wheel left/right (#121)
 - `revise diff --mode=<branch|staged|staged-only|unstaged>` selects which diff to print non-interactively (default: auto-detect, same as launching the TUI) (#177)
 - `revise diff --hunks` prints TUI-style output — file path header, `[source]` tag with function context, and a line-number gutter — instead of unified diff format (#177)
-- `r` key forces a diff reload, as an escape hatch when auto-refresh has gotten stuck (e.g. fingerprint stable, polling wedged, focus reporting flaky)
+- `r` key forces a diff reload, as an escape hatch when auto-refresh has gotten stuck (e.g. fingerprint stable, polling wedged, focus reporting flaky) (#186)
+- `--debug` flag shows a refresh-debug strip above the status bar with live timings: focus state, fsnotify on/off, polling status, time since the last fingerprint check / diff reload (with durations), time until the next scheduled tick, and a generation counter. Independent of `--dev`; the two compose freely (#144)
 
 ### Changed
 
 - Right arrow no longer toggles fullscreen — it scrolls right when the diff is focused. Use `f` to toggle fullscreen. Left arrow scrolls left first, then falls back to focusing the file list when already at column 0 (#121)
-
-### Changed
-
 - The `Branch` label in the mode slider is always shown — greyed out (faint + strikethrough) when on the default branch where Branch mode isn't available — so its position stays stable and users can see the mode exists (#148)
 
 ### Fixed
 
 - When a fresh branch diverges from default while revise is running (e.g. after a commit), the mode auto-promotes from Staged to Branch so new commits become visible, unless the user has explicitly picked a mode (#148)
+- When a commit on the default branch causes auto-promotion to ModeBranch, the diff is now reloaded under the new mode instead of leaving stale (often empty) contents on screen until the user manually refreshes (#187)
 - Marked lines are now visibly distinct: brighter mark backgrounds and a colored `▌` bookmark stripe in the leading prefix column. Daltonized themes use a purple mark color so the highlight no longer collides with the blue "added" background (#173)
 - Commented lines also get a yellow `▌` bookmark stripe in the leading prefix column, matching the mark-line treatment (#173)
 - fswatch now installs a watch on newly-created directories on the fly, so `mkdir new-feature && touch new-feature/foo.go` triggers a refresh immediately instead of waiting for the next periodic poll (#144)
 - Auto-refresh now wakes on file changes (via fsnotify) and on terminal focus, instead of waiting up to 30s for the next polling tick. Cadence is adaptive — it self-throttles based on how long the last `git status` took, so running 10-20 revise instances on shared-repo worktrees no longer piles up I/O. Pass `--no-watch` (or set `REVISE_NO_WATCH=1`) to disable the fsnotify path and fall back to timer-only refreshes (#144)
 - Startup no longer runs `git update-index --test-untracked-cache`, which created `mtime-test-XXXXXX/` directories in the working tree (and left them behind if the process exited before cleanup). The startup tip now fires on any repo with `core.untrackedCache` disabled; the FS test still runs on demand inside `revise setup-cache` (#178)
 - fswatch now caps fsnotify watches at 500 — refuses to install when a repo has more tracked directories at startup, and refuses runtime adds (e.g. directories created by `npm install`) once the cap is hit. Without the cap, large repos × concurrent revise instances could exhaust the system fd limit and crash startup with `too many open files in system` (#183)
-- When a commit on the default branch causes auto-promotion to ModeBranch, the diff is now reloaded under the new mode instead of leaving stale (often empty) contents on screen until the user manually refreshes
 - File list and diff view now always render to the same total height, so the status bar no longer "jumps up" when switching between long and short files or viewing a repo with few changes (#169)
-
-### Added
-
-- `--debug` flag shows a refresh-debug strip above the status bar with live timings: focus state, fsnotify on/off, polling status, time since the last fingerprint check / diff reload (with durations), time until the next scheduled tick, and a generation counter. Independent of `--dev`; the two compose freely (#144)
 
 ## [0.3.0] - 2026-04-15
 
