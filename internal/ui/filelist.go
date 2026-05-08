@@ -95,7 +95,7 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 	}
 
 	if len(m.files) == 0 {
-		rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render("No changes")
+		rendered := style.Width(m.width).Height(m.height + 2).MaxHeight(m.height + 2).Render("No changes")
 		rendered = setBorderTitleCentered(rendered, modeSlider, focused)
 		return rendered
 	}
@@ -140,7 +140,9 @@ func (m fileListModel) render(focused bool, modeSlider string) string {
 		}
 	}
 
-	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(b.String())
+	// m.height is the inner content height; lipgloss v2 includes borders in
+	// Height(), so we pass m.height + 2 (top + bottom border).
+	rendered := style.Width(m.width).Height(m.height + 2).MaxHeight(m.height + 2).Render(b.String())
 
 	rendered = setBorderTitleCentered(rendered, modeSlider, focused)
 	return rendered

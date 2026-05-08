@@ -670,7 +670,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	if focused {
 		style = focusedBorder
 	}
-	rendered := style.Width(m.width).Height(m.height).MaxHeight(m.height + 2).Render(content)
+	// m.height is the inner content height; lipgloss v2 includes borders in
+	// Height(), so we pass m.height + 2 (top + bottom border).
+	rendered := style.Width(m.width).Height(m.height + 2).MaxHeight(m.height + 2).Render(content)
 
 	if m.fileReviewMode {
 		// File review mode: centered filename in top border, clean bottom border.

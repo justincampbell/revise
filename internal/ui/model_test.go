@@ -1934,3 +1934,59 @@ func TestFileReviewMode_InitReturnsNil(t *testing.T) {
 	})
 	assert.Nil(t, m.Init())
 }
+
+// TestPaneHeightsMatch is a regression test for #169: the file list and diff
+// view must render to the same total number of rows regardless of how much
+// content each pane has. Lipgloss v2 changed Height() to include borders, so
+// short content silently rendered a shorter block and the help text appeared
+// "above" the bottom of the file list. This is the invariant we now hold.
+func TestPaneHeightsMatch(t *testing.T) {
+	makeHunk := func(n int) git.Hunk {
+		lines := make([]git.Line, 0, n)
+		for i := 0; i < n; i++ {
+			lines = append(lines, git.Line{Type: git.LineAdded, Content: "line"})
+		}
+		return git.Hunk{Header: "@@ -1 +1 @@", Lines: lines}
+	}
+
+	cases := []struct {
+		name       string
+		fileCount  int
+		diffLines  int
+		termHeight int
+		termWidth  int
+	}{
+		{"few files, short diff", 2, 1, 40, 120},
+		{"few files, long diff", 2, 200, 40, 120},
+		{"many files, short diff", 100, 1, 40, 120},
+		{"many files, long diff", 100, 200, 40, 120},
+		{"narrow terminal", 2, 1, 40, 60},
+		{"tall terminal", 5, 5, 80, 100},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			files := make([]git.FileDiff, tc.fileCount)
+			hunk := makeHunk(tc.diffLines)
+			for i := range files {
+				files[i] = git.FileDiff{
+					Path:   fmt.Sprintf("file_%d.txt", i),
+					Status: git.StatusModified,
+					Hunks:  []git.Hunk{hunk},
+				}
+			}
+			m := New(&git.Diff{Files: files}, false)
+			updated, _ := m.Update(tea.WindowSizeMsg{Width: tc.termWidth, Height: tc.termHeight})
+			mm := updated.(Model)
+
+			left := mm.fileList.render(true, "Branch+Staged+Unstaged")
+			right := mm.diffView.render(false, mm.contextLines, mm.hideWhitespace)
+			leftRows := strings.Count(left, "\n") + 1
+			rightRows := strings.Count(right, "\n") + 1
+
+			assert.Equal(t, leftRows, rightRows,
+				"file list (%d rows) and diff view (%d rows) must have the same height",
+				leftRows, rightRows)
+		})
+	}
+}
