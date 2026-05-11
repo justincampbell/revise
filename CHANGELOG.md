@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `revise` no longer exits with `Error: repository has no commits` when run in a repo with no commits. The TUI launches normally, showing staged and untracked files with a "No commits yet" hint in the status bar (#189)
+
 ## [0.4.0] - 2026-05-08
 
 ### Added

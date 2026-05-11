@@ -97,14 +97,11 @@ func main() {
 		}
 	}
 
-	// All remaining paths require a git repo with commits.
+	// All remaining paths require a git repo. Repos with no commits are
+	// supported — the TUI surfaces staged + untracked files and a status
+	// hint that no commits exist yet.
 	if !git.IsGitRepo() {
 		fmt.Fprintln(os.Stderr, "Error: not a git repository")
-		os.Exit(1)
-	}
-
-	if !git.HasCommits() {
-		fmt.Fprintln(os.Stderr, "Error: repository has no commits")
 		os.Exit(1)
 	}
 
