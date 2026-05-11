@@ -71,6 +71,7 @@ type diffLoadedMsg struct {
 	diff            *git.Diff
 	err             error
 	onDefaultBranch bool
+	noCommits       bool          // true if the repo has no commits at load time
 	fromPoll        bool          // true when triggered by auto-refresh polling
 	duration        time.Duration // time the diff load took (used by --debug overlay)
 }
@@ -119,6 +120,7 @@ type Model struct {
 	mode              DiffMode
 	modeExplicitlySet bool // true once the user has manually picked a mode (#148)
 	onDefaultBranch   bool
+	noCommits         bool // true when the repo has no commits yet (#189)
 	contextLines      int
 	hideWhitespace    bool
 
@@ -240,6 +242,7 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		storePath:       storePath,
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
+		noCommits:       !git.HasCommits(),
 		contextLines:    git.DefaultContextLines,
 		refreshPolicy:   refresh.Default,
 		lastFingerprint: initialFP,
@@ -613,6 +616,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 		}
 		m.diff = msg.diff
+		m.noCommits = msg.noCommits
 
 		// Update default-branch status so Branch mode becomes
 		// available (or unavailable) dynamically.
@@ -1426,7 +1430,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
-		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, fromPoll: fromPoll, duration: time.Since(start)}
+		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, noCommits: !git.HasCommits(), fromPoll: fromPoll, duration: time.Since(start)}
 	}
 }
 
@@ -1600,6 +1604,11 @@ func (m Model) renderStatusBar() string {
 	}
 
 	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
+
+	if m.noCommits {
+		hint := statusBarStyle.Render("No commits yet — staged and untracked files only  ") + helpHint
+		return statusBarStyle.Width(m.width).Render(hint)
+	}
 
 	count := len(m.comments)
 	if count > 0 {

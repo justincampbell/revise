@@ -1223,6 +1223,22 @@ func TestRenderStatusBar_DiffNoPaneTotals(t *testing.T) {
 	assert.NotContains(t, status, "a.go +1/-1")
 }
 
+func TestRenderStatusBar_NoCommitsHint(t *testing.T) {
+	m := New(&git.Diff{}, true)
+	m.noCommits = true
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	assert.Contains(t, m.renderStatusBar(), "No commits yet")
+}
+
+func TestRenderStatusBar_NoCommitsHintHiddenWhenCommitsExist(t *testing.T) {
+	m := New(&git.Diff{}, true)
+	m.noCommits = false
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	assert.NotContains(t, m.renderStatusBar(), "No commits yet")
+}
+
 // --- Comment persistence tests ---
 
 // makeModelWithStore creates a model with diff lines and a temp store path.

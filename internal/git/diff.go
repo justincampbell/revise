@@ -515,13 +515,12 @@ func WorkingTreeDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error
 // GetDiff returns a parsed Diff for the current branch vs the default branch.
 // If on the default branch, it shows working tree changes (staged + unstaged).
 // Otherwise it shows committed changes vs merge-base plus working tree changes.
+// In a repo with no commits, IsOnDefaultBranch returns true and the working
+// tree diff still surfaces staged + untracked files via the empty-tree implicit
+// base used by `git diff --cached`.
 func GetDiff() (*Diff, error) {
 	if !IsGitRepo() {
 		return nil, fmt.Errorf("not a git repository")
-	}
-
-	if !HasCommits() {
-		return nil, fmt.Errorf("repository has no commits")
 	}
 
 	onDefault, err := IsOnDefaultBranch()

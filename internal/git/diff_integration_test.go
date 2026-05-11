@@ -464,6 +464,14 @@ func TestIsOnDefaultBranch_FeatureBranchNoCommitsBehindRemote(t *testing.T) {
 	assert.True(t, onDefault, "feature branch with no commits should be treated as default branch")
 }
 
+func TestIsOnDefaultBranch_EmptyRepo(t *testing.T) {
+	r := NewTestRepo(t)
+	r.Chdir()
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.True(t, onDefault, "empty repo should be treated as default branch")
+}
+
 func TestIsOnDefaultBranch_BehindRemote(t *testing.T) {
 	r := behindRemoteRepo(t)
 	_ = r
@@ -563,6 +571,41 @@ func TestWorkingTreeDiff_ShowsStagedUnstagedUntracked(t *testing.T) {
 	assert.Contains(t, paths, "staged.go")
 	assert.Contains(t, paths, "base.go")
 	assert.Contains(t, paths, "untracked.go")
+}
+
+func TestWorkingTreeDiff_EmptyRepo_Untracked(t *testing.T) {
+	r := NewTestRepo(t)
+	r.Chdir()
+	r.WriteFile("hello.go", "package main\n\nfunc main() {}\n")
+
+	diff, err := WorkingTreeDiff(DefaultContextLines)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "hello.go")
+}
+
+func TestWorkingTreeDiff_EmptyRepo_Staged(t *testing.T) {
+	r := NewTestRepo(t)
+	r.Chdir()
+	r.WriteFile("hello.go", "package main\n\nfunc main() {}\n")
+	r.Add("hello.go")
+
+	diff, err := WorkingTreeDiff(DefaultContextLines)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "hello.go")
+	assertHasContent(t, *fileByPath(diff, "hello.go"), "func main")
+}
+
+func TestGetDiff_EmptyRepo(t *testing.T) {
+	r := NewTestRepo(t)
+	r.Chdir()
+	r.WriteFile("hello.go", "package main\n")
+	r.Add("hello.go")
+
+	diff, err := GetDiff()
+	require.NoError(t, err)
+	assert.Contains(t, filePaths(diff), "hello.go")
 }
 
 // Same file with both staged and unstaged changes should appear once with hunks from both.
