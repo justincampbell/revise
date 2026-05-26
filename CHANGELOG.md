@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-26
+
+### Fixed
+
+- Auto-refresh now detects commits whose working tree state matches the pre-stage one, so mode auto-promotion to Branch fires after a rapid stage+commit on a fresh feature branch
+
 ## [0.4.1] - 2026-05-15
 
 ### Fixed

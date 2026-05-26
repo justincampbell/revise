@@ -68,10 +68,12 @@ func MergeBase(branch string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// StatusFingerprint returns a string that changes whenever the working tree
-// or index changes. It combines `git status --porcelain` (file-level status
-// including untracked) with mtimes of dirty working tree files for
-// content-level sensitivity.
+// StatusFingerprint returns a string that changes whenever the working tree,
+// index, or HEAD changes. It combines `git status --porcelain` (file-level
+// status including untracked) with mtimes of dirty working tree files for
+// content-level sensitivity, plus the HEAD ref so commits register even when
+// they leave the working tree in a state identical to the pre-stage one (e.g.
+// rapid add+commit collapsing into a single poll window).
 func StatusFingerprint() (string, error) {
 	status, err := exec.Command("git", "status", "--porcelain").Output()
 	if err != nil {
@@ -92,6 +94,12 @@ func StatusFingerprint() (string, error) {
 			fmt.Fprintf(&sb, "\n%s:%d", path, info.ModTime().UnixNano())
 		}
 	}
+
+	// Include HEAD so a commit triggers a refresh even when the resulting
+	// working tree fingerprint matches the pre-stage state. Without this,
+	// IsOnDefaultBranch() can't re-evaluate and mode auto-promotion stalls.
+	// resolveRef returns "" if HEAD is unborn (no commits yet) — that's fine.
+	fmt.Fprintf(&sb, "\nHEAD:%s", resolveRef("HEAD"))
 
 	return sb.String(), nil
 }

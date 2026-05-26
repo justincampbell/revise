@@ -877,3 +877,25 @@ func TestStatusFingerprint_StableWhenUnchanged(t *testing.T) {
 
 	assert.Equal(t, fp1, fp2)
 }
+
+// TestStatusFingerprint_ChangesOnCommit covers the case where stage+commit
+// happens fast enough that the poll never sees the intermediate staged
+// state. Without HEAD in the fingerprint, the pre-stage and post-commit
+// status outputs are identical, so the auto-refresh loop wouldn't reload
+// — and mode auto-promotion (ModeStaged → ModeBranch) would stall.
+func TestStatusFingerprint_ChangesOnCommit(t *testing.T) {
+	r := baseRepo(t)
+	r.CheckoutNewBranch("feature")
+
+	fp1, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	r.WriteFile("new.go", "package new\n")
+	r.Add("new.go")
+	r.Commit("add new")
+
+	fp2, err := StatusFingerprint()
+	require.NoError(t, err)
+
+	assert.NotEqual(t, fp1, fp2, "commit must change fingerprint even when working tree returns to clean")
+}
