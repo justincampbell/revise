@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -2062,13 +2063,19 @@ func TestModelEditorFinished_ShowsStatusOnExecError(t *testing.T) {
 
 func TestModelEditorFinished_SilentOnExitError(t *testing.T) {
 	m := makeModel("a.go")
-	// Simulate vim's `:cq` (exit non-zero) by running a real command that exits 1.
-	c := exec.Command("sh", "-c", "exit 1")
-	_ = c.Run()
-	exitErr, ok := c.ProcessState.ExitCode(), c.ProcessState.Exited()
-	require.True(t, ok && exitErr != 0, "test setup: expected non-zero exit")
+	// Simulate vim's `:cq` (exit non-zero) by running a real command that
+	// exits 1, then re-using its *exec.ExitError so the model's errors.As
+	// sees the actual error type the runtime would surface.
+	var c *exec.Cmd
+	if runtime.GOOS == "windows" {
+		c = exec.Command("cmd", "/C", "exit 1")
+	} else {
+		c = exec.Command("sh", "-c", "exit 1")
+	}
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, c.Run(), &exitErr, "test setup: expected non-zero exit")
 
-	updated, cmd := m.Update(editorFinishedMsg{err: &exec.ExitError{ProcessState: c.ProcessState}})
+	updated, cmd := m.Update(editorFinishedMsg{err: exitErr})
 	m = updated.(Model)
 	assert.Empty(t, m.statusMsg, "exit-code errors should not surface a status message")
 	assert.NotNil(t, cmd, "should still reload the diff after the editor exits")

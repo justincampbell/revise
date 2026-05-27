@@ -53,7 +53,7 @@ var allBindings = []BindingGroup{
 	}},
 	{"Global", []Binding{
 		{Key: "e", Desc: "Export comments to clipboard"},
-		{Key: "E", Desc: "Open current file at cursor line in $EDITOR"},
+		{Key: "E", Desc: "Open current file at cursor line in $VISUAL/$EDITOR"},
 		{Key: "C", Desc: "Clear all comments"},
 		{Key: "Ctrl+U", Desc: "Apply available update", GitOnly: true},
 		{Key: "!", Desc: "Report issue on GitHub"},
