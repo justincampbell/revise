@@ -127,6 +127,9 @@ internal/
   devwatch/
     devwatch.go                # poll a binary for changes, fire callback on replacement (--dev flag)
     devwatch_test.go           # watcher unit tests
+  editor/
+    editor.go                  # build $VISUAL/$EDITOR command with file+line args (E key)
+    editor_test.go             # unit tests for editor command construction
   update/
     update.go                  # self-update via go-selfupdate (CheckForUpdate, ApplyUpdate)
     update_test.go             # integration tests (skipped in short mode)

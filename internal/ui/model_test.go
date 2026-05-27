@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -2005,4 +2006,82 @@ func TestPaneHeightsMatch(t *testing.T) {
 				leftRows, rightRows)
 		})
 	}
+}
+
+func TestModelE_ReturnsExecCmdWhenFileSelected(t *testing.T) {
+	t.Setenv("EDITOR", "true") // any benign binary
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineContext, Content: "line one", OldNum: 1, NewNum: 1},
+	})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "E should return a tea.ExecProcess command")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelE_NoOpWithNoFile(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	m := New(&git.Diff{Files: nil}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	m = updated.(Model)
+	assert.Nil(t, cmd, "E with no file should be a no-op")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelEditorFinished_ReloadsDiffInGitMode(t *testing.T) {
+	m := makeModel("a.go")
+	updated, cmd := m.Update(editorFinishedMsg{err: nil})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "editorFinishedMsg should trigger a diff reload")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelEditorFinished_NoReloadInFileReviewMode(t *testing.T) {
+	m := New(&git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}}, false)
+	m.fileReviewMode = true
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	updated, cmd := m.Update(editorFinishedMsg{err: nil})
+	m = updated.(Model)
+	assert.Nil(t, cmd)
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelEditorFinished_ShowsStatusOnExecError(t *testing.T) {
+	m := makeModel("a.go")
+	// A bare error (not *exec.ExitError) represents "couldn't launch the
+	// editor at all" — the user should see this.
+	updated, cmd := m.Update(editorFinishedMsg{err: fmt.Errorf("boom")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "Editor error")
+	assert.Contains(t, m.statusMsg, "boom")
+	assert.NotNil(t, cmd, "should return a clearStatusMsg tick")
+}
+
+func TestModelEditorFinished_SilentOnExitError(t *testing.T) {
+	m := makeModel("a.go")
+	// Simulate vim's `:cq` (exit non-zero) by running a real command that exits 1.
+	c := exec.Command("sh", "-c", "exit 1")
+	_ = c.Run()
+	exitErr, ok := c.ProcessState.ExitCode(), c.ProcessState.Exited()
+	require.True(t, ok && exitErr != 0, "test setup: expected non-zero exit")
+
+	updated, cmd := m.Update(editorFinishedMsg{err: &exec.ExitError{ProcessState: c.ProcessState}})
+	m = updated.(Model)
+	assert.Empty(t, m.statusMsg, "exit-code errors should not surface a status message")
+	assert.NotNil(t, cmd, "should still reload the diff after the editor exits")
+}
+
+func TestModelE_DeletedFileShowsStatus(t *testing.T) {
+	t.Setenv("EDITOR", "true")
+	files := []git.FileDiff{{Path: "gone.go", Status: git.StatusDeleted}}
+	m := New(&git.Diff{Files: files}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = updated.(Model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "deleted")
+	assert.NotNil(t, cmd, "should return a clearStatusMsg tick")
 }

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `E` opens the current file at the cursor line in `$VISUAL`/`$EDITOR` (falls back to `vi`); the TUI suspends until the editor exits, then reloads the diff so any edits show up immediately. Recognizes vim/nvim/nano/emacs (`+N file`), VS Code/Cursor/Codium (`--goto file:N`), and Sublime/Zed/Atom (`file:N`); other editors fall back to the `+N` form (#191)
+
 ## [0.4.2] - 2026-05-26
 
 ### Fixed
