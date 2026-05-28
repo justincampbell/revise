@@ -1,9 +1,11 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
+	"github.com/justincampbell/revise/internal/editor"
 	"github.com/justincampbell/revise/internal/fswatch"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/refresh"
@@ -64,6 +67,14 @@ type untrackedCacheTipMsg struct{}
 type updateAppliedMsg struct {
 	newVersion string
 	err        error
+}
+
+// editorFinishedMsg is sent when the $EDITOR process exits after `E`.
+// The handler reloads the diff so any edits the user made are visible
+// immediately on return (file review mode skips the reload since there's
+// no diff to refresh; the user can `r` if needed).
+type editorFinishedMsg struct {
+	err error
 }
 
 // diffLoadedMsg is sent when an async diff load completes.
@@ -443,6 +454,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
 			)
 
+		// Open current file at the cursor line in $EDITOR (suspends the TUI).
+		case "E":
+			if cmd := m.openInEditor(); cmd != nil {
+				return m, cmd
+			}
+			return m, nil
+
 		// Report issue opens GitHub new issue page
 		case "!":
 			const issueURL = "https://github.com/justincampbell/revise/issues/new/choose"
@@ -693,6 +711,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.statusMsg = "Error: " + msg.err.Error()
 			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		return m, m.loadDiff()
+
+	case editorFinishedMsg:
+		// Editor exited cleanly OR with a non-zero exit code (e.g. `:cq`
+		// in vim, which users do intentionally to signal "cancel"). Both
+		// are normal — only flag the message if exec itself failed
+		// (binary not found, permission denied, etc.).
+		var exitErr *exec.ExitError
+		if msg.err != nil && !errors.As(msg.err, &exitErr) {
+			m.statusMsg = "Editor error: " + msg.err.Error()
+			return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		if m.fileReviewMode {
+			return m, nil
 		}
 		return m, m.loadDiff()
 
@@ -1178,6 +1211,55 @@ func (m *Model) discardCurrentFile() tea.Cmd {
 		return hunkApplyMsg{err: err}
 	}
 	return nil
+}
+
+// openInEditor suspends the TUI and runs $VISUAL/$EDITOR on the current
+// file at the cursor line. On return, an editorFinishedMsg triggers a
+// diff reload so any edits show up immediately.
+//
+// When the cursor isn't on a code line (hunk header, comment display row,
+// file with no diff), lineNum falls back to 0 and the editor opens the
+// file at its top.
+//
+// Returns nil (no-op) if there's no file selected.
+func (m *Model) openInEditor() tea.Cmd {
+	file := m.diffView.file
+	if file == nil {
+		return nil
+	}
+	// Deleted files don't exist on disk — opening one in the editor
+	// would either error out (VS Code) or create an empty buffer that
+	// silently re-adds the file on save. Block with a hint instead.
+	if file.Status == git.StatusDeleted {
+		m.statusMsg = "Cannot edit deleted file"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	filePath := file.Path
+	// In git diff mode, file paths are repo-relative. Resolve to absolute
+	// so the editor opens the right file even when revise was launched
+	// from a subdirectory. In file review mode, the path is whatever the
+	// user passed to `revise <file>` — use it as-is.
+	if !m.fileReviewMode {
+		if root, err := git.RepoRoot(); err == nil {
+			filePath = filepath.Join(root, filePath)
+		}
+	}
+	lineNum := 0
+	if ref := m.diffView.cursorRef(); ref != nil {
+		if ref.lineType == git.LineRemoved {
+			lineNum = ref.oldNum
+		} else {
+			lineNum = ref.newNum
+		}
+	}
+	cmd, err := editor.Command(filePath, lineNum)
+	if err != nil {
+		m.statusMsg = "Editor error: " + err.Error()
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return editorFinishedMsg{err: err}
+	})
 }
 
 // fileHasSource returns true if any hunk in the file has the given source.

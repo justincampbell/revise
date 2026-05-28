@@ -124,6 +124,7 @@ Press `?` inside revise to see the help overlay.
 | Key | Action |
 |-----|--------|
 | `e` | Export comments to clipboard |
+| `E` | Open current file at cursor line in `$VISUAL`/`$EDITOR` (fallback: `vi`) |
 | `!` | Report issue on GitHub |
 
 ## Inspiration
