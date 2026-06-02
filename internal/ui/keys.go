@@ -39,7 +39,7 @@ var allBindings = []BindingGroup{
 	{"Diff View", []Binding{
 		{Key: "←/→ (h/l)", Desc: "Scroll horizontally"},
 		{Key: "j/k, ↑/↓", Desc: "Move cursor"},
-		{Key: "}/{ (]/[)", Desc: "Next/prev hunk"},
+		{Key: "}/{ (]/[)", Desc: "Next/prev blank line"},
 		{Key: "+/-", Desc: "More/fewer context lines", GitOnly: true},
 		{Key: "w", Desc: "Toggle hide whitespace", GitOnly: true},
 		{Key: "W", Desc: "Toggle soft line wrap"},

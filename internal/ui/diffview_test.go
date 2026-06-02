@@ -382,7 +382,6 @@ func TestRenderHunkHeader_EmptyContext_StillShowsTag(t *testing.T) {
 	assert.Contains(t, got, "[staged]")
 }
 
-
 func TestDiffView_TitleInBorder(t *testing.T) {
 	m := newDiffViewModel()
 	m.width = 40
@@ -542,69 +541,6 @@ func makeDiffViewModelWithHunks() diffViewModel {
 	return m
 }
 
-func TestNextHunk_MovesToFirstLineOfNextHunk(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	// Cursor starts on first navigable line of hunk 0
-	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // ctx1, newNum=1
-	m.nextHunk()
-	// Should be on first code line of hunk 1
-	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum) // ctx3, newNum=11
-}
-
-func TestNextHunk_FromMiddleOfHunk(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	m.moveCursorDown(1) // move to added1
-	assert.Equal(t, 2, m.lineRefs[m.cursor].newNum)
-	m.nextHunk()
-	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum) // first line of hunk 1
-}
-
-func TestNextHunk_FromLastHunk_JumpsToEnd(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	// Go to last hunk
-	m.nextHunk()
-	m.nextHunk()
-	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum) // first line of hunk 2
-	m.nextHunk()
-	// Should jump to the last navigable line (past the last hunk)
-	assert.Equal(t, 23, m.lineRefs[m.cursor].newNum)
-}
-
-func TestPrevHunk_MovesToFirstLineOfPrevHunk(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	m.nextHunk()
-	m.nextHunk()
-	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum)
-	m.prevHunk()
-	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum)
-}
-
-func TestPrevHunk_FromFirstHunk_StaysAtTop(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	m.prevHunk()
-	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum) // still on first line
-}
-
-func TestNextHunk_FromLastHunk_JumpsPastToLastLine(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	// Go to last hunk
-	m.nextHunk()
-	m.nextHunk()
-	assert.Equal(t, 22, m.lineRefs[m.cursor].newNum) // first line of hunk 2
-	m.nextHunk()
-	// Should jump to the last navigable line (past the last hunk)
-	assert.Equal(t, 23, m.lineRefs[m.cursor].newNum) // added3, last navigable line
-}
-
-func TestPrevHunk_FromFirstLineOfFirstHunk_JumpsToTop(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	// Cursor is already on first navigable line (first line of first hunk)
-	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum)
-	// prevHunk should be a no-op since we're already at the start of the first hunk
-	m.prevHunk()
-	assert.Equal(t, 1, m.lineRefs[m.cursor].newNum)
-}
-
 func TestCurrentHunkIndex_FirstHunk(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
 	// Cursor starts on first navigable line of hunk 0
@@ -613,20 +549,19 @@ func TestCurrentHunkIndex_FirstHunk(t *testing.T) {
 
 func TestCurrentHunkIndex_SecondHunk(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
-	m.nextHunk()
+	m.cursor = m.hunkStarts()[1]
 	assert.Equal(t, 1, m.currentHunkIndex())
 }
 
 func TestCurrentHunkIndex_ThirdHunk(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
-	m.nextHunk()
-	m.nextHunk()
+	m.cursor = m.hunkStarts()[2]
 	assert.Equal(t, 2, m.currentHunkIndex())
 }
 
 func TestCurrentHunkIndex_MiddleOfHunk(t *testing.T) {
 	m := makeDiffViewModelWithHunks()
-	m.nextHunk()
+	m.cursor = m.hunkStarts()[1]
 	m.moveCursorDown(2) // middle of hunk 1
 	assert.Equal(t, 1, m.currentHunkIndex())
 }
@@ -635,16 +570,6 @@ func TestCurrentHunkIndex_NoFile(t *testing.T) {
 	m := newDiffViewModel()
 	m.height = 10
 	assert.Equal(t, -1, m.currentHunkIndex())
-}
-
-func TestPrevHunk_FromMiddleOfHunk_GoesToStartOfCurrentHunk(t *testing.T) {
-	m := makeDiffViewModelWithHunks()
-	m.nextHunk()            // go to hunk 1
-	m.moveCursorDown(2)     // move into middle of hunk 1
-	assert.Equal(t, 12, m.lineRefs[m.cursor].newNum)
-	m.prevHunk()
-	// Should go to start of hunk 1 (since we're in the middle of it)
-	assert.Equal(t, 11, m.lineRefs[m.cursor].newNum)
 }
 
 // makePlainBottomBorder builds a minimal two-line "rendered" string that
@@ -680,7 +605,7 @@ func TestSetBorderBottomCounts_SlashColumnFixed(t *testing.T) {
 	}
 
 	rendered := makePlainBottomBorder(paneWidth)
-	contentWidth := paneWidth - 2 // minus corners
+	contentWidth := paneWidth - 2          // minus corners
 	expectedSlashCol := 1 + contentWidth/2 // 1 for ╰ corner
 
 	var slashCols []int

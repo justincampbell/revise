@@ -912,9 +912,9 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup":
 		m.diffView.pageUp()
 	case "}", "]":
-		m.diffView.nextHunk()
+		m.diffView.nextParagraph()
 	case "{", "[":
-		m.diffView.prevHunk()
+		m.diffView.prevParagraph()
 	case "c", "enter":
 		if m.diffView.cursorRef() != nil {
 			m.startCommentInput()

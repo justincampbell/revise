@@ -18,6 +18,7 @@ type lineRef struct {
 	oldNum           int
 	lineType         git.LineType
 	isCommentDisplay bool
+	isBlank          bool // source line is empty/whitespace-only (paragraph boundary in file review)
 }
 
 // commentKey returns the storage key for a comment on this line.
@@ -301,6 +302,7 @@ func (m *diffViewModel) buildLines() {
 				newNum:   line.NewNum,
 				oldNum:   line.OldNum,
 				lineType: line.Type,
+				isBlank:  strings.TrimSpace(line.Content) == "",
 			}
 			isMarked := m.marks[ref.commentKey(m.file.Path)]
 			// width - 3 for border (2) + cursor prefix (1)
@@ -522,34 +524,58 @@ func (m *diffViewModel) hunkStarts() []int {
 	return starts
 }
 
-// nextHunk moves the cursor to the first navigable line of the next hunk.
-// If already in the last hunk, jumps to the last navigable line.
-func (m *diffViewModel) nextHunk() {
-	starts := m.hunkStarts()
-	for _, idx := range starts {
-		if idx > m.cursor {
-			m.cursor = idx
-			m.ensureCursorVisible()
-			return
+// isBlankLine reports whether the line at idx is a navigable, blank source line
+// — i.e. a Vim-style paragraph boundary that `}`/`{` jump between.
+func (m *diffViewModel) isBlankLine(idx int) bool {
+	if idx < 0 || idx >= len(m.lineRefs) {
+		return false
+	}
+	ref := m.lineRefs[idx]
+	return ref != nil && !ref.isCommentDisplay && ref.isBlank
+}
+
+// nextParagraph moves the cursor to the next blank line below it (Vim `}`).
+// If the cursor is already on a blank line, it first skips the contiguous
+// blank run, then the following paragraph, landing on the next blank line.
+// With no blank line below, it jumps to the last navigable line.
+func (m *diffViewModel) nextParagraph() {
+	i := m.cursor
+	if m.isBlankLine(i) {
+		for i < len(m.lines) && m.isBlankLine(i) {
+			i++
 		}
 	}
-	// No next hunk found — jump to last navigable line (past the last hunk).
-	m.goToLastNavigable()
+	for i < len(m.lines) && !m.isBlankLine(i) {
+		i++
+	}
+	if i < len(m.lines) {
+		m.cursor = i
+	} else {
+		m.goToLastNavigable()
+	}
 	m.ensureCursorVisible()
 }
 
-// prevHunk moves the cursor to the first navigable line of the previous hunk.
-// If the cursor is in the middle of a hunk (not on its first line), it moves
-// to the start of the current hunk instead.
-func (m *diffViewModel) prevHunk() {
-	starts := m.hunkStarts()
-	for i := len(starts) - 1; i >= 0; i-- {
-		if starts[i] < m.cursor {
-			m.cursor = starts[i]
-			m.ensureCursorVisible()
-			return
+// prevParagraph moves the cursor to the previous blank line above it (Vim `{`).
+// Mirror of nextParagraph. With no blank line above, it jumps to the top.
+func (m *diffViewModel) prevParagraph() {
+	i := m.cursor
+	if m.isBlankLine(i) {
+		for i >= 0 && m.isBlankLine(i) {
+			i--
 		}
 	}
+	for i >= 0 && !m.isBlankLine(i) {
+		i--
+	}
+	if i >= 0 {
+		m.cursor = i
+	} else {
+		// No blank line above — jump to the first navigable line (top).
+		m.cursor = 0
+		m.goToFirstNavigable()
+	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) viewHeight() int {

@@ -108,7 +108,7 @@ Press `?` inside revise to see the help overlay.
 | Key | Action |
 |-----|--------|
 | `j` / `k`, `↑` / `↓` | Move cursor |
-| `}` / `{` (`]` / `[`) | Next / prev hunk |
+| `}` / `{` (`]` / `[`) | Next / prev blank line |
 | `+` / `-` | More / fewer context lines |
 | `w` | Toggle hide whitespace |
 | `W` | Toggle soft line wrap |
