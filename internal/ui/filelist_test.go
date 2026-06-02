@@ -121,9 +121,9 @@ func TestFileTotals(t *testing.T) {
 
 func TestFileStagingSources(t *testing.T) {
 	tests := []struct {
-		name    string
-		hunks   []git.Hunk
-		want    stagingSources
+		name  string
+		hunks []git.Hunk
+		want  stagingSources
 	}{
 		{
 			name:  "staged only",

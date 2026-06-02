@@ -81,12 +81,12 @@ var (
 	commentDisplayStyle lipgloss.Style
 
 	// Marked line styles
-	markAddedStyle    lipgloss.Style
-	markRemovedStyle  lipgloss.Style
-	markContextStyle  lipgloss.Style
-	markGutterAdded   lipgloss.Style
-	markGutterRemoved lipgloss.Style
-	markGutterContext lipgloss.Style
+	markAddedStyle     lipgloss.Style
+	markRemovedStyle   lipgloss.Style
+	markContextStyle   lipgloss.Style
+	markGutterAdded    lipgloss.Style
+	markGutterRemoved  lipgloss.Style
+	markGutterContext  lipgloss.Style
 	markPrefixStyle    lipgloss.Style // bookmark stripe in the leading 1-char prefix column
 	commentPrefixStyle lipgloss.Style // bookmark stripe for commented lines
 

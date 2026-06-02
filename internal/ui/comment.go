@@ -76,7 +76,6 @@ func fromStringMap(m map[string]string) (comments, marks) {
 	return c, mk
 }
 
-
 func (c comments) countForFile(path string) int {
 	n := 0
 	for k := range c {
@@ -127,7 +126,7 @@ func formatExport(files []git.FileDiff, c comments, m marks) string {
 		type lineEntry struct {
 			lineNum int
 			isOld   bool
-			text    string  // empty for marks
+			text    string // empty for marks
 			isMark  bool
 		}
 		var entries []lineEntry

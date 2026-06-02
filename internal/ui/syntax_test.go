@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	chromachroma "github.com/alecthomas/chroma/v2"
 	chromalexers "github.com/alecthomas/chroma/v2/lexers"
 	chromastyles "github.com/alecthomas/chroma/v2/styles"
-	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 )
