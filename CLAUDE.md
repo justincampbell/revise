@@ -217,4 +217,15 @@ The fs watcher is attached via `Model.WithFSWatcher(w)`. If `fswatch.New` fails 
 - `parseFilePath` handles both standard (`diff --git a/foo b/foo`) and no-prefix (`diff --git foo foo`) formats — the latter occurs when `diff.noprefix=true` is set in the user's git config
 - `padRight` and all column-width calculations use rune count (`len([]rune(s))`), not byte length, to handle multi-byte Unicode characters like arrow symbols correctly
 
+### Soft Line Wrap
+
+`W` (or `Alt+Z`) toggles `diffViewModel.wrapEnabled`. The key design choice: `cursor` and `offset` stay **logical-line** indices into `lines[]` — wrap only changes how lines map to display rows. This keeps all navigation (hunks, marks, comments) working unchanged.
+
+The display-row math lives in a few primitives in `diffview.go`:
+- `displayRows(idx, avail, hOffset)` — the single source of truth for how a logical line renders: one row (truncated) when wrap is off, multiple word-wrapped rows when on. Continuation rows are indented by the gutter width (6) so content aligns; wrapping uses `ansi.Wrap` after splitting gutter from content so styling is preserved.
+- `lineRows`/`rowSpan`/`lineAtRow` — derive row counts and map display-row offsets back to logical lines.
+- `ensureCursorVisible`/`bottomOffset`/`lastVisibleLine` — replace the old inline `offset = cursor - viewHeight + 1` arithmetic everywhere (moveCursor, hunk jumps, rebuild, scroll clamp). When wrap is off they reduce to the original behavior, so existing tests still hold.
+
+`clickToAbsIdx` and `scrollForCommentInput` go through the same primitives, so mouse clicks and the inline comment box stay correct with wrap on. Horizontal scroll is disabled (hOffset forced to 0) while wrapping.
+
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -45,6 +45,201 @@ type diffViewModel struct {
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
 	textInput          textinput.Model
 	fileReviewMode     bool // true when reviewing a file (suppresses git chrome in render)
+	wrapEnabled        bool // true when soft line wrap is on (long lines wrap to multiple rows)
+}
+
+// gutterWidth returns the leading column width occupied by the line-number
+// gutter for the line at idx. Code lines have a 6-column gutter (matching the
+// gutter styles' Width(6)); non-code rows (hunk headers, comment displays,
+// blank separators) have none. Used to indent wrapped continuation rows so
+// content stays aligned under the first row.
+const gutterWidth = 6
+
+func (m diffViewModel) lineGutterWidth(idx int) int {
+	if m.isNavigable(idx) {
+		return gutterWidth
+	}
+	return 0
+}
+
+// displayRows returns the rendered display rows for the logical line at idx,
+// given the available content width and horizontal scroll offset.
+//
+// When wrap is off, a logical line is always a single display row (horizontally
+// scrolled and clipped). When wrap is on, a line wider than avail is soft-wrapped
+// onto multiple rows; continuation rows are indented past the gutter so their
+// content aligns under the first row's content.
+func (m diffViewModel) displayRows(idx, avail, hOffset int) []string {
+	line := m.lines[idx]
+	if !m.wrapEnabled {
+		if hOffset > 0 {
+			line = ansi.TruncateLeft(line, hOffset, "")
+		}
+		if ansi.StringWidth(line) > avail {
+			line = ansi.Truncate(line, avail, "")
+		}
+		return []string{line}
+	}
+	if avail < 1 || ansi.StringWidth(line) <= avail {
+		return []string{line}
+	}
+	gw := m.lineGutterWidth(idx)
+	contentAvail := avail - gw
+	if contentAvail < 1 {
+		contentAvail = 1
+	}
+	gutter := ansi.Truncate(line, gw, "")
+	content := ansi.TruncateLeft(line, gw, "")
+	segs := strings.Split(ansi.Wrap(content, contentAvail, ""), "\n")
+	indent := strings.Repeat(" ", gw)
+	rows := make([]string, len(segs))
+	for i, s := range segs {
+		if i == 0 {
+			rows[i] = gutter + s
+		} else {
+			rows[i] = indent + s
+		}
+	}
+	return rows
+}
+
+// lineRows returns how many display rows the logical line at idx occupies.
+func (m diffViewModel) lineRows(idx, avail int) int {
+	if idx < 0 || idx >= len(m.lines) {
+		return 1
+	}
+	return len(m.displayRows(idx, avail, 0))
+}
+
+// rowSpan returns the total display rows occupied by logical lines [a, b].
+func (m diffViewModel) rowSpan(a, b, avail int) int {
+	rows := 0
+	for i := a; i <= b && i < len(m.lines); i++ {
+		rows += m.lineRows(i, avail)
+	}
+	return rows
+}
+
+// lineAtRow walks forward from logical line start by targetRow display rows and
+// returns the logical line index landed on. Returns len(lines) when the target
+// is past the end (callers bounds-check).
+func (m diffViewModel) lineAtRow(start, targetRow, avail int) int {
+	if !m.wrapEnabled {
+		return start + targetRow
+	}
+	row := 0
+	for i := start; i < len(m.lines); i++ {
+		r := m.lineRows(i, avail)
+		if targetRow < row+r {
+			return i
+		}
+		row += r
+	}
+	return len(m.lines)
+}
+
+// ensureCursorVisible adjusts offset so the cursor line (including all of its
+// wrapped display rows) is visible. It scrolls up when the cursor is above the
+// viewport and down when the cursor's rows fall below it, but never scrolls
+// further than necessary. When wrap is off this reduces to the classic
+// offset = cursor - viewHeight + 1 clamp.
+func (m *diffViewModel) ensureCursorVisible() {
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+		return
+	}
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	top := m.cursor
+	for top >= 0 {
+		r := m.lineRows(top, avail)
+		if rows+r > viewH {
+			break
+		}
+		rows += r
+		top--
+	}
+	minTop := top + 1
+	if minTop < 0 {
+		minTop = 0
+	}
+	if m.offset < minTop {
+		m.offset = minTop
+	}
+}
+
+// bottomOffset returns the largest offset that keeps content filling the
+// viewport from the last line upward — the scroll position for "bottom".
+func (m *diffViewModel) bottomOffset() int {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	top := len(m.lines) - 1
+	for top >= 0 {
+		r := m.lineRows(top, avail)
+		if rows+r > viewH {
+			break
+		}
+		rows += r
+		top--
+	}
+	off := top + 1
+	if off < 0 {
+		off = 0
+	}
+	return off
+}
+
+// lastVisibleLine returns the index of the last logical line that fits in the
+// viewport starting at the current offset.
+func (m *diffViewModel) lastVisibleLine() int {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	i := m.offset
+	for i < len(m.lines) {
+		r := m.lineRows(i, avail)
+		if rows+r > viewH {
+			if i == m.offset {
+				return i // a single line taller than the viewport
+			}
+			break
+		}
+		rows += r
+		i++
+	}
+	last := i - 1
+	if last < 0 {
+		last = 0
+	}
+	return last
+}
+
+// scrollForCommentInput scrolls offset down (if needed) so the inline comment
+// input box and at least one following code row fit below the cursor within the
+// viewport. It accounts for wrapped display rows, so a tall wrapped cursor line
+// still leaves room for the box.
+func (m *diffViewModel) scrollForCommentInput() {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	needed := inputBoxHeight + 1 // box rows + at least one code row below
+	for m.offset < m.cursor && m.rowSpan(m.offset, m.cursor, avail)+needed > viewH {
+		m.offset++
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+// toggleWrap flips soft wrap on/off and keeps the cursor visible. Horizontal
+// scroll is meaningless with wrap on, so it's reset when enabling.
+func (m *diffViewModel) toggleWrap() {
+	m.wrapEnabled = !m.wrapEnabled
+	if m.wrapEnabled {
+		m.hOffset = 0
+	}
+	m.ensureCursorVisible()
 }
 
 func newDiffViewModel() diffViewModel {
@@ -149,13 +344,7 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 			ref.oldNum == saved.oldNum &&
 			ref.lineType == saved.lineType {
 			m.cursor = i
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
+			m.ensureCursorVisible()
 			return
 		}
 	}
@@ -215,10 +404,7 @@ func (m *diffViewModel) moveCursorDown(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor > 0 {
 		m.cursor--
 	}
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) moveCursorUp(n int) {
@@ -232,18 +418,15 @@ func (m *diffViewModel) moveCursorUp(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor < len(m.lineRefs)-1 {
 		m.cursor++
 	}
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) clampCursorToView() {
-	viewH := m.viewHeight()
 	if m.cursor < m.offset {
 		m.cursor = m.offset
 	}
-	if m.cursor >= m.offset+viewH {
-		m.cursor = m.offset + viewH - 1
+	if last := m.lastVisibleLine(); m.cursor > last {
+		m.cursor = last
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -260,11 +443,7 @@ func (m *diffViewModel) scrollUp(n int) {
 
 func (m *diffViewModel) scrollDown(n int) {
 	m.offset += n
-	max := len(m.lines) - m.viewHeight()
-	if max < 0 {
-		max = 0
-	}
-	if m.offset > max {
+	if max := m.bottomOffset(); m.offset > max {
 		m.offset = max
 	}
 	m.clampCursorToView()
@@ -316,11 +495,7 @@ func (m *diffViewModel) goToTop() {
 }
 
 func (m *diffViewModel) goToBottom() {
-	max := len(m.lines) - m.viewHeight()
-	if max < 0 {
-		max = 0
-	}
-	m.offset = max
+	m.offset = m.bottomOffset()
 	m.goToLastNavigable()
 }
 
@@ -354,19 +529,13 @@ func (m *diffViewModel) nextHunk() {
 	for _, idx := range starts {
 		if idx > m.cursor {
 			m.cursor = idx
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
+			m.ensureCursorVisible()
 			return
 		}
 	}
 	// No next hunk found — jump to last navigable line (past the last hunk).
 	m.goToLastNavigable()
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	m.ensureCursorVisible()
 }
 
 // prevHunk moves the cursor to the first navigable line of the previous hunk.
@@ -377,9 +546,7 @@ func (m *diffViewModel) prevHunk() {
 	for i := len(starts) - 1; i >= 0; i-- {
 		if starts[i] < m.cursor {
 			m.cursor = starts[i]
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
+			m.ensureCursorVisible()
 			return
 		}
 	}
@@ -394,15 +561,23 @@ func (m *diffViewModel) viewHeight() int {
 }
 
 // clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
-// to an absolute index into lines[], accounting for any visible input box.
-// Returns -1 if the click lands inside the input box itself.
+// to an absolute index into lines[], accounting for any visible input box and
+// for wrapped display rows. Returns -1 if the click lands inside the input box.
 func (m diffViewModel) clickToAbsIdx(clickY int) int {
+	avail := m.viewWidth()
 	if !m.commentInputActive {
-		return m.offset + clickY
+		return m.lineAtRow(m.offset, clickY, avail)
 	}
-	codeAbove := m.cursor - m.offset + 1
+	if m.fileCommentInput {
+		// File-level input box sits at the top; code lines render from line 0.
+		if clickY < inputBoxHeight {
+			return -1
+		}
+		return m.lineAtRow(0, clickY-inputBoxHeight, avail)
+	}
+	codeAbove := m.rowSpan(m.offset, m.cursor, avail)
 	if clickY < codeAbove {
-		return m.offset + clickY
+		return m.lineAtRow(m.offset, clickY, avail)
 	}
 	if clickY < codeAbove+inputBoxHeight {
 		return -1 // inside the input box
@@ -412,7 +587,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	if m.isCommentDisplayLine(nextIdx) {
 		nextIdx++ // this display line was skipped in the render
 	}
-	return nextIdx + (clickY - codeAbove - inputBoxHeight)
+	return m.lineAtRow(nextIdx, clickY-codeAbove-inputBoxHeight, avail)
 }
 
 func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
@@ -501,6 +676,23 @@ func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 	return " "
 }
 
+// linePrefixRow returns the leading prefix for a single display row of a
+// (possibly wrapped) logical line. The first row gets the full prefix
+// (cursor/stripe); continuation rows keep the comment/mark stripe so the
+// bookmark stays visible, but never the cursor caret.
+func (m diffViewModel) linePrefixRow(absIdx int, focused bool, rowIdx int) string {
+	if rowIdx == 0 {
+		return m.linePrefix(absIdx, focused)
+	}
+	if m.lineCommented(absIdx) {
+		return commentPrefixStyle.Render("▌")
+	}
+	if m.lineMarked(absIdx) {
+		return markPrefixStyle.Render("▌")
+	}
+	return " "
+}
+
 // lineMarked reports whether the given display line corresponds to a marked
 // source line.
 func (m diffViewModel) lineMarked(absIdx int) bool {
@@ -569,95 +761,76 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	// Clamp a stale offset (e.g. after a resize or a shorter refreshed diff)
 	// so a scroll position from a wider state doesn't over-truncate now.
 	hOffset := m.hOffset
-	if max := m.maxHScroll(); hOffset > max {
+	if m.wrapEnabled {
+		hOffset = 0 // horizontal scroll is meaningless with wrap on
+	} else if max := m.maxHScroll(); hOffset > max {
 		hOffset = max
 	}
 
-	renderLine := func(absIdx int) string {
-		line := m.lines[absIdx]
-		if hOffset > 0 {
-			line = ansi.TruncateLeft(line, hOffset, "")
+	// rowsFor returns the prefixed display rows for a logical line — one row
+	// when wrap is off, possibly several when a wrapped line spans the width.
+	rowsFor := func(absIdx int) []string {
+		body := m.displayRows(absIdx, maxWidth, hOffset)
+		out := make([]string, len(body))
+		for i, s := range body {
+			out[i] = m.linePrefixRow(absIdx, focused, i) + s
 		}
-		if ansi.StringWidth(line) > maxWidth {
-			line = ansi.Truncate(line, maxWidth, "")
-		}
-		return m.linePrefix(absIdx, focused) + line
+		return out
 	}
 
+	// appendRows draws logical lines starting at `from` until the viewport has
+	// `limit` rows (or the lines run out), returning the rows used. Each wrapped
+	// continuation row counts toward the limit.
 	var renderedLines []string
-	if len(m.lines) == 0 {
-		renderedLines = append(renderedLines, "No changes to display")
+	appendRows := func(from, limit int) int {
+		used := 0
+		for absIdx := from; absIdx < len(m.lines) && used < limit; absIdx++ {
+			for _, r := range rowsFor(absIdx) {
+				if used >= limit {
+					break
+				}
+				renderedLines = append(renderedLines, r)
+				used++
+			}
+		}
+		return used
 	}
 
-	if m.commentInputActive && m.fileCommentInput && len(m.lines) > 0 {
-		// File-level comment: input box appears before any code lines.
+	inputBoxView := func() string {
 		inputWidth := m.width - 4
 		if inputWidth < 10 {
 			inputWidth = 10
 		}
 		m.textInput.Width = inputWidth - 4
-		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
-		renderedLines = append(renderedLines, inputBox)
+		return commentInputStyle.Width(inputWidth).Render(m.textInput.View())
+	}
 
-		codeBelow := viewH - inputBoxHeight
-		if codeBelow < 0 {
-			codeBelow = 0
+	if len(m.lines) == 0 {
+		renderedLines = append(renderedLines, "No changes to display")
+	} else if m.commentInputActive && m.fileCommentInput {
+		// File-level comment: input box appears before any code lines.
+		renderedLines = append(renderedLines, inputBoxView())
+		appendRows(0, viewH-inputBoxHeight)
+	} else if m.commentInputActive {
+		// Inline comment: render lines [offset..cursor], then the input box,
+		// then the lines after the cursor (skipping the existing comment
+		// display row, which the box replaces while editing).
+		used := 0
+		for absIdx := m.offset; absIdx <= m.cursor && absIdx < len(m.lines); absIdx++ {
+			for _, r := range rowsFor(absIdx) {
+				renderedLines = append(renderedLines, r)
+				used++
+			}
 		}
-		end := codeBelow
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := 0; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-	} else if m.commentInputActive && len(m.lines) > 0 {
-		codeAbove := m.cursor - m.offset + 1
-		if codeAbove < 0 {
-			codeAbove = 0
-		}
-		end := m.offset + codeAbove
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := m.offset; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-
-		// Skip any existing comment display line for this code line —
-		// the input box replaces it while editing.
 		nextIdx := m.cursor + 1
 		if m.isCommentDisplayLine(nextIdx) {
 			nextIdx++
 		}
-
-		// Inline input box.
-		inputWidth := m.width - 4
-		if inputWidth < 10 {
-			inputWidth = 10
-		}
-		m.textInput.Width = inputWidth - 4
-		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
-		renderedLines = append(renderedLines, inputBox)
-
-		codeBelow := viewH - inputBoxHeight - codeAbove
-		if codeBelow < 0 {
-			codeBelow = 0
-		}
-		endAfter := nextIdx + codeBelow
-		if endAfter > len(m.lines) {
-			endAfter = len(m.lines)
-		}
-		for absIdx := nextIdx; absIdx < endAfter; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-	} else if len(m.lines) > 0 {
-		end := m.offset + viewH
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := m.offset; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
+		renderedLines = append(renderedLines, inputBoxView())
+		used += inputBoxHeight
+		appendRows(nextIdx, viewH-used)
+	} else {
+		appendRows(m.offset, viewH)
 	}
 
 	added, removed := 0, 0
@@ -682,6 +855,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		}
 		if slider != "" {
 			rendered = setBorderTitleCentered(rendered, fileStyle.Render(" "+slider+" "), focused)
+		}
+		if m.wrapEnabled {
+			rendered = setBorderBottomRight(rendered, modeActiveStyle.Render(" Wrap "), focused)
 		}
 		return rendered
 	}
@@ -711,13 +887,18 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		ctxLabel = modeActiveStyle.Render(ctxText)
 	}
 	rendered = setBorderBottomLeft(rendered, ctxLabel, focused)
-	if hideWhitespace {
-		wsLabel := modeActiveStyle.Render(" Whitespace hidden ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
-	} else {
-		wsLabel := statusBarStyle.Render(" Whitespace ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	// Bottom-right footer: optional " Wrap " indicator followed by the
+	// whitespace indicator. Both are right-aligned as one label.
+	right := ""
+	if m.wrapEnabled {
+		right += modeActiveStyle.Render(" Wrap ")
 	}
+	if hideWhitespace {
+		right += modeActiveStyle.Render(" Whitespace hidden ")
+	} else {
+		right += statusBarStyle.Render(" Whitespace ")
+	}
+	rendered = setBorderBottomRight(rendered, right, focused)
 	return rendered
 }
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/editor"
@@ -98,10 +98,10 @@ type debugTickMsg struct{}
 type DiffMode int
 
 const (
-	ModeBranch    DiffMode = iota // committed + staged + unstaged + untracked (broadest, feature branch only)
-	ModeStaged                    // staged + unstaged + untracked
-	ModeStagedOnly                // staged only (no unstaged or untracked)
-	ModeUnstaged                  // unstaged + untracked only (narrowest)
+	ModeBranch     DiffMode = iota // committed + staged + unstaged + untracked (broadest, feature branch only)
+	ModeStaged                     // staged + unstaged + untracked
+	ModeStagedOnly                 // staged only (no unstaged or untracked)
+	ModeUnstaged                   // unstaged + untracked only (narrowest)
 )
 
 type focusPanel int
@@ -168,9 +168,9 @@ type Model struct {
 	fsWatcher            *fswatch.Watcher // nil if disabled or init failed
 	debug                bool             // true in --debug mode; renders refresh debug strip
 
-	currentVersion string              // version string from build
-	updateInfo     *update.UpdateInfo  // populated after update check
-	updating       bool                // true while downloading update
+	currentVersion string             // version string from build
+	updateInfo     *update.UpdateInfo // populated after update check
+	updating       bool               // true while downloading update
 
 	fileReviewMode bool   // true when reviewing a file (not a git diff)
 	fileReviewPath string // filename shown in status bar
@@ -358,6 +358,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "?":
 			m.showHelp = !m.showHelp
+			return m, nil
+
+		// Soft wrap toggle — works in both git diff and file review mode.
+		// No diff reload needed; it's purely a rendering change.
+		case "W", "alt+z":
+			m.diffView.toggleWrap()
 			return m, nil
 
 		case "right", "l":
@@ -1026,14 +1032,7 @@ func (m *Model) startCommentInput() {
 	m.diffView.textInput.Focus()
 
 	// Scroll so there's room below the cursor for the input box.
-	viewH := m.diffView.viewHeight()
-	minRoom := inputBoxHeight + 1 // rows needed below cursor
-	if m.diffView.cursor > m.diffView.offset+viewH-minRoom {
-		m.diffView.offset = m.diffView.cursor - viewH + minRoom
-		if m.diffView.offset < 0 {
-			m.diffView.offset = 0
-		}
-	}
+	m.diffView.scrollForCommentInput()
 
 	m.commentInputActive = true
 	m.diffView.commentInputActive = true

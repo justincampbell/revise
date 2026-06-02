@@ -111,6 +111,7 @@ Press `?` inside revise to see the help overlay.
 | `}` / `{` (`]` / `[`) | Next / prev hunk |
 | `+` / `-` | More / fewer context lines |
 | `w` | Toggle hide whitespace |
+| `W` | Toggle soft line wrap |
 | `g` / `G` | Top / bottom |
 | `Fn+↓` / `Fn+↑` | Page down / up |
 | `Enter` / `c` | Add/edit comment on line |

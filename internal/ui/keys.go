@@ -42,6 +42,7 @@ var allBindings = []BindingGroup{
 		{Key: "}/{ (]/[)", Desc: "Next/prev hunk"},
 		{Key: "+/-", Desc: "More/fewer context lines", GitOnly: true},
 		{Key: "w", Desc: "Toggle hide whitespace", GitOnly: true},
+		{Key: "W", Desc: "Toggle soft line wrap"},
 		{Key: "g/G", Desc: "Top/bottom"},
 		{Key: "Fn+↓/↑", Desc: "Page down/up"},
 		{Key: "Enter/c", Desc: "Add/edit comment on line"},
