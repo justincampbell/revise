@@ -219,6 +219,17 @@ The fs watcher is attached via `Model.WithFSWatcher(w)`. If `fswatch.New` fails 
 - `parseFilePath` handles both standard (`diff --git a/foo b/foo`) and no-prefix (`diff --git foo foo`) formats — the latter occurs when `diff.noprefix=true` is set in the user's git config
 - `padRight` and all column-width calculations use rune count (`len([]rune(s))`), not byte length, to handle multi-byte Unicode characters like arrow symbols correctly
 
+### Incremental Search
+
+`/` opens a search box (rendered in the status bar, not as an overlay) for incremental search in the diff view. Design (#72):
+
+- **Scope**: the current file's diff only. `setFile` clears the search, so switching files resets it. Cross-file search was deliberately left out to keep `n`/`N` unambiguous.
+- **Case-insensitive**, rune-safe matching via `matchRanges` (returns `[start,end)` rune-index ranges) and `lineContainsQuery`.
+- **Highlighting happens at build time but preserves syntax colors**: `buildLines` passes `m.searchQuery` to `renderDiffLine`, which first renders the line normally (syntax highlight or base diff-line style), then calls `overlaySearchHighlight` to re-style *only the matched columns* with `searchMatchStyle`. The overlay slices the already-styled string by visual column (`clipCols` → `ansi.TruncateLeft`/`ansi.Truncate`, then `ansi.Strip` + restyle the matched slice), so the rest of the line keeps its colors. `matchColumnRanges` converts rune-index matches to visual columns (wide-rune-safe). `setSearch` calls `buildLines` on every keystroke; matches don't add/remove lines, so cursor indices stay stable.
+- **Match list**: `searchMatches` holds navigable line indices containing the query; `searchIdx` is the current position (-1 when none). `computeSearchMatches` scans `lineRef.content` (plain source text, stored at build time).
+- **Navigation**: `nextMatch`/`prevMatch` wrap. After moving, `ensureMatchVisible` scrolls horizontally (when wrap is off) so an off-screen match is brought into the viewport. `n`/`N` in `model.go` route to these when `searchQuery != ""`, otherwise to next/prev file (the default). While the search box is open, all keys (including `n`/`N`) feed the query.
+- **Lifecycle**: `/` → `startSearch` (records `searchOrigin = cursor`, focuses the diff view). Typing → `setSearch` (incremental: rebuild, recompute, jump to first match at/after `searchOrigin`, wrapping). `Enter` commits (box closes, query/matches retained, status bar shows `current/total` + nav hint). `Esc` clears — both inside the box and after committing (a guard before the main key switch in `Update` intercepts `esc` when `searchQuery != ""`).
+
 ### Soft Line Wrap
 
 `W` (or `Alt+Z`) toggles `diffViewModel.wrapEnabled`. The key design choice: `cursor` and `offset` stay **logical-line** indices into `lines[]` — wrap only changes how lines map to display rows. This keeps all navigation (hunks, marks, comments) working unchanged.

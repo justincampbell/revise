@@ -52,6 +52,11 @@ var allBindings = []BindingGroup{
 		{Key: "u/U", Desc: "Unstage hunk/file", GitOnly: true},
 		{Key: "D", Desc: "Discard hunk", GitOnly: true},
 	}},
+	{"Search", []Binding{
+		{Key: "/", Desc: "Search in diff"},
+		{Key: "n/N", Desc: "Next/prev match"},
+		{Key: "Esc", Desc: "Clear search"},
+	}},
 	{"Global", []Binding{
 		{Key: "e", Desc: "Export comments to clipboard"},
 		{Key: "E", Desc: "Open current file at cursor line in $VISUAL/$EDITOR"},

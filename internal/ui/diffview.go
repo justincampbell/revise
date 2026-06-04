@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -18,7 +19,8 @@ type lineRef struct {
 	oldNum           int
 	lineType         git.LineType
 	isCommentDisplay bool
-	isBlank          bool // source line is empty/whitespace-only (paragraph boundary in file review)
+	isBlank          bool   // source line is empty/whitespace-only (paragraph boundary in file review)
+	content          string // plain source text, used for incremental search matching
 }
 
 // commentKey returns the storage key for a comment on this line.
@@ -47,6 +49,16 @@ type diffViewModel struct {
 	textInput          textinput.Model
 	fileReviewMode     bool // true when reviewing a file (suppresses git chrome in render)
 	wrapEnabled        bool // true when soft line wrap is on (long lines wrap to multiple rows)
+
+	// Incremental search (#72). searchQuery drives both highlighting (in
+	// buildLines/renderDiffLine) and match navigation. searchMatches holds
+	// the navigable line indices that contain the query; searchIdx is the
+	// position within searchMatches of the "current" match (-1 when none).
+	searchInput   textinput.Model
+	searchQuery   string
+	searchMatches []int
+	searchIdx     int
+	searchOrigin  int // cursor when search started, so typing jumps to the nearest match forward
 }
 
 // gutterWidth returns the leading column width occupied by the line-number
@@ -247,9 +259,17 @@ func newDiffViewModel() diffViewModel {
 	ti := textinput.New()
 	ti.Placeholder = "Add a comment…"
 	ti.CharLimit = 500
+
+	si := textinput.New()
+	si.Prompt = "" // the "/" prompt is rendered by the status bar
+	si.Placeholder = ""
+	si.CharLimit = 200
+
 	return diffViewModel{
-		comments:  make(comments),
-		textInput: ti,
+		comments:    make(comments),
+		textInput:   ti,
+		searchInput: si,
+		searchIdx:   -1,
 	}
 }
 
@@ -258,6 +278,10 @@ func (m *diffViewModel) setFile(f *git.FileDiff) {
 	m.cursor = 0
 	m.offset = 0
 	m.hOffset = 0
+	// Search is scoped to the current file; switching files clears it.
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
 	m.buildLines()
 	m.goToFirstNavigable()
 }
@@ -303,6 +327,7 @@ func (m *diffViewModel) buildLines() {
 				oldNum:   line.OldNum,
 				lineType: line.Type,
 				isBlank:  strings.TrimSpace(line.Content) == "",
+				content:  line.Content,
 			}
 			isMarked := m.marks[ref.commentKey(m.file.Path)]
 			// width - 3 for border (2) + cursor prefix (1)
@@ -310,7 +335,7 @@ func (m *diffViewModel) buildLines() {
 			if fillWidth < 1 {
 				fillWidth = 1
 			}
-			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize), ref)
+			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery), ref)
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -586,6 +611,234 @@ func (m *diffViewModel) viewHeight() int {
 	return h
 }
 
+// matchRanges returns the rune-index ranges of every case-insensitive
+// occurrence of query within content. Ranges are [start, end) in runes so
+// callers can slice []rune(content) directly. Returns nil for an empty query
+// or no matches.
+func matchRanges(content, query string) [][2]int {
+	q := []rune(query)
+	if len(q) == 0 {
+		return nil
+	}
+	c := []rune(content)
+	lc := make([]rune, len(c))
+	for i, r := range c {
+		lc[i] = unicode.ToLower(r)
+	}
+	lq := make([]rune, len(q))
+	for i, r := range q {
+		lq[i] = unicode.ToLower(r)
+	}
+
+	var ranges [][2]int
+	for i := 0; i+len(lq) <= len(lc); {
+		matched := true
+		for j := range lq {
+			if lc[i+j] != lq[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			ranges = append(ranges, [2]int{i, i + len(lq)})
+			i += len(lq)
+		} else {
+			i++
+		}
+	}
+	return ranges
+}
+
+// matchColumnRanges converts the rune-index match ranges of query within
+// content into visual-column ranges (accounting for wide runes), so callers
+// can slice an already-styled string by column.
+func matchColumnRanges(content, query string) [][2]int {
+	rr := matchRanges(content, query)
+	if rr == nil {
+		return nil
+	}
+	runes := []rune(content)
+	cols := make([][2]int, len(rr))
+	for i, r := range rr {
+		cols[i] = [2]int{
+			ansi.StringWidth(string(runes[:r[0]])),
+			ansi.StringWidth(string(runes[:r[1]])),
+		}
+	}
+	return cols
+}
+
+// overlaySearchHighlight re-styles the given visual-column ranges of an
+// already-styled string with searchMatchStyle, leaving the surrounding styling
+// (syntax highlight, diff background) intact. Column ranges are [start, end)
+// and must be ascending and non-overlapping.
+func overlaySearchHighlight(styled string, colRanges [][2]int) string {
+	var b strings.Builder
+	prev := 0
+	for _, r := range colRanges {
+		cs, ce := r[0], r[1]
+		if cs < prev {
+			cs = prev
+		}
+		if ce <= cs {
+			continue
+		}
+		if cs > prev {
+			b.WriteString(clipCols(styled, prev, cs))
+		}
+		// Strip the matched slice's own styling, then apply the match style.
+		b.WriteString(searchMatchStyle.Render(ansi.Strip(clipCols(styled, cs, ce))))
+		prev = ce
+	}
+	b.WriteString(ansi.TruncateLeft(styled, prev, ""))
+	return b.String()
+}
+
+// clipCols returns the visual columns [from, to) of a styled string, preserving
+// ANSI styling at the cut points.
+func clipCols(styled string, from, to int) string {
+	if from > 0 {
+		styled = ansi.TruncateLeft(styled, from, "")
+	}
+	return ansi.Truncate(styled, to-from, "")
+}
+
+// lineContainsQuery reports whether content contains query (case-insensitive).
+func lineContainsQuery(content, query string) bool {
+	if query == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(content), strings.ToLower(query))
+}
+
+// computeSearchMatches rebuilds searchMatches from the current searchQuery,
+// scanning navigable code lines. searchIdx is reset to -1 when there are no
+// matches and clamped into range otherwise.
+func (m *diffViewModel) computeSearchMatches() {
+	m.searchMatches = nil
+	if m.searchQuery == "" {
+		m.searchIdx = -1
+		return
+	}
+	for i := range m.lineRefs {
+		if !m.isNavigable(i) {
+			continue
+		}
+		if lineContainsQuery(m.lineRefs[i].content, m.searchQuery) {
+			m.searchMatches = append(m.searchMatches, i)
+		}
+	}
+	if len(m.searchMatches) == 0 {
+		m.searchIdx = -1
+	} else if m.searchIdx < 0 || m.searchIdx >= len(m.searchMatches) {
+		m.searchIdx = 0
+	}
+}
+
+// startSearch begins an incremental search. searchOrigin records the cursor so
+// typing jumps to the nearest match at or after it.
+func (m *diffViewModel) startSearch() {
+	m.searchOrigin = m.cursor
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
+	m.searchInput.SetValue("")
+	m.searchInput.Focus()
+}
+
+// setSearch updates the active query (incremental: called on each keystroke),
+// recomputes highlights and matches, and moves the cursor to the first match at
+// or after searchOrigin (wrapping). With no matches, the cursor stays put.
+func (m *diffViewModel) setSearch(query string) {
+	m.searchQuery = query
+	m.buildLines() // re-render with the new highlight
+	m.computeSearchMatches()
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = 0
+	for i, idx := range m.searchMatches {
+		if idx >= m.searchOrigin {
+			m.searchIdx = i
+			break
+		}
+	}
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// clearSearch drops the active search and removes highlighting.
+func (m *diffViewModel) clearSearch() {
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
+	m.searchInput.Blur()
+	m.buildLines()
+}
+
+// nextMatch moves the cursor to the next match, wrapping past the end.
+func (m *diffViewModel) nextMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = (m.searchIdx + 1) % len(m.searchMatches)
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// prevMatch moves the cursor to the previous match, wrapping past the start.
+func (m *diffViewModel) prevMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = (m.searchIdx - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// ensureMatchVisible scrolls horizontally (when wrap is off) so the first
+// occurrence of the query on the current match line is within the viewport. A
+// small margin keeps a little context around the match.
+func (m *diffViewModel) ensureMatchVisible() {
+	if m.wrapEnabled || m.searchQuery == "" {
+		return
+	}
+	if m.searchIdx < 0 || m.searchIdx >= len(m.searchMatches) {
+		return
+	}
+	idx := m.searchMatches[m.searchIdx]
+	if !m.isNavigable(idx) {
+		return
+	}
+	cols := matchColumnRanges(m.lineRefs[idx].content, m.searchQuery)
+	if len(cols) == 0 {
+		return
+	}
+	avail := m.viewWidth()
+	if avail < 1 {
+		return
+	}
+	// Columns are within the content; the rendered line prepends a gutter.
+	start := gutterWidth + cols[0][0]
+	end := gutterWidth + cols[0][1]
+	margin := hScrollStep
+	switch {
+	case start < m.hOffset:
+		m.hOffset = start - margin
+	case end > m.hOffset+avail:
+		m.hOffset = end - avail + margin
+	}
+	if m.hOffset < 0 {
+		m.hOffset = 0
+	}
+	if max := m.maxHScroll(); m.hOffset > max {
+		m.hOffset = max
+	}
+}
+
 // clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
 // to an absolute index into lines[], accounting for any visible input box and
 // for wrapped display rows. Returns -1 if the click lands inside the input box.
@@ -616,7 +869,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	return m.lineAtRow(nextIdx, clickY-codeAbove-inputBoxHeight, avail)
 }
 
-func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
+func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, query string) string {
 	gutter := git.FormatGutter(l)
 	if marked {
 		content := l.Content
@@ -636,24 +889,44 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p t
 		}
 		return l.Content
 	}
+
+	// Render the content with normal styling (syntax highlight when available,
+	// otherwise the base diff-line style), then overlay search highlighting on
+	// just the matched columns so the rest of the line keeps its colors.
+	var gutterStyle lipgloss.Style
+	var content string
 	switch l.Type {
 	case git.LineAdded:
+		gutterStyle = addedGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize); ok {
-			return addedGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 		}
-		return addedGutterStyle.Render(gutter) + addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 	case git.LineRemoved:
+		gutterStyle = removedGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize); ok {
-			return removedGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 		}
-		return removedGutterStyle.Render(gutter) + removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 	case git.LineContext:
+		gutterStyle = contextGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize); ok {
-			return contextGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
 		}
-		return contextGutterStyle.Render(gutter) + contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
+	default:
+		return l.Content
 	}
-	return l.Content
+
+	if query != "" {
+		if cols := matchColumnRanges(l.Content, query); len(cols) > 0 {
+			content = overlaySearchHighlight(content, cols)
+		}
+	}
+	return gutterStyle.Render(gutter) + content
 }
 
 func renderHunkHeader(h git.Hunk) string {

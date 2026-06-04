@@ -140,6 +140,7 @@ type Model struct {
 	storePath          string // path to JSON file for comment persistence
 	commentInputActive bool
 	commentTarget      commentKey
+	searchActive       bool // true while the incremental-search input box is open
 	statusMsg          string
 
 	confirmDiscard    bool    // waiting for confirmation to discard
@@ -325,6 +326,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCommentInput(msg)
 		}
 
+		if m.searchActive {
+			return m.updateSearchInput(msg)
+		}
+
 		if m.confirmDiscard {
 			return m.updateConfirmDiscard(msg)
 		}
@@ -352,6 +357,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Esc clears an active (committed) search before any other Esc
+		// behavior (back-to-file-list / exit-fullscreen) takes over.
+		if msg.String() == "esc" && m.diffView.searchQuery != "" {
+			m.diffView.clearSearch()
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -364,6 +376,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// No diff reload needed; it's purely a rendering change.
 		case "W", "alt+z":
 			m.diffView.toggleWrap()
+			return m, nil
+
+		// Incremental search in the diff view — works in both modes.
+		case "/":
+			m.startSearch()
 			return m, nil
 
 		case "right", "l":
@@ -440,11 +457,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-		// File list navigation (always works)
+		// n/N navigate search matches while a search is active, otherwise
+		// they move between files (the default).
 		case "n":
+			if m.diffView.searchQuery != "" {
+				m.diffView.nextMatch()
+				return m, nil
+			}
 			m.nextFile()
 			return m, nil
 		case "N":
+			if m.diffView.searchQuery != "" {
+				m.diffView.prevMatch()
+				return m, nil
+			}
 			m.prevFile()
 			return m, nil
 
@@ -952,6 +978,47 @@ func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// startSearch opens the incremental search box, focusing the diff view so the
+// cursor and match highlights are visible while typing.
+func (m *Model) startSearch() {
+	m.focus = focusDiffView
+	m.searchActive = true
+	m.diffView.startSearch()
+}
+
+// updateSearchInput handles keys while the search box is open. Typing filters
+// incrementally; Enter commits (matches stay highlighted, n/N navigate them);
+// Esc cancels and clears.
+func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		m.searchActive = false
+		m.diffView.searchInput.Blur()
+		if m.diffView.searchQuery != "" && len(m.diffView.searchMatches) == 0 {
+			m.statusMsg = "No matches for \"" + m.diffView.searchQuery + "\""
+			return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+		}
+		return m, nil
+	case "esc":
+		m.searchActive = false
+		m.diffView.clearSearch()
+		return m, nil
+	case "backspace":
+		// Backspace on an already-empty box exits search (like less/vim).
+		if m.diffView.searchInput.Value() == "" {
+			m.searchActive = false
+			m.diffView.clearSearch()
+			return m, nil
+		}
+		fallthrough
+	default:
+		var cmd tea.Cmd
+		m.diffView.searchInput, cmd = m.diffView.searchInput.Update(msg)
+		m.diffView.setSearch(m.diffView.searchInput.Value())
+		return m, cmd
+	}
 }
 
 func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1680,11 +1747,42 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
 
+	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
+
+	// While the search box is open, the status bar is the search prompt:
+	// "/<query>  N/M" (or "no matches" once a non-empty query has none).
+	if m.searchActive {
+		prompt := helpKeyStyle.Render("/") + m.diffView.searchInput.View()
+		info := ""
+		if m.diffView.searchQuery != "" {
+			if n := len(m.diffView.searchMatches); n == 0 {
+				info = statusBarStyle.Render("  no matches")
+			} else {
+				info = statusBarStyle.Render(fmt.Sprintf("  %d/%d", m.diffView.searchIdx+1, n))
+			}
+		}
+		return statusBarStyle.Width(m.width).Render(prompt + info)
+	}
+
 	if m.statusMsg != "" {
 		return statusBarStyle.Width(m.width).Render(m.statusMsg)
 	}
 
-	helpHint := helpKeyStyle.Render("?") + statusBarStyle.Render(" help")
+	// A committed search keeps a compact nav hint in the status bar until
+	// it's cleared with Esc.
+	if m.diffView.searchQuery != "" {
+		n := len(m.diffView.searchMatches)
+		if n == 0 {
+			hint := statusBarStyle.Render("/"+m.diffView.searchQuery+" — no matches  ") + helpHint
+			return statusBarStyle.Width(m.width).Render(hint)
+		}
+		hint := helpKeyStyle.Render("/") + statusBarStyle.Render(m.diffView.searchQuery+" ") +
+			statusBarStyle.Render(fmt.Sprintf("%d/%d  ", m.diffView.searchIdx+1, n)) +
+			helpKeyStyle.Render("n") + statusBarStyle.Render("/") + helpKeyStyle.Render("N") +
+			statusBarStyle.Render(" next/prev  ") +
+			helpKeyStyle.Render("Esc") + statusBarStyle.Render(" clear  ") + helpHint
+		return statusBarStyle.Width(m.width).Render(hint)
+	}
 
 	if m.noCommits {
 		hint := statusBarStyle.Render("No commits yet — staged and untracked files only  ") + helpHint

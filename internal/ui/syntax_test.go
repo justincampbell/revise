@@ -219,9 +219,9 @@ func TestRenderDiffLine_HighlightedVsFallback(t *testing.T) {
 	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
 
 	// With a known Go file — should highlight
-	withHighlight := renderDiffLine(line, false, 80, "main.go", p, 0)
+	withHighlight := renderDiffLine(line, false, 80, "main.go", p, 0, "")
 	// With unknown extension — plain fallback
-	withoutHighlight := renderDiffLine(line, false, 80, "file.xyzunknown", p, 0)
+	withoutHighlight := renderDiffLine(line, false, 80, "file.xyzunknown", p, 0, "")
 
 	assert.NotEmpty(t, withHighlight)
 	assert.NotEmpty(t, withoutHighlight)
@@ -296,8 +296,8 @@ func TestRenderDiffLine_MarkedSkipsHighlight(t *testing.T) {
 	p := paletteFor(ThemeCharmtoneDark, true)
 	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
 
-	marked := renderDiffLine(line, true, 80, "main.go", p, 0)
-	unmarked := renderDiffLine(line, false, 80, "main.go", p, 0)
+	marked := renderDiffLine(line, true, 80, "main.go", p, 0, "")
+	unmarked := renderDiffLine(line, false, 80, "main.go", p, 0, "")
 
 	// Marked lines use mark styles, not syntax highlight styles — they differ
 	assert.NotEqual(t, marked, unmarked)
