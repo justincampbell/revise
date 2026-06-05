@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-05
+
 ### Added
 
 - `/` starts an incremental search in the diff view: the matched text highlights as you type (the rest of the line keeps its syntax colors), the cursor jumps to the nearest match, and `n`/`N` step forward/backward between matches (wrapping). Off-screen matches scroll into view horizontally. The status bar shows a `current/total` count; `Esc` clears the search. Case-insensitive and scoped to the current file. Works in both git diff and file review mode — `n`/`N` keep their next/prev-file meaning when no search is active (#72)
