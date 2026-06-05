@@ -39,9 +39,10 @@ var allBindings = []BindingGroup{
 	{"Diff View", []Binding{
 		{Key: "←/→ (h/l)", Desc: "Scroll horizontally"},
 		{Key: "j/k, ↑/↓", Desc: "Move cursor"},
-		{Key: "}/{ (]/[)", Desc: "Next/prev hunk"},
+		{Key: "}/{ (]/[)", Desc: "Next/prev blank line"},
 		{Key: "+/-", Desc: "More/fewer context lines", GitOnly: true},
 		{Key: "w", Desc: "Toggle hide whitespace", GitOnly: true},
+		{Key: "W", Desc: "Toggle soft line wrap"},
 		{Key: "g/G", Desc: "Top/bottom"},
 		{Key: "Fn+↓/↑", Desc: "Page down/up"},
 		{Key: "Enter/c", Desc: "Add/edit comment on line"},
@@ -50,6 +51,11 @@ var allBindings = []BindingGroup{
 		{Key: "s/S", Desc: "Stage hunk/file", GitOnly: true},
 		{Key: "u/U", Desc: "Unstage hunk/file", GitOnly: true},
 		{Key: "D", Desc: "Discard hunk", GitOnly: true},
+	}},
+	{"Search", []Binding{
+		{Key: "/", Desc: "Search in diff"},
+		{Key: "n/N", Desc: "Next/prev match"},
+		{Key: "Esc", Desc: "Clear search"},
 	}},
 	{"Global", []Binding{
 		{Key: "e", Desc: "Export comments to clipboard"},

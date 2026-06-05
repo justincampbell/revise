@@ -86,7 +86,7 @@ Press `?` inside revise to see the help overlay.
 |-----|--------|
 | `←` (`h`) | Focus file list |
 | `→` (`l`) | Focus diff view |
-| `n` / `N` | Next / prev file |
+| `n` / `N` | Next / prev file (or search match while searching) |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list |
@@ -108,9 +108,12 @@ Press `?` inside revise to see the help overlay.
 | Key | Action |
 |-----|--------|
 | `j` / `k`, `↑` / `↓` | Move cursor |
-| `}` / `{` (`]` / `[`) | Next / prev hunk |
+| `}` / `{` (`]` / `[`) | Next / prev blank line |
+| `/` | Search the diff (highlights matches) |
+| `n` / `N` | Next / prev search match (while searching) |
 | `+` / `-` | More / fewer context lines |
 | `w` | Toggle hide whitespace |
+| `W` | Toggle soft line wrap |
 | `g` / `G` | Top / bottom |
 | `Fn+↓` / `Fn+↑` | Page down / up |
 | `Enter` / `c` | Add/edit comment on line |

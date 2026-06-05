@@ -11,16 +11,16 @@ import (
 type Theme string
 
 const (
-	ThemeAuto                    Theme = "auto"
-	ThemeAutoDaltonized          Theme = "auto-daltonized"
-	ThemeCharmtoneDark           Theme = "charmtone-dark"
-	ThemeCharmtoneDarkDaltonized Theme = "charmtone-dark-daltonized"
-	ThemeCharmtoneLight          Theme = "charmtone-light"
+	ThemeAuto                     Theme = "auto"
+	ThemeAutoDaltonized           Theme = "auto-daltonized"
+	ThemeCharmtoneDark            Theme = "charmtone-dark"
+	ThemeCharmtoneDarkDaltonized  Theme = "charmtone-dark-daltonized"
+	ThemeCharmtoneLight           Theme = "charmtone-light"
 	ThemeCharmtoneLightDaltonized Theme = "charmtone-light-daltonized"
-	ThemeGithubDark              Theme = "github-dark"
-	ThemeGithubDarkDaltonized    Theme = "github-dark-daltonized"
-	ThemeGithubLight             Theme = "github-light"
-	ThemeGithubLightDaltonized   Theme = "github-light-daltonized"
+	ThemeGithubDark               Theme = "github-dark"
+	ThemeGithubDarkDaltonized     Theme = "github-dark-daltonized"
+	ThemeGithubLight              Theme = "github-light"
+	ThemeGithubLightDaltonized    Theme = "github-light-daltonized"
 )
 
 // ValidThemes lists all accepted --theme values.
@@ -108,13 +108,13 @@ func charmtoneDarkChromaEntries(daltonized bool) chroma.StyleEntries {
 		chroma.GenericSubheading:   "#858392", // Squid
 	}
 	if daltonized {
-		entries[chroma.NameFunction] = "#4FBEFE"   // Sardine (blue)
+		entries[chroma.NameFunction] = "#4FBEFE"    // Sardine (blue)
 		entries[chroma.Operator] = "#E8FE96"        // Zest (yellow)
 		entries[chroma.GenericInserted] = "#4FBEFE" // Sardine (blue)
 		entries[chroma.GenericDeleted] = "#FF985A"  // Tang (orange)
 		entries[chroma.LiteralNumber] = "#4FBEFE"   // Sardine (blue)
 	} else {
-		entries[chroma.NameFunction] = "#12C78F"   // Guac (green)
+		entries[chroma.NameFunction] = "#12C78F"    // Guac (green)
 		entries[chroma.Operator] = "#FF7F90"        // Salmon (pink)
 		entries[chroma.GenericInserted] = "#12C78F" // Guac
 		entries[chroma.GenericDeleted] = "#FF577D"  // Coral (red)
@@ -266,7 +266,7 @@ func autoDaltonizedPalette() themeColors {
 	p.addedFg = lipgloss.Blue
 	p.addedBg = lipgloss.Color("#1a1f2e")
 	p.gutterAddedFg = lipgloss.Color("27") // ANSI 256: muted blue
-	p.markBg = lipgloss.Color("#5a2d6e") // purple — distinct from blue addedBg
+	p.markBg = lipgloss.Color("#5a2d6e")   // purple — distinct from blue addedBg
 	p.markFg = lipgloss.Color("#c084fc")
 	return p
 }
@@ -292,10 +292,10 @@ func charmtoneDarkPalette() themeColors {
 
 func charmtoneDarkDaltonizedPalette() themeColors {
 	p := charmtoneDarkPalette()
-	p.addedFg = lipgloss.Color("#4FBEFE") // Sardine (blue)
-	p.addedBg = lipgloss.Color("#0F2A4A") // deep navy
+	p.addedFg = lipgloss.Color("#4FBEFE")  // Sardine (blue)
+	p.addedBg = lipgloss.Color("#0F2A4A")  // deep navy
 	p.dimGreen = lipgloss.Color("#007AB8") // Damson
-	p.markBg = lipgloss.Color("#5a2d6e") // purple — distinct from blue addedBg
+	p.markBg = lipgloss.Color("#5a2d6e")   // purple — distinct from blue addedBg
 	p.markFg = lipgloss.Color("#c084fc")
 	return p
 }

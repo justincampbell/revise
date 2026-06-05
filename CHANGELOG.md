@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `/` starts an incremental search in the diff view: the matched text highlights as you type (the rest of the line keeps its syntax colors), the cursor jumps to the nearest match, and `n`/`N` step forward/backward between matches (wrapping). Off-screen matches scroll into view horizontally. The status bar shows a `current/total` count; `Esc` clears the search. Case-insensitive and scoped to the current file. Works in both git diff and file review mode — `n`/`N` keep their next/prev-file meaning when no search is active (#72)
+- `W` toggles soft line wrap in the diff view, wrapping long lines onto multiple display rows at the viewport width instead of clipping them. Continuation rows are indented past the line-number gutter so content stays aligned; a `Wrap` indicator appears on the bottom border when enabled. Works in both git diff and file review mode — useful for reviewing prose-heavy planning/architecture docs (#163)
 - `E` opens the current file at the cursor line in `$VISUAL`/`$EDITOR` (falls back to `vi`); the TUI suspends until the editor exits, then reloads the diff so any edits show up immediately. Recognizes vim/nvim/nano/emacs (`+N file`), VS Code/Cursor/Codium (`--goto file:N`), and Sublime/Zed/Atom (`file:N`); other editors fall back to the `+N` form (#191)
+
+### Changed
+
+- `}`/`{` (`]`/`[`) now jump to the next/previous blank line (Vim-style paragraph boundary) in **all** modes, instead of jumping between hunks. In a diff the nearest blank line is usually right at the next change, so this still serves as change-to-change navigation while behaving consistently with file review mode. Dedicated hunk-to-hunk navigation is removed (#122)
 
 ## [0.4.2] - 2026-05-26
 

@@ -81,17 +81,20 @@ var (
 	commentDisplayStyle lipgloss.Style
 
 	// Marked line styles
-	markAddedStyle    lipgloss.Style
-	markRemovedStyle  lipgloss.Style
-	markContextStyle  lipgloss.Style
-	markGutterAdded   lipgloss.Style
-	markGutterRemoved lipgloss.Style
-	markGutterContext lipgloss.Style
+	markAddedStyle     lipgloss.Style
+	markRemovedStyle   lipgloss.Style
+	markContextStyle   lipgloss.Style
+	markGutterAdded    lipgloss.Style
+	markGutterRemoved  lipgloss.Style
+	markGutterContext  lipgloss.Style
 	markPrefixStyle    lipgloss.Style // bookmark stripe in the leading 1-char prefix column
 	commentPrefixStyle lipgloss.Style // bookmark stripe for commented lines
 
 	// Inline comment input box
 	commentInputStyle lipgloss.Style
+
+	// Search match highlight (substring within a matched line)
+	searchMatchStyle lipgloss.Style
 
 	// Mode slider styles
 	modeActiveStyle   lipgloss.Style
@@ -193,6 +196,9 @@ func applyTheme(p themeColors) {
 		BorderForeground(p.yellow).
 		Padding(0, 1)
 
+	// Black-on-yellow keeps matches legible over any diff-line background.
+	searchMatchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#1a1a1a")).Background(p.yellow).Bold(true)
+
 	modeActiveStyle = lipgloss.NewStyle().Foreground(p.cyan).Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle().Foreground(p.dim)
 	modeDisabledStyle = lipgloss.NewStyle().Foreground(p.dim).Faint(true).Strikethrough(true)
@@ -257,6 +263,7 @@ func applyNoColor() {
 	markPrefixStyle = lipgloss.NewStyle().Bold(true)
 	commentPrefixStyle = lipgloss.NewStyle().Bold(true)
 	commentInputStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	searchMatchStyle = lipgloss.NewStyle().Reverse(true).Bold(true)
 	modeActiveStyle = lipgloss.NewStyle().Bold(true)
 	modeInactiveStyle = lipgloss.NewStyle()
 	modeDisabledStyle = lipgloss.NewStyle().Faint(true).Strikethrough(true)

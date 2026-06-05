@@ -3,9 +3,10 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -18,6 +19,8 @@ type lineRef struct {
 	oldNum           int
 	lineType         git.LineType
 	isCommentDisplay bool
+	isBlank          bool   // source line is empty/whitespace-only (paragraph boundary in file review)
+	content          string // plain source text, used for incremental search matching
 }
 
 // commentKey returns the storage key for a comment on this line.
@@ -45,15 +48,228 @@ type diffViewModel struct {
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
 	textInput          textinput.Model
 	fileReviewMode     bool // true when reviewing a file (suppresses git chrome in render)
+	wrapEnabled        bool // true when soft line wrap is on (long lines wrap to multiple rows)
+
+	// Incremental search (#72). searchQuery drives both highlighting (in
+	// buildLines/renderDiffLine) and match navigation. searchMatches holds
+	// the navigable line indices that contain the query; searchIdx is the
+	// position within searchMatches of the "current" match (-1 when none).
+	searchInput   textinput.Model
+	searchQuery   string
+	searchMatches []int
+	searchIdx     int
+	searchOrigin  int // cursor when search started, so typing jumps to the nearest match forward
+}
+
+// gutterWidth returns the leading column width occupied by the line-number
+// gutter for the line at idx. Code lines have a 6-column gutter (matching the
+// gutter styles' Width(6)); non-code rows (hunk headers, comment displays,
+// blank separators) have none. Used to indent wrapped continuation rows so
+// content stays aligned under the first row.
+const gutterWidth = 6
+
+func (m diffViewModel) lineGutterWidth(idx int) int {
+	if m.isNavigable(idx) {
+		return gutterWidth
+	}
+	return 0
+}
+
+// displayRows returns the rendered display rows for the logical line at idx,
+// given the available content width and horizontal scroll offset.
+//
+// When wrap is off, a logical line is always a single display row (horizontally
+// scrolled and clipped). When wrap is on, a line wider than avail is soft-wrapped
+// onto multiple rows; continuation rows are indented past the gutter so their
+// content aligns under the first row's content.
+func (m diffViewModel) displayRows(idx, avail, hOffset int) []string {
+	line := m.lines[idx]
+	if !m.wrapEnabled {
+		if hOffset > 0 {
+			line = ansi.TruncateLeft(line, hOffset, "")
+		}
+		if ansi.StringWidth(line) > avail {
+			line = ansi.Truncate(line, avail, "")
+		}
+		return []string{line}
+	}
+	if avail < 1 || ansi.StringWidth(line) <= avail {
+		return []string{line}
+	}
+	gw := m.lineGutterWidth(idx)
+	contentAvail := avail - gw
+	if contentAvail < 1 {
+		contentAvail = 1
+	}
+	gutter := ansi.Truncate(line, gw, "")
+	content := ansi.TruncateLeft(line, gw, "")
+	segs := strings.Split(ansi.Wrap(content, contentAvail, ""), "\n")
+	indent := strings.Repeat(" ", gw)
+	rows := make([]string, len(segs))
+	for i, s := range segs {
+		if i == 0 {
+			rows[i] = gutter + s
+		} else {
+			rows[i] = indent + s
+		}
+	}
+	return rows
+}
+
+// lineRows returns how many display rows the logical line at idx occupies.
+func (m diffViewModel) lineRows(idx, avail int) int {
+	if idx < 0 || idx >= len(m.lines) {
+		return 1
+	}
+	return len(m.displayRows(idx, avail, 0))
+}
+
+// rowSpan returns the total display rows occupied by logical lines [a, b].
+func (m diffViewModel) rowSpan(a, b, avail int) int {
+	rows := 0
+	for i := a; i <= b && i < len(m.lines); i++ {
+		rows += m.lineRows(i, avail)
+	}
+	return rows
+}
+
+// lineAtRow walks forward from logical line start by targetRow display rows and
+// returns the logical line index landed on. Returns len(lines) when the target
+// is past the end (callers bounds-check).
+func (m diffViewModel) lineAtRow(start, targetRow, avail int) int {
+	if !m.wrapEnabled {
+		return start + targetRow
+	}
+	row := 0
+	for i := start; i < len(m.lines); i++ {
+		r := m.lineRows(i, avail)
+		if targetRow < row+r {
+			return i
+		}
+		row += r
+	}
+	return len(m.lines)
+}
+
+// ensureCursorVisible adjusts offset so the cursor line (including all of its
+// wrapped display rows) is visible. It scrolls up when the cursor is above the
+// viewport and down when the cursor's rows fall below it, but never scrolls
+// further than necessary. When wrap is off this reduces to the classic
+// offset = cursor - viewHeight + 1 clamp.
+func (m *diffViewModel) ensureCursorVisible() {
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+		return
+	}
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	top := m.cursor
+	for top >= 0 {
+		r := m.lineRows(top, avail)
+		if rows+r > viewH {
+			break
+		}
+		rows += r
+		top--
+	}
+	minTop := top + 1
+	if minTop < 0 {
+		minTop = 0
+	}
+	if m.offset < minTop {
+		m.offset = minTop
+	}
+}
+
+// bottomOffset returns the largest offset that keeps content filling the
+// viewport from the last line upward — the scroll position for "bottom".
+func (m *diffViewModel) bottomOffset() int {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	top := len(m.lines) - 1
+	for top >= 0 {
+		r := m.lineRows(top, avail)
+		if rows+r > viewH {
+			break
+		}
+		rows += r
+		top--
+	}
+	off := top + 1
+	if off < 0 {
+		off = 0
+	}
+	return off
+}
+
+// lastVisibleLine returns the index of the last logical line that fits in the
+// viewport starting at the current offset.
+func (m *diffViewModel) lastVisibleLine() int {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	rows := 0
+	i := m.offset
+	for i < len(m.lines) {
+		r := m.lineRows(i, avail)
+		if rows+r > viewH {
+			if i == m.offset {
+				return i // a single line taller than the viewport
+			}
+			break
+		}
+		rows += r
+		i++
+	}
+	last := i - 1
+	if last < 0 {
+		last = 0
+	}
+	return last
+}
+
+// scrollForCommentInput scrolls offset down (if needed) so the inline comment
+// input box and at least one following code row fit below the cursor within the
+// viewport. It accounts for wrapped display rows, so a tall wrapped cursor line
+// still leaves room for the box.
+func (m *diffViewModel) scrollForCommentInput() {
+	viewH := m.viewHeight()
+	avail := m.viewWidth()
+	needed := inputBoxHeight + 1 // box rows + at least one code row below
+	for m.offset < m.cursor && m.rowSpan(m.offset, m.cursor, avail)+needed > viewH {
+		m.offset++
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+// toggleWrap flips soft wrap on/off and keeps the cursor visible. Horizontal
+// scroll is meaningless with wrap on, so it's reset when enabling.
+func (m *diffViewModel) toggleWrap() {
+	m.wrapEnabled = !m.wrapEnabled
+	if m.wrapEnabled {
+		m.hOffset = 0
+	}
+	m.ensureCursorVisible()
 }
 
 func newDiffViewModel() diffViewModel {
 	ti := textinput.New()
 	ti.Placeholder = "Add a comment…"
 	ti.CharLimit = 500
+
+	si := textinput.New()
+	si.Prompt = "" // the "/" prompt is rendered by the status bar
+	si.Placeholder = ""
+	si.CharLimit = 200
+
 	return diffViewModel{
-		comments:  make(comments),
-		textInput: ti,
+		comments:    make(comments),
+		textInput:   ti,
+		searchInput: si,
+		searchIdx:   -1,
 	}
 }
 
@@ -62,6 +278,10 @@ func (m *diffViewModel) setFile(f *git.FileDiff) {
 	m.cursor = 0
 	m.offset = 0
 	m.hOffset = 0
+	// Search is scoped to the current file; switching files clears it.
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
 	m.buildLines()
 	m.goToFirstNavigable()
 }
@@ -106,6 +326,8 @@ func (m *diffViewModel) buildLines() {
 				newNum:   line.NewNum,
 				oldNum:   line.OldNum,
 				lineType: line.Type,
+				isBlank:  strings.TrimSpace(line.Content) == "",
+				content:  line.Content,
 			}
 			isMarked := m.marks[ref.commentKey(m.file.Path)]
 			// width - 3 for border (2) + cursor prefix (1)
@@ -113,7 +335,7 @@ func (m *diffViewModel) buildLines() {
 			if fillWidth < 1 {
 				fillWidth = 1
 			}
-			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize), ref)
+			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery), ref)
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -149,13 +371,7 @@ func (m *diffViewModel) rebuildLinesPreservingCursor() {
 			ref.oldNum == saved.oldNum &&
 			ref.lineType == saved.lineType {
 			m.cursor = i
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
+			m.ensureCursorVisible()
 			return
 		}
 	}
@@ -215,10 +431,7 @@ func (m *diffViewModel) moveCursorDown(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor > 0 {
 		m.cursor--
 	}
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) moveCursorUp(n int) {
@@ -232,18 +445,15 @@ func (m *diffViewModel) moveCursorUp(n int) {
 	for !m.isNavigable(m.cursor) && m.cursor < len(m.lineRefs)-1 {
 		m.cursor++
 	}
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) clampCursorToView() {
-	viewH := m.viewHeight()
 	if m.cursor < m.offset {
 		m.cursor = m.offset
 	}
-	if m.cursor >= m.offset+viewH {
-		m.cursor = m.offset + viewH - 1
+	if last := m.lastVisibleLine(); m.cursor > last {
+		m.cursor = last
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -260,11 +470,7 @@ func (m *diffViewModel) scrollUp(n int) {
 
 func (m *diffViewModel) scrollDown(n int) {
 	m.offset += n
-	max := len(m.lines) - m.viewHeight()
-	if max < 0 {
-		max = 0
-	}
-	if m.offset > max {
+	if max := m.bottomOffset(); m.offset > max {
 		m.offset = max
 	}
 	m.clampCursorToView()
@@ -316,11 +522,7 @@ func (m *diffViewModel) goToTop() {
 }
 
 func (m *diffViewModel) goToBottom() {
-	max := len(m.lines) - m.viewHeight()
-	if max < 0 {
-		max = 0
-	}
-	m.offset = max
+	m.offset = m.bottomOffset()
 	m.goToLastNavigable()
 }
 
@@ -347,42 +549,58 @@ func (m *diffViewModel) hunkStarts() []int {
 	return starts
 }
 
-// nextHunk moves the cursor to the first navigable line of the next hunk.
-// If already in the last hunk, jumps to the last navigable line.
-func (m *diffViewModel) nextHunk() {
-	starts := m.hunkStarts()
-	for _, idx := range starts {
-		if idx > m.cursor {
-			m.cursor = idx
-			viewH := m.viewHeight()
-			if m.cursor >= m.offset+viewH {
-				m.offset = m.cursor - viewH + 1
-			}
-			return
-		}
+// isBlankLine reports whether the line at idx is a navigable, blank source line
+// — i.e. a Vim-style paragraph boundary that `}`/`{` jump between.
+func (m *diffViewModel) isBlankLine(idx int) bool {
+	if idx < 0 || idx >= len(m.lineRefs) {
+		return false
 	}
-	// No next hunk found — jump to last navigable line (past the last hunk).
-	m.goToLastNavigable()
-	viewH := m.viewHeight()
-	if m.cursor >= m.offset+viewH {
-		m.offset = m.cursor - viewH + 1
-	}
+	ref := m.lineRefs[idx]
+	return ref != nil && !ref.isCommentDisplay && ref.isBlank
 }
 
-// prevHunk moves the cursor to the first navigable line of the previous hunk.
-// If the cursor is in the middle of a hunk (not on its first line), it moves
-// to the start of the current hunk instead.
-func (m *diffViewModel) prevHunk() {
-	starts := m.hunkStarts()
-	for i := len(starts) - 1; i >= 0; i-- {
-		if starts[i] < m.cursor {
-			m.cursor = starts[i]
-			if m.cursor < m.offset {
-				m.offset = m.cursor
-			}
-			return
+// nextParagraph moves the cursor to the next blank line below it (Vim `}`).
+// If the cursor is already on a blank line, it first skips the contiguous
+// blank run, then the following paragraph, landing on the next blank line.
+// With no blank line below, it jumps to the last navigable line.
+func (m *diffViewModel) nextParagraph() {
+	i := m.cursor
+	if m.isBlankLine(i) {
+		for i < len(m.lines) && m.isBlankLine(i) {
+			i++
 		}
 	}
+	for i < len(m.lines) && !m.isBlankLine(i) {
+		i++
+	}
+	if i < len(m.lines) {
+		m.cursor = i
+	} else {
+		m.goToLastNavigable()
+	}
+	m.ensureCursorVisible()
+}
+
+// prevParagraph moves the cursor to the previous blank line above it (Vim `{`).
+// Mirror of nextParagraph. With no blank line above, it jumps to the top.
+func (m *diffViewModel) prevParagraph() {
+	i := m.cursor
+	if m.isBlankLine(i) {
+		for i >= 0 && m.isBlankLine(i) {
+			i--
+		}
+	}
+	for i >= 0 && !m.isBlankLine(i) {
+		i--
+	}
+	if i >= 0 {
+		m.cursor = i
+	} else {
+		// No blank line above — jump to the first navigable line (top).
+		m.cursor = 0
+		m.goToFirstNavigable()
+	}
+	m.ensureCursorVisible()
 }
 
 func (m *diffViewModel) viewHeight() int {
@@ -393,16 +611,252 @@ func (m *diffViewModel) viewHeight() int {
 	return h
 }
 
-// clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
-// to an absolute index into lines[], accounting for any visible input box.
-// Returns -1 if the click lands inside the input box itself.
-func (m diffViewModel) clickToAbsIdx(clickY int) int {
-	if !m.commentInputActive {
-		return m.offset + clickY
+// matchRanges returns the rune-index ranges of every case-insensitive
+// occurrence of query within content. Ranges are [start, end) in runes so
+// callers can slice []rune(content) directly. Returns nil for an empty query
+// or no matches.
+func matchRanges(content, query string) [][2]int {
+	q := []rune(query)
+	if len(q) == 0 {
+		return nil
 	}
-	codeAbove := m.cursor - m.offset + 1
+	c := []rune(content)
+	lc := make([]rune, len(c))
+	for i, r := range c {
+		lc[i] = unicode.ToLower(r)
+	}
+	lq := make([]rune, len(q))
+	for i, r := range q {
+		lq[i] = unicode.ToLower(r)
+	}
+
+	var ranges [][2]int
+	for i := 0; i+len(lq) <= len(lc); {
+		matched := true
+		for j := range lq {
+			if lc[i+j] != lq[j] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			ranges = append(ranges, [2]int{i, i + len(lq)})
+			i += len(lq)
+		} else {
+			i++
+		}
+	}
+	return ranges
+}
+
+// matchColumnRanges converts the rune-index match ranges of query within
+// content into visual-column ranges (accounting for wide runes), so callers
+// can slice an already-styled string by column.
+func matchColumnRanges(content, query string) [][2]int {
+	rr := matchRanges(content, query)
+	if rr == nil {
+		return nil
+	}
+	runes := []rune(content)
+	cols := make([][2]int, len(rr))
+	for i, r := range rr {
+		cols[i] = [2]int{
+			ansi.StringWidth(string(runes[:r[0]])),
+			ansi.StringWidth(string(runes[:r[1]])),
+		}
+	}
+	return cols
+}
+
+// overlaySearchHighlight re-styles the given visual-column ranges of an
+// already-styled string with searchMatchStyle, leaving the surrounding styling
+// (syntax highlight, diff background) intact. Column ranges are [start, end)
+// and must be ascending and non-overlapping.
+func overlaySearchHighlight(styled string, colRanges [][2]int) string {
+	var b strings.Builder
+	prev := 0
+	for _, r := range colRanges {
+		cs, ce := r[0], r[1]
+		if cs < prev {
+			cs = prev
+		}
+		if ce <= cs {
+			continue
+		}
+		if cs > prev {
+			b.WriteString(clipCols(styled, prev, cs))
+		}
+		// Strip the matched slice's own styling, then apply the match style.
+		b.WriteString(searchMatchStyle.Render(ansi.Strip(clipCols(styled, cs, ce))))
+		prev = ce
+	}
+	b.WriteString(ansi.TruncateLeft(styled, prev, ""))
+	return b.String()
+}
+
+// clipCols returns the visual columns [from, to) of a styled string, preserving
+// ANSI styling at the cut points.
+func clipCols(styled string, from, to int) string {
+	if from > 0 {
+		styled = ansi.TruncateLeft(styled, from, "")
+	}
+	return ansi.Truncate(styled, to-from, "")
+}
+
+// lineContainsQuery reports whether content contains query (case-insensitive).
+func lineContainsQuery(content, query string) bool {
+	if query == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(content), strings.ToLower(query))
+}
+
+// computeSearchMatches rebuilds searchMatches from the current searchQuery,
+// scanning navigable code lines. searchIdx is reset to -1 when there are no
+// matches and clamped into range otherwise.
+func (m *diffViewModel) computeSearchMatches() {
+	m.searchMatches = nil
+	if m.searchQuery == "" {
+		m.searchIdx = -1
+		return
+	}
+	for i := range m.lineRefs {
+		if !m.isNavigable(i) {
+			continue
+		}
+		if lineContainsQuery(m.lineRefs[i].content, m.searchQuery) {
+			m.searchMatches = append(m.searchMatches, i)
+		}
+	}
+	if len(m.searchMatches) == 0 {
+		m.searchIdx = -1
+	} else if m.searchIdx < 0 || m.searchIdx >= len(m.searchMatches) {
+		m.searchIdx = 0
+	}
+}
+
+// startSearch begins an incremental search. searchOrigin records the cursor so
+// typing jumps to the nearest match at or after it.
+func (m *diffViewModel) startSearch() {
+	m.searchOrigin = m.cursor
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
+	m.searchInput.SetValue("")
+	m.searchInput.Focus()
+}
+
+// setSearch updates the active query (incremental: called on each keystroke),
+// recomputes highlights and matches, and moves the cursor to the first match at
+// or after searchOrigin (wrapping). With no matches, the cursor stays put.
+func (m *diffViewModel) setSearch(query string) {
+	m.searchQuery = query
+	m.buildLines() // re-render with the new highlight
+	m.computeSearchMatches()
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = 0
+	for i, idx := range m.searchMatches {
+		if idx >= m.searchOrigin {
+			m.searchIdx = i
+			break
+		}
+	}
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// clearSearch drops the active search and removes highlighting.
+func (m *diffViewModel) clearSearch() {
+	m.searchQuery = ""
+	m.searchMatches = nil
+	m.searchIdx = -1
+	m.searchInput.Blur()
+	m.buildLines()
+}
+
+// nextMatch moves the cursor to the next match, wrapping past the end.
+func (m *diffViewModel) nextMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = (m.searchIdx + 1) % len(m.searchMatches)
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// prevMatch moves the cursor to the previous match, wrapping past the start.
+func (m *diffViewModel) prevMatch() {
+	if len(m.searchMatches) == 0 {
+		return
+	}
+	m.searchIdx = (m.searchIdx - 1 + len(m.searchMatches)) % len(m.searchMatches)
+	m.cursor = m.searchMatches[m.searchIdx]
+	m.ensureCursorVisible()
+	m.ensureMatchVisible()
+}
+
+// ensureMatchVisible scrolls horizontally (when wrap is off) so the first
+// occurrence of the query on the current match line is within the viewport. A
+// small margin keeps a little context around the match.
+func (m *diffViewModel) ensureMatchVisible() {
+	if m.wrapEnabled || m.searchQuery == "" {
+		return
+	}
+	if m.searchIdx < 0 || m.searchIdx >= len(m.searchMatches) {
+		return
+	}
+	idx := m.searchMatches[m.searchIdx]
+	if !m.isNavigable(idx) {
+		return
+	}
+	cols := matchColumnRanges(m.lineRefs[idx].content, m.searchQuery)
+	if len(cols) == 0 {
+		return
+	}
+	avail := m.viewWidth()
+	if avail < 1 {
+		return
+	}
+	// Columns are within the content; the rendered line prepends a gutter.
+	start := gutterWidth + cols[0][0]
+	end := gutterWidth + cols[0][1]
+	margin := hScrollStep
+	switch {
+	case start < m.hOffset:
+		m.hOffset = start - margin
+	case end > m.hOffset+avail:
+		m.hOffset = end - avail + margin
+	}
+	if m.hOffset < 0 {
+		m.hOffset = 0
+	}
+	if max := m.maxHScroll(); m.hOffset > max {
+		m.hOffset = max
+	}
+}
+
+// clickToAbsIdx converts a panel-relative click Y (0 = top border row + 1)
+// to an absolute index into lines[], accounting for any visible input box and
+// for wrapped display rows. Returns -1 if the click lands inside the input box.
+func (m diffViewModel) clickToAbsIdx(clickY int) int {
+	avail := m.viewWidth()
+	if !m.commentInputActive {
+		return m.lineAtRow(m.offset, clickY, avail)
+	}
+	if m.fileCommentInput {
+		// File-level input box sits at the top; code lines render from line 0.
+		if clickY < inputBoxHeight {
+			return -1
+		}
+		return m.lineAtRow(0, clickY-inputBoxHeight, avail)
+	}
+	codeAbove := m.rowSpan(m.offset, m.cursor, avail)
 	if clickY < codeAbove {
-		return m.offset + clickY
+		return m.lineAtRow(m.offset, clickY, avail)
 	}
 	if clickY < codeAbove+inputBoxHeight {
 		return -1 // inside the input box
@@ -412,10 +866,10 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	if m.isCommentDisplayLine(nextIdx) {
 		nextIdx++ // this display line was skipped in the render
 	}
-	return nextIdx + (clickY - codeAbove - inputBoxHeight)
+	return m.lineAtRow(nextIdx, clickY-codeAbove-inputBoxHeight, avail)
 }
 
-func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int) string {
+func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, query string) string {
 	gutter := git.FormatGutter(l)
 	if marked {
 		content := l.Content
@@ -435,24 +889,44 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p t
 		}
 		return l.Content
 	}
+
+	// Render the content with normal styling (syntax highlight when available,
+	// otherwise the base diff-line style), then overlay search highlighting on
+	// just the matched columns so the rest of the line keeps its colors.
+	var gutterStyle lipgloss.Style
+	var content string
 	switch l.Type {
 	case git.LineAdded:
+		gutterStyle = addedGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize); ok {
-			return addedGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 		}
-		return addedGutterStyle.Render(gutter) + addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 	case git.LineRemoved:
+		gutterStyle = removedGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize); ok {
-			return removedGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 		}
-		return removedGutterStyle.Render(gutter) + removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 	case git.LineContext:
+		gutterStyle = contextGutterStyle
 		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize); ok {
-			return contextGutterStyle.Render(gutter) + highlighted
+			content = highlighted
+		} else {
+			content = contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
 		}
-		return contextGutterStyle.Render(gutter) + contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))
+	default:
+		return l.Content
 	}
-	return l.Content
+
+	if query != "" {
+		if cols := matchColumnRanges(l.Content, query); len(cols) > 0 {
+			content = overlaySearchHighlight(content, cols)
+		}
+	}
+	return gutterStyle.Render(gutter) + content
 }
 
 func renderHunkHeader(h git.Hunk) string {
@@ -491,6 +965,23 @@ func renderHunkHeader(h git.Hunk) string {
 func (m diffViewModel) linePrefix(absIdx int, focused bool) string {
 	if focused && m.file != nil && absIdx == m.cursor {
 		return cursorStyle.Render("▶")
+	}
+	if m.lineCommented(absIdx) {
+		return commentPrefixStyle.Render("▌")
+	}
+	if m.lineMarked(absIdx) {
+		return markPrefixStyle.Render("▌")
+	}
+	return " "
+}
+
+// linePrefixRow returns the leading prefix for a single display row of a
+// (possibly wrapped) logical line. The first row gets the full prefix
+// (cursor/stripe); continuation rows keep the comment/mark stripe so the
+// bookmark stays visible, but never the cursor caret.
+func (m diffViewModel) linePrefixRow(absIdx int, focused bool, rowIdx int) string {
+	if rowIdx == 0 {
+		return m.linePrefix(absIdx, focused)
 	}
 	if m.lineCommented(absIdx) {
 		return commentPrefixStyle.Render("▌")
@@ -569,95 +1060,76 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	// Clamp a stale offset (e.g. after a resize or a shorter refreshed diff)
 	// so a scroll position from a wider state doesn't over-truncate now.
 	hOffset := m.hOffset
-	if max := m.maxHScroll(); hOffset > max {
+	if m.wrapEnabled {
+		hOffset = 0 // horizontal scroll is meaningless with wrap on
+	} else if max := m.maxHScroll(); hOffset > max {
 		hOffset = max
 	}
 
-	renderLine := func(absIdx int) string {
-		line := m.lines[absIdx]
-		if hOffset > 0 {
-			line = ansi.TruncateLeft(line, hOffset, "")
+	// rowsFor returns the prefixed display rows for a logical line — one row
+	// when wrap is off, possibly several when a wrapped line spans the width.
+	rowsFor := func(absIdx int) []string {
+		body := m.displayRows(absIdx, maxWidth, hOffset)
+		out := make([]string, len(body))
+		for i, s := range body {
+			out[i] = m.linePrefixRow(absIdx, focused, i) + s
 		}
-		if ansi.StringWidth(line) > maxWidth {
-			line = ansi.Truncate(line, maxWidth, "")
-		}
-		return m.linePrefix(absIdx, focused) + line
+		return out
 	}
 
+	// appendRows draws logical lines starting at `from` until the viewport has
+	// `limit` rows (or the lines run out), returning the rows used. Each wrapped
+	// continuation row counts toward the limit.
 	var renderedLines []string
-	if len(m.lines) == 0 {
-		renderedLines = append(renderedLines, "No changes to display")
+	appendRows := func(from, limit int) int {
+		used := 0
+		for absIdx := from; absIdx < len(m.lines) && used < limit; absIdx++ {
+			for _, r := range rowsFor(absIdx) {
+				if used >= limit {
+					break
+				}
+				renderedLines = append(renderedLines, r)
+				used++
+			}
+		}
+		return used
 	}
 
-	if m.commentInputActive && m.fileCommentInput && len(m.lines) > 0 {
-		// File-level comment: input box appears before any code lines.
+	inputBoxView := func() string {
 		inputWidth := m.width - 4
 		if inputWidth < 10 {
 			inputWidth = 10
 		}
 		m.textInput.Width = inputWidth - 4
-		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
-		renderedLines = append(renderedLines, inputBox)
+		return commentInputStyle.Width(inputWidth).Render(m.textInput.View())
+	}
 
-		codeBelow := viewH - inputBoxHeight
-		if codeBelow < 0 {
-			codeBelow = 0
+	if len(m.lines) == 0 {
+		renderedLines = append(renderedLines, "No changes to display")
+	} else if m.commentInputActive && m.fileCommentInput {
+		// File-level comment: input box appears before any code lines.
+		renderedLines = append(renderedLines, inputBoxView())
+		appendRows(0, viewH-inputBoxHeight)
+	} else if m.commentInputActive {
+		// Inline comment: render lines [offset..cursor], then the input box,
+		// then the lines after the cursor (skipping the existing comment
+		// display row, which the box replaces while editing).
+		used := 0
+		for absIdx := m.offset; absIdx <= m.cursor && absIdx < len(m.lines); absIdx++ {
+			for _, r := range rowsFor(absIdx) {
+				renderedLines = append(renderedLines, r)
+				used++
+			}
 		}
-		end := codeBelow
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := 0; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-	} else if m.commentInputActive && len(m.lines) > 0 {
-		codeAbove := m.cursor - m.offset + 1
-		if codeAbove < 0 {
-			codeAbove = 0
-		}
-		end := m.offset + codeAbove
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := m.offset; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-
-		// Skip any existing comment display line for this code line —
-		// the input box replaces it while editing.
 		nextIdx := m.cursor + 1
 		if m.isCommentDisplayLine(nextIdx) {
 			nextIdx++
 		}
-
-		// Inline input box.
-		inputWidth := m.width - 4
-		if inputWidth < 10 {
-			inputWidth = 10
-		}
-		m.textInput.Width = inputWidth - 4
-		inputBox := commentInputStyle.Width(inputWidth).Render(m.textInput.View())
-		renderedLines = append(renderedLines, inputBox)
-
-		codeBelow := viewH - inputBoxHeight - codeAbove
-		if codeBelow < 0 {
-			codeBelow = 0
-		}
-		endAfter := nextIdx + codeBelow
-		if endAfter > len(m.lines) {
-			endAfter = len(m.lines)
-		}
-		for absIdx := nextIdx; absIdx < endAfter; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
-	} else if len(m.lines) > 0 {
-		end := m.offset + viewH
-		if end > len(m.lines) {
-			end = len(m.lines)
-		}
-		for absIdx := m.offset; absIdx < end; absIdx++ {
-			renderedLines = append(renderedLines, renderLine(absIdx))
-		}
+		renderedLines = append(renderedLines, inputBoxView())
+		used += inputBoxHeight
+		appendRows(nextIdx, viewH-used)
+	} else {
+		appendRows(m.offset, viewH)
 	}
 
 	added, removed := 0, 0
@@ -682,6 +1154,9 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		}
 		if slider != "" {
 			rendered = setBorderTitleCentered(rendered, fileStyle.Render(" "+slider+" "), focused)
+		}
+		if m.wrapEnabled {
+			rendered = setBorderBottomRight(rendered, modeActiveStyle.Render(" Wrap "), focused)
 		}
 		return rendered
 	}
@@ -711,13 +1186,18 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		ctxLabel = modeActiveStyle.Render(ctxText)
 	}
 	rendered = setBorderBottomLeft(rendered, ctxLabel, focused)
-	if hideWhitespace {
-		wsLabel := modeActiveStyle.Render(" Whitespace hidden ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
-	} else {
-		wsLabel := statusBarStyle.Render(" Whitespace ")
-		rendered = setBorderBottomRight(rendered, wsLabel, focused)
+	// Bottom-right footer: optional " Wrap " indicator followed by the
+	// whitespace indicator. Both are right-aligned as one label.
+	right := ""
+	if m.wrapEnabled {
+		right += modeActiveStyle.Render(" Wrap ")
 	}
+	if hideWhitespace {
+		right += modeActiveStyle.Render(" Whitespace hidden ")
+	} else {
+		right += statusBarStyle.Render(" Whitespace ")
+	}
+	rendered = setBorderBottomRight(rendered, right, focused)
 	return rendered
 }
 

@@ -182,6 +182,8 @@ Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (nar
 
 `revise <file>` opens any file in a read-only review mode with full comment support. All lines are shown as context (no diff coloring). Starts fullscreen with diff view focused. Git-specific keys (stage/unstage/discard, mode cycling, context lines, whitespace toggle) are disabled — guarded by a single `fileReviewMode` check per key group in the Update handlers. The help overlay filters bindings via `FileReviewBindingGroups()` which uses the `GitOnly` flag on `Binding`.
 
+Navigation note (applies to all modes, not just file review): `}`/`{` (`]`/`[`) jump to the next/previous blank line (Vim-style paragraph boundary) via `nextParagraph`/`prevParagraph`. There is no dedicated hunk-to-hunk navigation — in a diff the nearest blank line usually sits at the next change, so paragraph jumping doubles as change-to-change navigation and stays consistent across modes (#122). Blank lines are flagged at build time as `lineRef.isBlank`. (`hunkStarts`/`currentHunkIndex` remain, used by hunk stage/unstage/discard.)
+
 Comments are output to stdout on exit (both in file review and git diff modes), enabling integration with Claude Code: Claude launches `revise`, user reviews and comments, comments print on close.
 
 ### Keyboard Bindings
@@ -216,5 +218,27 @@ The fs watcher is attached via `Model.WithFSWatcher(w)`. If `fswatch.New` fails 
 
 - `parseFilePath` handles both standard (`diff --git a/foo b/foo`) and no-prefix (`diff --git foo foo`) formats — the latter occurs when `diff.noprefix=true` is set in the user's git config
 - `padRight` and all column-width calculations use rune count (`len([]rune(s))`), not byte length, to handle multi-byte Unicode characters like arrow symbols correctly
+
+### Incremental Search
+
+`/` opens a search box (rendered in the status bar, not as an overlay) for incremental search in the diff view. Design (#72):
+
+- **Scope**: the current file's diff only. `setFile` clears the search, so switching files resets it. Cross-file search was deliberately left out to keep `n`/`N` unambiguous.
+- **Case-insensitive**, rune-safe matching via `matchRanges` (returns `[start,end)` rune-index ranges) and `lineContainsQuery`.
+- **Highlighting happens at build time but preserves syntax colors**: `buildLines` passes `m.searchQuery` to `renderDiffLine`, which first renders the line normally (syntax highlight or base diff-line style), then calls `overlaySearchHighlight` to re-style *only the matched columns* with `searchMatchStyle`. The overlay slices the already-styled string by visual column (`clipCols` → `ansi.TruncateLeft`/`ansi.Truncate`, then `ansi.Strip` + restyle the matched slice), so the rest of the line keeps its colors. `matchColumnRanges` converts rune-index matches to visual columns (wide-rune-safe). `setSearch` calls `buildLines` on every keystroke; matches don't add/remove lines, so cursor indices stay stable.
+- **Match list**: `searchMatches` holds navigable line indices containing the query; `searchIdx` is the current position (-1 when none). `computeSearchMatches` scans `lineRef.content` (plain source text, stored at build time).
+- **Navigation**: `nextMatch`/`prevMatch` wrap. After moving, `ensureMatchVisible` scrolls horizontally (when wrap is off) so an off-screen match is brought into the viewport. `n`/`N` in `model.go` route to these when `searchQuery != ""`, otherwise to next/prev file (the default). While the search box is open, all keys (including `n`/`N`) feed the query.
+- **Lifecycle**: `/` → `startSearch` (records `searchOrigin = cursor`, focuses the diff view). Typing → `setSearch` (incremental: rebuild, recompute, jump to first match at/after `searchOrigin`, wrapping). `Enter` commits (box closes, query/matches retained, status bar shows `current/total` + nav hint). `Esc` clears — both inside the box and after committing (a guard before the main key switch in `Update` intercepts `esc` when `searchQuery != ""`).
+
+### Soft Line Wrap
+
+`W` (or `Alt+Z`) toggles `diffViewModel.wrapEnabled`. The key design choice: `cursor` and `offset` stay **logical-line** indices into `lines[]` — wrap only changes how lines map to display rows. This keeps all navigation (hunks, marks, comments) working unchanged.
+
+The display-row math lives in a few primitives in `diffview.go`:
+- `displayRows(idx, avail, hOffset)` — the single source of truth for how a logical line renders: one row (truncated) when wrap is off, multiple word-wrapped rows when on. Continuation rows are indented by the gutter width (6) so content aligns; wrapping uses `ansi.Wrap` after splitting gutter from content so styling is preserved.
+- `lineRows`/`rowSpan`/`lineAtRow` — derive row counts and map display-row offsets back to logical lines.
+- `ensureCursorVisible`/`bottomOffset`/`lastVisibleLine` — replace the old inline `offset = cursor - viewHeight + 1` arithmetic everywhere (moveCursor, hunk jumps, rebuild, scroll clamp). When wrap is off they reduce to the original behavior, so existing tests still hold.
+
+`clickToAbsIdx` and `scrollForCommentInput` go through the same primitives, so mouse clicks and the inline comment box stay correct with wrap on. Horizontal scroll is disabled (hOffset forced to 0) while wrapping.
 
 
