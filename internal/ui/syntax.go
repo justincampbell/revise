@@ -228,7 +228,9 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 		if entry.Italic == chroma.Yes && !isComment {
 			s = s.Italic(true)
 		}
-		if entry.Underline == chroma.Yes {
+		// Headings are distinguished by bold alone; skip underline (the "native"
+		// chroma style, used by the auto theme, underlines heading tokens).
+		if entry.Underline == chroma.Yes && !isHeading {
 			s = s.Underline(true)
 		}
 		if isComment {

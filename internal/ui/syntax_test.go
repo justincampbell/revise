@@ -403,20 +403,25 @@ func TestHighlightLine_MarkdownHeadingBold(t *testing.T) {
 		activeIsDark = origIsDark
 	}()
 
-	// Headings must render bold (ANSI code 1) across both a custom-entry theme
-	// and a named-style theme ("github") that doesn't bold headings itself.
+	// Headings must render bold (ANSI code 1) but never underline (ANSI code 4)
+	// across custom-entry themes, named-style themes ("github"), and the auto
+	// theme's "native" style — which underlines heading tokens by default.
 	for _, tc := range []struct {
 		theme Theme
 		dark  bool
 	}{
 		{ThemeGithubDark, true},   // custom entries
 		{ThemeGithubLight, false}, // named "github" style
+		{ThemeAuto, true},         // "native" style (underlines headings)
 	} {
-		clearHighlightCache()
-		SetTheme(tc.theme, tc.dark)
-		result, ok := highlightLine("# Title", "doc.md", nil, 0, "")
-		assert.True(t, ok, "theme %s", tc.theme)
-		assert.Contains(t, result, "\x1b[1", "heading should be bold for theme %s", tc.theme)
+		for _, heading := range []string{"# Title", "## Subtitle"} {
+			clearHighlightCache()
+			SetTheme(tc.theme, tc.dark)
+			result, ok := highlightLine(heading, "doc.md", nil, 0, "")
+			assert.True(t, ok, "theme %s heading %q", tc.theme, heading)
+			assert.Contains(t, result, "\x1b[1", "heading %q should be bold for theme %s", heading, tc.theme)
+			assert.NotContains(t, result, "\x1b[4m", "heading %q should not be underlined for theme %s", heading, tc.theme)
+		}
 	}
 }
 
