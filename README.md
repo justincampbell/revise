@@ -56,6 +56,8 @@ revise --output comments.md <file>
 
 Opens the file in a read-only review mode — all lines shown as context, git-specific keys disabled. Add comments, then quit — comments are printed to stdout on exit. Use `--output <file>` to write comments to a file instead.
 
+Source is syntax-highlighted by file type. Markdown gets bold headings, inline `**bold**`/`` `code` ``, and fenced code blocks highlighted by their declared language (e.g. ` ```go `).
+
 Comments are also output on exit in normal git diff mode.
 
 ### Subcommands
