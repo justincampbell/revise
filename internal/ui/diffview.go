@@ -317,10 +317,16 @@ func (m *diffViewModel) buildLines() {
 
 	p := paletteFor(activeTheme, activeIsDark)
 	indentSize := detectIndentSize(m.file.Hunks)
+	isMarkdown := isMarkdownFile(m.file.Path)
 	for _, hunk := range m.file.Hunks {
 		if header := renderHunkHeader(hunk); header != "" {
 			add(header, nil)
 		}
+		// Track fenced-code-block state within the hunk so code is highlighted
+		// with its declared language (e.g. ```go). Reset per hunk: a diff's
+		// hidden gaps make cross-hunk fence state unreliable.
+		inCodeBlock := false
+		codeLang := ""
 		for _, line := range hunk.Lines {
 			ref := &lineRef{
 				newNum:   line.NewNum,
@@ -335,7 +341,21 @@ func (m *diffViewModel) buildLines() {
 			if fillWidth < 1 {
 				fillWidth = 1
 			}
-			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery), ref)
+			// Resolve the language for lines inside a fenced code block; the
+			// fence delimiters themselves render as plain Markdown.
+			langOverride := ""
+			if isMarkdown {
+				if fence, lang := codeFenceLang(line.Content); fence {
+					if inCodeBlock {
+						inCodeBlock, codeLang = false, ""
+					} else {
+						inCodeBlock, codeLang = true, lang
+					}
+				} else if inCodeBlock {
+					langOverride = codeLang
+				}
+			}
+			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery, langOverride), ref)
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -869,7 +889,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	return m.lineAtRow(nextIdx, clickY-codeAbove-inputBoxHeight, avail)
 }
 
-func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, query string) string {
+func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, query, langOverride string) string {
 	gutter := git.FormatGutter(l)
 	if marked {
 		content := l.Content
@@ -898,21 +918,21 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p t
 	switch l.Type {
 	case git.LineAdded:
 		gutterStyle = addedGutterStyle
-		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize); ok {
+		if highlighted, ok := highlightLine(l.Content, filePath, p.addedBg, indentSize, langOverride); ok {
 			content = highlighted
 		} else {
 			content = addedStyle.Render(addIndentGuides(l.Content, indentSize, p.addedBg))
 		}
 	case git.LineRemoved:
 		gutterStyle = removedGutterStyle
-		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize); ok {
+		if highlighted, ok := highlightLine(l.Content, filePath, p.removedBg, indentSize, langOverride); ok {
 			content = highlighted
 		} else {
 			content = removedStyle.Render(addIndentGuides(l.Content, indentSize, p.removedBg))
 		}
 	case git.LineContext:
 		gutterStyle = contextGutterStyle
-		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize); ok {
+		if highlighted, ok := highlightLine(l.Content, filePath, nil, indentSize, langOverride); ok {
 			content = highlighted
 		} else {
 			content = contextStyle.Render(addIndentGuides(l.Content, indentSize, nil))

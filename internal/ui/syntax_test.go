@@ -129,11 +129,11 @@ func TestHighlightLine_CacheHit(t *testing.T) {
 	clearHighlightCache()
 
 	// First call — cache miss, should highlight a Go file
-	result1, ok1 := highlightLine("package main", "main.go", nil, 0)
+	result1, ok1 := highlightLine("package main", "main.go", nil, 0, "")
 	assert.True(t, ok1)
 
 	// Second call — should return cached result
-	result2, ok2 := highlightLine("package main", "main.go", nil, 0)
+	result2, ok2 := highlightLine("package main", "main.go", nil, 0, "")
 	assert.True(t, ok2)
 	assert.Equal(t, result1, result2)
 }
@@ -143,7 +143,7 @@ func TestHighlightLine_NoColor(t *testing.T) {
 	noColor = true
 	defer func() { noColor = orig }()
 
-	result, ok := highlightLine("package main", "main.go", nil, 0)
+	result, ok := highlightLine("package main", "main.go", nil, 0, "")
 	assert.False(t, ok)
 	assert.Equal(t, "package main", result)
 }
@@ -153,7 +153,7 @@ func TestHighlightLine_UnknownExtension(t *testing.T) {
 	noColor = false
 	defer func() { noColor = orig }()
 
-	result, ok := highlightLine("some content", "file.xyzunknown", nil, 0)
+	result, ok := highlightLine("some content", "file.xyzunknown", nil, 0, "")
 	assert.False(t, ok)
 	assert.Equal(t, "some content", result)
 }
@@ -173,12 +173,12 @@ func TestHighlightLine_CacheKeyIncludesTheme(t *testing.T) {
 
 	SetTheme(ThemeCharmtoneDark, true)
 	bg1 := paletteFor(ThemeCharmtoneDark, true).addedBg
-	result1, ok1 := highlightLine("package main", "main.go", bg1, 0)
+	result1, ok1 := highlightLine("package main", "main.go", bg1, 0, "")
 	assert.True(t, ok1)
 
 	SetTheme(ThemeGithubLight, false)
 	bg2 := paletteFor(ThemeGithubLight, false).addedBg
-	result2, ok2 := highlightLine("package main", "main.go", bg2, 0)
+	result2, ok2 := highlightLine("package main", "main.go", bg2, 0, "")
 	assert.True(t, ok2)
 
 	// Different themes + backgrounds produce different ANSI output
@@ -219,9 +219,9 @@ func TestRenderDiffLine_HighlightedVsFallback(t *testing.T) {
 	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
 
 	// With a known Go file — should highlight
-	withHighlight := renderDiffLine(line, false, 80, "main.go", p, 0, "")
+	withHighlight := renderDiffLine(line, false, 80, "main.go", p, 0, "", "")
 	// With unknown extension — plain fallback
-	withoutHighlight := renderDiffLine(line, false, 80, "file.xyzunknown", p, 0, "")
+	withoutHighlight := renderDiffLine(line, false, 80, "file.xyzunknown", p, 0, "", "")
 
 	assert.NotEmpty(t, withHighlight)
 	assert.NotEmpty(t, withoutHighlight)
@@ -281,7 +281,7 @@ func TestHighlightLine_AutoThemeCommentFg(t *testing.T) {
 
 	SetTheme(ThemeAuto, true)
 
-	result, ok := highlightLine("// a comment", "main.go", nil, 0)
+	result, ok := highlightLine("// a comment", "main.go", nil, 0, "")
 	assert.True(t, ok)
 	// Should use ANSI 256 color 136 (foreground), not italic
 	assert.Contains(t, result, "38;5;136")
@@ -296,9 +296,173 @@ func TestRenderDiffLine_MarkedSkipsHighlight(t *testing.T) {
 	p := paletteFor(ThemeCharmtoneDark, true)
 	line := git.Line{Type: git.LineAdded, Content: "package main", NewNum: 1}
 
-	marked := renderDiffLine(line, true, 80, "main.go", p, 0, "")
-	unmarked := renderDiffLine(line, false, 80, "main.go", p, 0, "")
+	marked := renderDiffLine(line, true, 80, "main.go", p, 0, "", "")
+	unmarked := renderDiffLine(line, false, 80, "main.go", p, 0, "", "")
 
 	// Marked lines use mark styles, not syntax highlight styles — they differ
 	assert.NotEqual(t, marked, unmarked)
+}
+
+func TestCodeFenceLang(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		wantFence bool
+		wantLang  string
+	}{
+		{"not a fence", "regular text", false, ""},
+		{"inline code only", "use `foo` here", false, ""},
+		{"bare backtick fence", "```", true, ""},
+		{"go fence", "```go", true, "go"},
+		{"fence with space", "``` go", true, "go"},
+		{"uppercase lang", "```Go", true, "go"},
+		{"info string extra words", "```go title=main.go", true, "go"},
+		{"tilde fence", "~~~", true, ""},
+		{"tilde lang fence", "~~~python", true, "python"},
+		{"indented fence", "   ```go", true, "go"},
+		{"more than three backticks", "````go", true, "go"},
+		{"backtick in info rejected", "```foo`bar", false, ""},
+		{"empty string", "", false, ""},
+		{"two backticks not a fence", "``not", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fence, lang := codeFenceLang(tt.content)
+			assert.Equal(t, tt.wantFence, fence)
+			assert.Equal(t, tt.wantLang, lang)
+		})
+	}
+}
+
+func TestIsMarkdownFile(t *testing.T) {
+	assert.True(t, isMarkdownFile("README.md"))
+	assert.True(t, isMarkdownFile("docs/guide.markdown"))
+	assert.False(t, isMarkdownFile("main.go"))
+	assert.False(t, isMarkdownFile("file.xyzunknown"))
+}
+
+func TestLexerByName(t *testing.T) {
+	assert.NotNil(t, lexerByName("go"))
+	assert.NotNil(t, lexerByName("GO"))        // case-insensitive
+	assert.NotNil(t, lexerByName("js"))        // alias
+	assert.Nil(t, lexerByName("totallybogus")) // unknown
+	assert.Nil(t, lexerByName(""))             // empty
+}
+
+func TestHighlightLine_LangOverride(t *testing.T) {
+	orig := noColor
+	noColor = false
+	defer func() { noColor = orig }()
+	clearHighlightCache()
+
+	// A line of Go code inside a Markdown file: without an override the markdown
+	// lexer renders it as plain text; with the "go" override it's highlighted.
+	const code = "func main() {}"
+	asMarkdown, _ := highlightLine(code, "doc.md", nil, 0, "")
+	asGo, ok := highlightLine(code, "doc.md", nil, 0, "go")
+	assert.True(t, ok)
+	assert.NotEqual(t, asMarkdown, asGo, "go override should change highlighting")
+	assert.Contains(t, asGo, "\x1b[", "go override should emit ANSI styling")
+}
+
+func TestHighlightLine_LangOverrideUnknown(t *testing.T) {
+	orig := noColor
+	noColor = false
+	defer func() { noColor = orig }()
+
+	// Unknown language → no lexer → plain fallback.
+	result, ok := highlightLine("some code", "doc.md", nil, 0, "totallybogus")
+	assert.False(t, ok)
+	assert.Equal(t, "some code", result)
+}
+
+func TestHighlightLine_LangOverrideInCacheKey(t *testing.T) {
+	orig := noColor
+	noColor = false
+	defer func() { noColor = orig }()
+	clearHighlightCache()
+
+	// Same content + file but different overrides must not collide in the cache.
+	plain, _ := highlightLine("x = 1", "doc.md", nil, 0, "")
+	asPython, _ := highlightLine("x = 1", "doc.md", nil, 0, "python")
+	assert.NotEqual(t, plain, asPython)
+
+	// Re-fetching returns the per-override cached value, not a collision.
+	plainAgain, _ := highlightLine("x = 1", "doc.md", nil, 0, "")
+	assert.Equal(t, plain, plainAgain)
+}
+
+func TestHighlightLine_MarkdownHeadingBold(t *testing.T) {
+	orig := noColor
+	noColor = false
+	origTheme := activeTheme
+	origIsDark := activeIsDark
+	defer func() {
+		noColor = orig
+		activeTheme = origTheme
+		activeIsDark = origIsDark
+	}()
+
+	// Headings must render bold (ANSI code 1) across both a custom-entry theme
+	// and a named-style theme ("github") that doesn't bold headings itself.
+	for _, tc := range []struct {
+		theme Theme
+		dark  bool
+	}{
+		{ThemeGithubDark, true},   // custom entries
+		{ThemeGithubLight, false}, // named "github" style
+	} {
+		clearHighlightCache()
+		SetTheme(tc.theme, tc.dark)
+		result, ok := highlightLine("# Title", "doc.md", nil, 0, "")
+		assert.True(t, ok, "theme %s", tc.theme)
+		assert.Contains(t, result, "\x1b[1", "heading should be bold for theme %s", tc.theme)
+	}
+}
+
+func TestBuildLines_MarkdownFenceStateMachine(t *testing.T) {
+	orig := noColor
+	noColor = false
+	origTheme := activeTheme
+	origIsDark := activeIsDark
+	defer func() {
+		noColor = orig
+		activeTheme = origTheme
+		activeIsDark = origIsDark
+	}()
+	SetTheme(ThemeGithubDark, true)
+
+	dv := diffViewModel{
+		width: 80,
+		file: &git.FileDiff{
+			Path: "doc.md",
+			Hunks: makeHunks(
+				"# Heading",
+				"",
+				"```go",
+				"func main() {}",
+				"```",
+				"func main() {}", // identical text, but outside the fence
+			),
+		},
+	}
+	dv.buildLines()
+
+	// The code line inside the fence and the identical prose line outside it
+	// must render differently: inside uses the Go lexer, outside uses Markdown.
+	var rendered []string
+	for i, ref := range dv.lineRefs {
+		if ref != nil && ref.content == "func main() {}" {
+			rendered = append(rendered, dv.lines[i])
+		}
+	}
+	assert.Len(t, rendered, 2, "both occurrences should be present")
+	assert.NotEqual(t, rendered[0], rendered[1],
+		"fenced code should be highlighted as Go, prose as Markdown")
+
+	// And the fenced line should match a direct Go-override render.
+	p := paletteFor(activeTheme, activeIsDark)
+	goLine := git.Line{Type: git.LineContext, Content: "func main() {}"}
+	wantGo := renderDiffLine(goLine, false, dv.width-3, "doc.md", p, 0, "", "go")
+	assert.Equal(t, wantGo, rendered[0], "fenced line should use the go override")
 }

@@ -105,7 +105,8 @@ func charmtoneDarkChromaEntries(daltonized bool) chroma.StyleEntries {
 		chroma.LiteralStringEscape: "#68FFD6", // Bok
 		chroma.GenericEmph:         "italic",
 		chroma.GenericStrong:       "bold",
-		chroma.GenericSubheading:   "#858392", // Squid
+		chroma.GenericHeading:      "bold #F1EFEF", // bright Salt
+		chroma.GenericSubheading:   "bold #858392", // Squid
 	}
 	if daltonized {
 		entries[chroma.NameFunction] = "#4FBEFE"    // Sardine (blue)
@@ -146,7 +147,8 @@ func githubDarkChromaEntries(daltonized bool) chroma.StyleEntries {
 		chroma.LiteralStringEscape: "bold #79c0ff",
 		chroma.GenericEmph:         "italic",
 		chroma.GenericStrong:       "bold",
-		chroma.GenericSubheading:   "#8b949e",
+		chroma.GenericHeading:      "bold #c9d1d9",
+		chroma.GenericSubheading:   "bold #8b949e",
 	}
 	if daltonized {
 		entries[chroma.GenericInserted] = "#58a6ff" // blue
@@ -183,6 +185,7 @@ func githubLightDaltonizedChromaEntries() chroma.StyleEntries {
 		chroma.LiteralStringEscape: "bold #032f62",
 		chroma.GenericDeleted:      "#b31d28",
 		chroma.GenericEmph:         "italic",
+		chroma.GenericHeading:      "bold #24292e",
 		chroma.GenericInserted:     "#005cc5", // blue instead of green
 		chroma.GenericStrong:       "bold",
 		chroma.GenericSubheading:   "bold #6a737d",

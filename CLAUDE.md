@@ -139,6 +139,9 @@ internal/
     diffview.go                # right panel: diff renderer + scroll
     keys.go                    # keyboard binding definitions (single source of truth)
     styles.go                  # all Lipgloss styles, NO_COLOR support
+    theme.go                   # color palettes + chroma style entries per theme
+    syntax.go                  # chroma syntax highlighting, indent guides, Markdown fences
+    syntax_test.go             # highlight, fence detection, indent guide tests
     comment.go                 # comment types, serialization for persistence
     comment_test.go            # comment encode/decode tests
     help.go                    # help overlay
@@ -177,6 +180,14 @@ Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (nar
 - Focused panel gets cyan border; unfocused gets dim border
 - Help overlay uses yellow border to distinguish from panels
 - Lipgloss `Width(n)`/`Height(n)` include padding but exclude borders — when setting explicit dimensions, add padding to the content size
+
+### Syntax Highlighting
+
+`internal/ui/syntax.go` highlights each line via chroma (`highlightLine`), keyed by `lexerFor(filePath)`. Highlighting is **line-by-line** so it composes with per-line diff backgrounds and the per-line cache — the trade-off is that multi-line lexer state (block comments, raw strings) isn't tracked, which is acceptable and consistent for all languages. Per-theme token colors live in `theme.go` (`chromaStyleEntries`); the custom `chromaFormatter` bakes the diff background into every token so ANSI resets don't clear it mid-line.
+
+Markdown gets two extras (#194):
+- **Headings**: chroma only emits `GenericHeading`/`GenericSubheading` when the line ends in a newline, so `highlightLine` appends `\n` before tokenising (the formatter trims and skips the resulting empty token). The formatter force-bolds heading tokens so they stand out even under named chroma styles (e.g. "github") that don't bold them; custom themes also give headings a color in `theme.go`.
+- **Fenced code blocks**: `buildLines` runs a per-hunk fence state machine (`codeFenceLang` detects ` ``` `/`~~~` open/close + info-string language). Lines inside a fence are highlighted with the declared language via the `langOverride` param threaded through `renderDiffLine` → `highlightLine` (`lexerByName`, case-insensitive, alias-aware). `langOverride` is part of the highlight cache key. Fence state resets per hunk since a diff's hidden gaps make cross-hunk tracking unreliable. Only active for Markdown files (`isMarkdownFile`).
 
 ### File Review Mode
 

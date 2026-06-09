@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Markdown files now render headings in bold and syntax-highlight fenced code blocks using their declared language (e.g. ` ```go `), in addition to the inline `**bold**`/`` `code` `` formatting that already worked. Code inside a fence is highlighted with that language's lexer; bare (language-less) fences stay plain. Works in both git diff and file review mode (#194)
+
 ## [0.5.0] - 2026-06-05
 
 ### Added

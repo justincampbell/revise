@@ -40,6 +40,14 @@ var (
 	fileLexerCacheMu sync.Mutex
 )
 
+// nameLexerCache caches the resolved lexer per language name (used for fenced
+// Markdown code blocks, where the language comes from the fence info string
+// rather than the file path).
+var (
+	nameLexerCache   = map[string]chroma.Lexer{}
+	nameLexerCacheMu sync.Mutex
+)
+
 // clearHighlightCache discards all cached highlighted lines. Called by SetTheme
 // so stale theme-keyed entries don't persist after a theme change.
 func clearHighlightCache() {
@@ -64,16 +72,48 @@ func lexerFor(filePath string) chroma.Lexer {
 	return l
 }
 
+// lexerByName returns the chroma lexer for a language name or alias (e.g. "go",
+// "js"), or nil if unknown. Matching is case-insensitive. Results are cached.
+func lexerByName(name string) chroma.Lexer {
+	nameLexerCacheMu.Lock()
+	defer nameLexerCacheMu.Unlock()
+	if l, ok := nameLexerCache[name]; ok {
+		return l
+	}
+	l := lexers.Get(name)
+	if l != nil {
+		l = chroma.Coalesce(l)
+	}
+	nameLexerCache[name] = l
+	return l
+}
+
+// isMarkdownFile reports whether the file at filePath is highlighted by the
+// Markdown lexer. Used to enable fenced-code-block detection.
+func isMarkdownFile(filePath string) bool {
+	l := lexerFor(filePath)
+	return l != nil && l.Config().Name == "markdown"
+}
+
 // highlightLine applies chroma syntax highlighting to a single line of content,
 // with the given background color baked into every token via a custom formatter.
 // Returns the ANSI-colored string and true if highlighting was applied, or the
-// original content and false if NO_COLOR is set or no lexer matches the file.
-func highlightLine(content, filePath string, bg color.Color, indentSize int) (string, bool) {
+// original content and false if NO_COLOR is set or no lexer matches.
+//
+// When langOverride is non-empty, that language's lexer is used instead of the
+// one inferred from filePath. This lets fenced Markdown code blocks be
+// highlighted with their declared language (e.g. ```go).
+func highlightLine(content, filePath string, bg color.Color, indentSize int, langOverride string) (string, bool) {
 	if noColor {
 		return content, false
 	}
 
-	lexer := lexerFor(filePath)
+	var lexer chroma.Lexer
+	if langOverride != "" {
+		lexer = lexerByName(langOverride)
+	} else {
+		lexer = lexerFor(filePath)
+	}
 	if lexer == nil {
 		return content, false
 	}
@@ -86,7 +126,7 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 		r, g, b, a := bg.RGBA()
 		bgKey = fmt.Sprintf("%d,%d,%d,%d", r, g, b, a)
 	}
-	cacheKey := string(theme) + "\x00" + filePath + "\x00" + bgKey + "\x00" + content
+	cacheKey := string(theme) + "\x00" + filePath + "\x00" + langOverride + "\x00" + bgKey + "\x00" + content
 	if cached, ok := highlightCache[cacheKey]; ok {
 		highlightCacheMu.Unlock()
 		return cached, true
@@ -113,7 +153,10 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int) (st
 	// then prepend the rendered indent guides.
 	guides, stripped := splitLeadingWhitespace(content, indentSize, bg)
 
-	it, err := lexer.Tokenise(nil, stripped)
+	// Append a newline so line-anchored lexer rules fire — the Markdown lexer
+	// only recognises a heading (and similar constructs) when the line ends in a
+	// newline. The formatter trims and skips the resulting empty token.
+	it, err := lexer.Tokenise(nil, stripped+"\n")
 	if err != nil {
 		return content, false
 	}
@@ -154,9 +197,19 @@ type chromaFormatter struct {
 func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
 	for token := it(); token != chroma.EOF; token = it() {
 		value := escapeControlChars(strings.TrimRight(token.Value, "\n"))
+		// Skip empty tokens (e.g. the appended trailing newline) so styling an
+		// empty string doesn't emit stray escape sequences.
+		if value == "" {
+			continue
+		}
+
+		// Markdown headings (Generic.Heading / Generic.Subheading) should always
+		// stand out as headings. Not every chroma style bolds them (the "github"
+		// style, used for light themes, leaves them unstyled), so force bold here.
+		isHeading := token.Type == chroma.GenericHeading || token.Type == chroma.GenericSubheading
 
 		entry := style.Get(token.Type)
-		if entry.IsZero() {
+		if entry.IsZero() && !isHeading {
 			_, _ = fmt.Fprint(w, value)
 			continue
 		}
@@ -167,7 +220,7 @@ func (c chromaFormatter) Format(w io.Writer, style *chroma.Style, it chroma.Iter
 		if c.bg != nil {
 			s = s.Background(c.bg)
 		}
-		if entry.Bold == chroma.Yes {
+		if entry.Bold == chroma.Yes || isHeading {
 			s = s.Bold(true)
 		}
 		// Skip italic for overridden comments — some terminals render
@@ -291,6 +344,41 @@ func addIndentGuides(content string, indentSize int, bg color.Color) string {
 	}
 	guides, rest := splitLeadingWhitespace(content, indentSize, bg)
 	return guides + rest
+}
+
+// codeFenceLang reports whether a line is a Markdown fenced-code delimiter
+// (``` or ~~~, optionally indented) and returns the info-string language.
+// For an opening fence the language is the first token of the info string,
+// lowercased (e.g. "go" for "```go"); it is "" for a bare fence (which may be
+// either an opening fence with no language or a closing fence).
+func codeFenceLang(content string) (isFence bool, lang string) {
+	t := strings.TrimLeft(content, " ")
+	var fenceChar byte
+	switch {
+	case strings.HasPrefix(t, "```"):
+		fenceChar = '`'
+	case strings.HasPrefix(t, "~~~"):
+		fenceChar = '~'
+	default:
+		return false, ""
+	}
+
+	// Skip the run of fence characters.
+	i := 0
+	for i < len(t) && t[i] == fenceChar {
+		i++
+	}
+	info := strings.TrimSpace(t[i:])
+
+	// A backtick info string may not contain backticks (CommonMark): this avoids
+	// treating inline code like `x = ``y`` ` as a fence.
+	if fenceChar == '`' && strings.Contains(info, "`") {
+		return false, ""
+	}
+	if info == "" {
+		return true, ""
+	}
+	return true, strings.ToLower(strings.Fields(info)[0])
 }
 
 // escapeControlChars replaces control characters with Unicode Control Picture
