@@ -135,17 +135,18 @@ func highlightLine(content, filePath string, bg color.Color, indentSize int, lan
 
 	var style *chroma.Style
 	isAuto := theme == ThemeAuto || theme == ThemeAutoDaltonized
-	if isAuto {
-		// Auto themes use a built-in chroma style that works with the
-		// terminal's native palette instead of hardcoded hex colors.
-		if isDark {
-			style = styles.Get("native")
-		} else {
-			style = styles.Get(chromaStyleFor())
-		}
-	} else if entries := chromaStyleEntries(theme); entries != nil {
+	entries := chromaStyleEntries(theme)
+	switch {
+	case isAuto && isDark:
+		// Dark terminal: a built-in chroma style that works with the terminal's
+		// native palette instead of hardcoded hex colors.
+		style = styles.Get("native")
+	case entries != nil:
+		// Custom per-theme token colors (includes auto + light + daltonized,
+		// which needs the green→blue swap).
 		style = chroma.MustNewStyle("revise", entries)
-	} else {
+	default:
+		// Light terminal / named light themes: the github chroma style.
 		style = styles.Get(chromaStyleFor())
 	}
 

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The `auto` theme now adapts diff-line backgrounds to a light terminal. Previously, on a light background, added/removed lines kept a hardcoded dark background, so the (dark) syntax-highlight text was baked over it and became unreadable. Auto mode on a light terminal now mirrors the `github-light` palette, and the daltonized auto theme picks up the colorblind-safe light syntax colors too (#198)
+
 ## [0.5.2] - 2026-06-10
 
 ### Added
