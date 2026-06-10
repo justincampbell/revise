@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/devwatch"
@@ -156,7 +156,9 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithReportFocus(), tea.WithOutput(ttyOut))
+	// In Bubble Tea v2 the alt screen, mouse mode, and focus reporting are set
+	// declaratively on the View (see Model.View), not as program options.
+	p := tea.NewProgram(m, tea.WithOutput(ttyOut))
 
 	finalModel, err := runProgram(p, *devFlag)
 	if err != nil {
@@ -177,7 +179,7 @@ func runFileReview(filePath string, outputPath string, devMode bool) {
 		os.Exit(1)
 	}
 	m := ui.NewFileReview(diff, filePath)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(ttyOut))
+	p := tea.NewProgram(m, tea.WithOutput(ttyOut))
 	finalModel, err := runProgram(p, devMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

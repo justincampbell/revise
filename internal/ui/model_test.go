@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/justincampbell/revise/internal/update"
 	"github.com/stretchr/testify/assert"
@@ -43,14 +44,35 @@ func makeModelWithDiff(filePath string, lines []git.Line) Model {
 	return updated.(Model)
 }
 
+// keyPress builds a Bubble Tea v2 key-press message for the given printable
+// text. Key.String() returns Text verbatim, so this matches the same string
+// the production switch keys on (e.g. "l", "D", "!"); v2 textinput inserts
+// Text, so multi-rune values (e.g. "alpha") type that text into an input box.
+func keyPress(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: []rune(s)[0], Text: s}
+}
+
 func sendKey(m Model, key string) Model {
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	updated, _ := m.Update(keyPress(key))
 	return updated.(Model)
 }
 
-func sendSpecialKey(m Model, keyType tea.KeyType) Model {
-	updated, _ := m.Update(tea.KeyMsg{Type: keyType})
+// sendSpecialKey sends a non-printable key by its v2 key code (e.g.
+// tea.KeyEnter, tea.KeyEscape, tea.KeyDown). Text is left empty so
+// Key.String() yields the keystroke name ("enter", "esc", …).
+func sendSpecialKey(m Model, code rune) Model {
+	updated, _ := m.Update(tea.KeyPressMsg{Code: code})
 	return updated.(Model)
+}
+
+// pinExplicitTheme fixes a non-auto theme for the test so FocusMsg doesn't also
+// emit a background-color re-query (which auto themes do, #198). Use it when
+// asserting purely on refresh-scheduling behavior. Restores on cleanup.
+func pinExplicitTheme(t *testing.T) {
+	t.Helper()
+	orig, origDark := activeTheme, activeIsDark
+	t.Cleanup(func() { SetTheme(orig, origDark) })
+	SetTheme(ThemeGithubDark, true)
 }
 
 // focusDiffAndMoveToline focuses the diff view and moves the cursor n lines down.
@@ -96,7 +118,7 @@ func TestModelHKey_FocusesFileList(t *testing.T) {
 func TestModelEsc_FocusesFileList(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "l")
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.Equal(t, focusFileList, m.focus)
 }
 
@@ -104,7 +126,7 @@ func TestModelEsc_ExitsFullscreenAndFocusesFileList(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "f")
 	require.True(t, m.fullscreen)
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.False(t, m.fullscreen)
 	assert.Equal(t, focusFileList, m.focus)
 }
@@ -141,7 +163,7 @@ func TestModelShiftN_PrevFile(t *testing.T) {
 	m := makeModel("a.go", "b.go", "c.go")
 	m = sendKey(m, "n")
 	m = sendKey(m, "n")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
+	updated, _ := m.Update(keyPress("N"))
 	m = updated.(Model)
 	assert.Equal(t, 1, m.fileList.cursor)
 }
@@ -218,7 +240,7 @@ func TestModelMouseWheelRight_ScrollsDiffRight(t *testing.T) {
 	m = sendKey(m, "l")
 	require.Equal(t, 0, m.diffView.hOffset)
 	// Click inside the diff pane (x past file list width + gap).
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelRight, X: 50, Y: 5})
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight, X: 50, Y: 5})
 	m = updated.(Model)
 	assert.Greater(t, m.diffView.hOffset, 0)
 }
@@ -229,7 +251,7 @@ func TestModelMouseWheelLeft_ScrollsDiffLeft(t *testing.T) {
 	})
 	m = sendKey(m, "l")
 	m.diffView.hOffset = 20
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelLeft, X: 50, Y: 5})
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft, X: 50, Y: 5})
 	m = updated.(Model)
 	assert.Less(t, m.diffView.hOffset, 20)
 }
@@ -246,7 +268,7 @@ func TestModelHelpMouseScrollDown(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "?")
 	require.True(t, m.showHelp)
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	m = updated.(Model)
 	assert.Equal(t, 1, m.helpScroll)
 }
@@ -255,7 +277,7 @@ func TestModelHelpMouseScrollUp(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "?")
 	m.helpScroll = 5
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(Model)
 	assert.Equal(t, 4, m.helpScroll)
 }
@@ -264,7 +286,7 @@ func TestModelHelpMouseScrollUpAtZero(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "?")
 	require.Equal(t, 0, m.helpScroll)
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	updated, _ := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	m = updated.(Model)
 	assert.Equal(t, 0, m.helpScroll)
 }
@@ -273,7 +295,7 @@ func TestModelHelpOverlayShowsBackground(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "?")
 	require.True(t, m.showHelp)
-	view := m.View()
+	view := m.View().Content
 	// The help overlay should contain help content
 	assert.Contains(t, view, "Keyboard Shortcuts")
 	// The background (file list) should still be visible around the overlay
@@ -308,7 +330,7 @@ func TestModelComment_InputEsc_Cancels(t *testing.T) {
 	m = focusDiffAndMoveTo(m, 0)
 	m = sendKey(m, "c")
 	require.True(t, m.commentInputActive)
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.False(t, m.commentInputActive)
 }
 
@@ -321,7 +343,7 @@ func TestModelComment_TypeAndSave(t *testing.T) {
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
 	assert.Equal(t, "hi", m.diffView.textInput.Value())
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.commentInputActive)
 	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
@@ -358,7 +380,7 @@ func TestModelComment_Backspace(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "a")
 	m = sendKey(m, "b")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	m = updated.(Model)
 	assert.Equal(t, "a", m.diffView.textInput.Value())
 }
@@ -372,12 +394,12 @@ func TestModelComment_ClearInputOnEnter_DeletesComment(t *testing.T) {
 	m = sendKey(m, "c")
 	require.Equal(t, "hi", m.diffView.textInput.Value()) // pre-filled
 	// Clear the input with backspace, then press enter
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	m = updated.(Model)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	m = updated.(Model)
 	require.Empty(t, m.diffView.textInput.Value())
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	_, exists := m.comments[commentKey{file: "foo.go", lineNum: 1}]
 	assert.False(t, exists)
@@ -684,10 +706,10 @@ func TestMouseClickSlider_DefaultBranch_BranchDisabled_NoOp(t *testing.T) {
 	m = updated.(Model)
 	require.Equal(t, ModeStaged, m.mode)
 
-	mouseMsg := tea.MouseMsg{
+	mouseMsg := tea.MouseClickMsg{
 		X:      0, // "Branch" label
 		Y:      m.height - 1,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	updated, cmd := m.Update(mouseMsg)
 	m = updated.(Model)
@@ -706,10 +728,10 @@ func TestMouseClickSlider_SwitchesMode(t *testing.T) {
 	assert.Equal(t, ModeBranch, m.mode)
 
 	// Click on "Unstaged" label (position 14) in the status bar row
-	mouseMsg := tea.MouseMsg{
+	mouseMsg := tea.MouseClickMsg{
 		X:      14,
 		Y:      m.height - 1,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	updated, cmd := m.Update(mouseMsg)
 	m = updated.(Model)
@@ -722,10 +744,10 @@ func TestMouseClickSlider_SameMode_NoReload(t *testing.T) {
 	assert.Equal(t, ModeBranch, m.mode)
 
 	// Click on "Branch" label (position 0) — already active
-	mouseMsg := tea.MouseMsg{
+	mouseMsg := tea.MouseClickMsg{
 		X:      0,
 		Y:      m.height - 1,
-		Button: tea.MouseButtonLeft,
+		Button: tea.MouseLeft,
 	}
 	updated, cmd := m.Update(mouseMsg)
 	m = updated.(Model)
@@ -742,11 +764,10 @@ func TestMouseRelease_Ignored(t *testing.T) {
 	require.True(t, m.commentInputActive)
 
 	// Simulate mouse release on the diff panel — should be ignored
-	releaseMsg := tea.MouseMsg{
+	releaseMsg := tea.MouseReleaseMsg{
 		X:      40,
 		Y:      2,
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionRelease,
+		Button: tea.MouseLeft,
 	}
 	updated, _ := m.Update(releaseMsg)
 	m = updated.(Model)
@@ -763,7 +784,7 @@ func TestModelExport_NoCommentsNoStatus(t *testing.T) {
 
 func TestModelReportIssue_SetsStatusAndReturnsCmd(t *testing.T) {
 	m := makeModel("a.go")
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	updated, cmd := m.Update(keyPress("!"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "Opening")
 	assert.NotNil(t, cmd, "should return a command to open the URL")
@@ -771,7 +792,7 @@ func TestModelReportIssue_SetsStatusAndReturnsCmd(t *testing.T) {
 
 func TestModelHardRefresh_SetsStatusAndReturnsCmd(t *testing.T) {
 	m := makeModel("a.go")
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, cmd := m.Update(keyPress("r"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "Refreshing")
 	assert.NotNil(t, cmd, "should return a command to reload the diff")
@@ -782,7 +803,7 @@ func TestModelHardRefresh_NoOpInFileReviewMode(t *testing.T) {
 	m.fileReviewMode = true
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	updated, cmd := m.Update(keyPress("r"))
 	m = updated.(Model)
 	assert.Empty(t, m.statusMsg)
 	assert.Nil(t, cmd)
@@ -791,7 +812,7 @@ func TestModelHardRefresh_NoOpInFileReviewMode(t *testing.T) {
 func TestModelReportIssue_WorksFromDiffView(t *testing.T) {
 	m := makeModel("a.go")
 	m = sendKey(m, "l") // focus diff
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	updated, cmd := m.Update(keyPress("!"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "Opening")
 	assert.NotNil(t, cmd, "should return a command to open the URL")
@@ -901,7 +922,7 @@ func makeModelWithSourcedHunk(source git.HunkSource) Model {
 func TestModelStageKey_OnUnstagedHunk_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated, cmd := m.Update(keyPress("s"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for staging")
 	assert.Empty(t, m.statusMsg)
@@ -924,7 +945,7 @@ func TestModelStageKey_OnBranchHunk_ShowsError(t *testing.T) {
 func TestModelUnstageKey_OnStagedHunk_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	m = sendKey(m, "l") // focus diff
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	updated, cmd := m.Update(keyPress("u"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for unstaging")
 	assert.Empty(t, m.statusMsg)
@@ -940,7 +961,7 @@ func TestModelUnstageKey_OnUnstagedHunk_ShowsError(t *testing.T) {
 func TestModelDiscardKey_OnUnstagedHunk_PromptsConfirmation(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.True(t, m.confirmDiscard)
 	assert.Contains(t, m.confirmMsg, "cannot be undone")
@@ -949,10 +970,10 @@ func TestModelDiscardKey_OnUnstagedHunk_PromptsConfirmation(t *testing.T) {
 func TestModelDiscardKey_ConfirmWithY_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	require.True(t, m.confirmDiscard)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	updated, cmd := m.Update(keyPress("y"))
 	m = updated.(Model)
 	assert.False(t, m.confirmDiscard)
 	assert.NotNil(t, cmd, "should return a command after confirmation")
@@ -961,10 +982,10 @@ func TestModelDiscardKey_ConfirmWithY_ReturnsCmd(t *testing.T) {
 func TestModelDiscardKey_ConfirmWithEnter(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	require.True(t, m.confirmDiscard)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.confirmDiscard)
 	assert.NotNil(t, cmd, "Enter should confirm discard")
@@ -973,7 +994,7 @@ func TestModelDiscardKey_ConfirmWithEnter(t *testing.T) {
 func TestModelDiscardKey_CancelWithOtherKey(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	require.True(t, m.confirmDiscard)
 	m = sendKey(m, "n")
@@ -984,7 +1005,7 @@ func TestModelDiscardKey_CancelWithOtherKey(t *testing.T) {
 func TestModelDiscardKey_OnStagedHunk_PromptsConfirmation(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.True(t, m.confirmDiscard)
 	assert.Contains(t, m.confirmMsg, "cannot be undone")
@@ -993,7 +1014,7 @@ func TestModelDiscardKey_OnStagedHunk_PromptsConfirmation(t *testing.T) {
 func TestModelDiscardKey_OnBranchHunk_ShowsError(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceBranch)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "committed")
 	assert.False(t, m.confirmDiscard)
@@ -1002,7 +1023,7 @@ func TestModelDiscardKey_OnBranchHunk_ShowsError(t *testing.T) {
 func TestModelStageFileKey_WithUnstagedHunks_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	updated, cmd := m.Update(keyPress("S"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for staging file")
 	assert.Empty(t, m.statusMsg)
@@ -1011,7 +1032,7 @@ func TestModelStageFileKey_WithUnstagedHunks_ReturnsCmd(t *testing.T) {
 func TestModelStageFileKey_NoUnstagedHunks_ShowsError(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	updated, _ := m.Update(keyPress("S"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "No unstaged")
 }
@@ -1019,7 +1040,7 @@ func TestModelStageFileKey_NoUnstagedHunks_ShowsError(t *testing.T) {
 func TestModelStageFileKey_BranchHunksOnly_ShowsError(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceBranch)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	updated, _ := m.Update(keyPress("S"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "No unstaged")
 }
@@ -1027,7 +1048,7 @@ func TestModelStageFileKey_BranchHunksOnly_ShowsError(t *testing.T) {
 func TestModelUnstageFileKey_WithStagedHunks_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	m = sendKey(m, "l") // focus diff
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	updated, cmd := m.Update(keyPress("U"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for unstaging file")
 	assert.Empty(t, m.statusMsg)
@@ -1036,7 +1057,7 @@ func TestModelUnstageFileKey_WithStagedHunks_ReturnsCmd(t *testing.T) {
 func TestModelUnstageFileKey_NoStagedHunks_ShowsError(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	updated, _ := m.Update(keyPress("U"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "No staged")
 }
@@ -1046,7 +1067,7 @@ func TestModelUnstageFileKey_NoStagedHunks_ShowsError(t *testing.T) {
 func TestModelFileList_S_StagesFile(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	updated, cmd := m.Update(keyPress("s"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for staging file")
 	assert.Empty(t, m.statusMsg)
@@ -1062,7 +1083,7 @@ func TestModelFileList_S_NoUnstaged_ShowsError(t *testing.T) {
 func TestModelFileList_ShiftS_StagesFile(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	updated, cmd := m.Update(keyPress("S"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "S should stage file from file list")
 	assert.Empty(t, m.statusMsg)
@@ -1071,7 +1092,7 @@ func TestModelFileList_ShiftS_StagesFile(t *testing.T) {
 func TestModelFileList_U_UnstagesFile(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	updated, cmd := m.Update(keyPress("u"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "should return a command for unstaging file")
 	assert.Empty(t, m.statusMsg)
@@ -1087,7 +1108,7 @@ func TestModelFileList_U_NoStaged_ShowsError(t *testing.T) {
 func TestModelFileList_ShiftU_UnstagesFile(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("U")})
+	updated, cmd := m.Update(keyPress("U"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "U should unstage file from file list")
 	assert.Empty(t, m.statusMsg)
@@ -1096,7 +1117,7 @@ func TestModelFileList_ShiftU_UnstagesFile(t *testing.T) {
 func TestModelFileList_D_PromptsConfirmation(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.True(t, m.confirmDiscard)
 	assert.Contains(t, m.confirmMsg, "cannot be undone")
@@ -1105,10 +1126,10 @@ func TestModelFileList_D_PromptsConfirmation(t *testing.T) {
 func TestModelFileList_D_ConfirmWithY_ReturnsCmd(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	require.True(t, m.confirmDiscard)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	updated, cmd := m.Update(keyPress("y"))
 	m = updated.(Model)
 	assert.False(t, m.confirmDiscard)
 	assert.NotNil(t, cmd, "should return a command after confirmation")
@@ -1117,7 +1138,7 @@ func TestModelFileList_D_ConfirmWithY_ReturnsCmd(t *testing.T) {
 func TestModelFileList_D_StagedFile_PromptsConfirmation(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceStaged)
 	require.Equal(t, focusFileList, m.focus)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.True(t, m.confirmDiscard)
 	assert.Contains(t, m.confirmMsg, "cannot be undone")
@@ -1126,7 +1147,7 @@ func TestModelFileList_D_StagedFile_PromptsConfirmation(t *testing.T) {
 func TestModelFileList_D_BranchOnlyFile_ShowsError(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceBranch)
 	require.Equal(t, focusFileList, m.focus)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, _ := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "No changes")
 	assert.False(t, m.confirmDiscard)
@@ -1272,7 +1293,7 @@ func TestModelComment_PersistsOnSave(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	_ = updated.(Model)
 
 	// Create a new model from the same store — should load the comment
@@ -1350,7 +1371,7 @@ func TestModelClearComments_ConfirmWithEnter_ClearsComments(t *testing.T) {
 	m.comments[commentKey{file: "foo.go", lineNum: 1}] = "a comment"
 	m = sendKey(m, "C")
 	require.True(t, m.confirmClear)
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.confirmClear)
 	assert.Empty(t, m.comments)
@@ -1418,7 +1439,7 @@ func TestModelComment_NoStorePathDoesNotPersist(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 1}])
 	// No panic, no error — just works in memory
@@ -1444,7 +1465,7 @@ func TestModelFileList_C_TypeAndSave(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 	assert.False(t, m.commentInputActive)
 	assert.Equal(t, "hi", m.comments[commentKey{file: "foo.go", lineNum: 0}])
@@ -1496,7 +1517,7 @@ func TestModelFileList_C_Esc_Cancels(t *testing.T) {
 	})
 	m = sendKey(m, "c")
 	require.True(t, m.commentInputActive)
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.False(t, m.commentInputActive)
 }
 
@@ -1511,7 +1532,7 @@ func TestModelFileComment_Persists(t *testing.T) {
 	m = sendKey(m, "c")
 	m = sendKey(m, "h")
 	m = sendKey(m, "i")
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 
 	// Create a new model from the same store — should load the file comment
@@ -1661,6 +1682,7 @@ func TestBlur_StopsPolling(t *testing.T) {
 }
 
 func TestFocus_ResumesPolling(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.focused = false
 
@@ -1671,6 +1693,7 @@ func TestFocus_ResumesPolling(t *testing.T) {
 }
 
 func TestFocus_PollsImmediately(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.focused = false
 
@@ -1711,6 +1734,7 @@ func TestFSEvent_RequestsRefreshAndRelistens(t *testing.T) {
 }
 
 func TestRequestRefresh_SkipsWhilePolling(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.polling = true
 
@@ -1853,7 +1877,7 @@ func TestFileReviewMode_StageKeyIsNoop(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
 	})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	_, cmd := m.Update(keyPress("s"))
 	assert.Nil(t, cmd)
 }
 
@@ -1861,7 +1885,7 @@ func TestFileReviewMode_UnstageKeyIsNoop(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
 	})
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	_, cmd := m.Update(keyPress("u"))
 	assert.Nil(t, cmd)
 }
 
@@ -1869,7 +1893,7 @@ func TestFileReviewMode_DiscardKeyIsNoop(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
 	})
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("D")})
+	updated, cmd := m.Update(keyPress("D"))
 	m = updated.(Model)
 	assert.Nil(t, cmd)
 	assert.False(t, m.confirmDiscard)
@@ -1942,15 +1966,54 @@ func TestFileReviewMode_CannotExitFullscreen(t *testing.T) {
 	assert.True(t, m.fullscreen)
 	m = sendKey(m, "f")
 	assert.True(t, m.fullscreen)
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.True(t, m.fullscreen)
 }
 
-func TestFileReviewMode_InitReturnsNil(t *testing.T) {
-	m := makeFileReviewModel([]git.Line{
-		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
-	})
-	assert.Nil(t, m.Init())
+// TestColorSchemeEvent_AutoThemeTracksOS verifies that an OS light/dark change
+// (DEC mode 2031) re-applies the palette live under an auto theme, and is
+// ignored under an explicit theme (#198).
+func TestColorSchemeEvent_AutoThemeTracksOS(t *testing.T) {
+	origTheme, origIsDark := activeTheme, activeIsDark
+	defer SetTheme(origTheme, origIsDark)
+
+	send := func(m Model, msg tea.Msg) Model {
+		updated, _ := m.Update(msg)
+		return updated.(Model)
+	}
+
+	// Auto theme starting dark → a Light event flips to light, a Dark event back.
+	SetTheme(ThemeAuto, true)
+	m := makeModel("a.go")
+	m = send(m, uv.LightColorSchemeEvent{})
+	assert.False(t, activeIsDark, "auto theme should switch to light on a LightColorSchemeEvent")
+	_ = send(m, uv.DarkColorSchemeEvent{})
+	assert.True(t, activeIsDark, "auto theme should switch back to dark on a DarkColorSchemeEvent")
+
+	// Explicit theme: the user's choice wins; OS changes are ignored.
+	SetTheme(ThemeGithubDark, true)
+	m = makeModel("a.go")
+	_ = send(m, uv.LightColorSchemeEvent{})
+	assert.True(t, activeIsDark, "explicit theme must ignore OS color-scheme changes")
+}
+
+func TestFileReviewMode_Init(t *testing.T) {
+	origTheme, origIsDark := activeTheme, activeIsDark
+	defer SetTheme(origTheme, origIsDark)
+
+	lines := []git.Line{{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1}}
+
+	// Explicit theme: file review starts no commands — no refresh loop and no
+	// color-scheme tracking.
+	SetTheme(ThemeGithubDark, true)
+	m := makeFileReviewModel(lines)
+	assert.Nil(t, m.Init(), "file review with an explicit theme starts no commands")
+
+	// Auto theme: still no refresh loop, but Init enables live OS light/dark
+	// color-scheme reporting (DEC mode 2031), so it returns that one command.
+	SetTheme(ThemeAuto, true)
+	m = makeFileReviewModel(lines)
+	assert.NotNil(t, m.Init(), "file review with an auto theme enables color-scheme reporting")
 }
 
 // TestPaneHeightsMatch is a regression test for #169: the file list and diff
@@ -2014,7 +2077,7 @@ func TestModelE_ReturnsExecCmdWhenFileSelected(t *testing.T) {
 	m := makeModelWithDiff("foo.go", []git.Line{
 		{Type: git.LineContext, Content: "line one", OldNum: 1, NewNum: 1},
 	})
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	updated, cmd := m.Update(keyPress("E"))
 	m = updated.(Model)
 	assert.NotNil(t, cmd, "E should return a tea.ExecProcess command")
 	assert.Empty(t, m.statusMsg)
@@ -2025,7 +2088,7 @@ func TestModelE_NoOpWithNoFile(t *testing.T) {
 	m := New(&git.Diff{Files: nil}, false)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	updated, cmd := m.Update(keyPress("E"))
 	m = updated.(Model)
 	assert.Nil(t, cmd, "E with no file should be a no-op")
 	assert.Empty(t, m.statusMsg)
@@ -2087,7 +2150,7 @@ func TestModelE_DeletedFileShowsStatus(t *testing.T) {
 	m := New(&git.Diff{Files: files}, false)
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = updated.(Model)
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	updated, cmd := m.Update(keyPress("E"))
 	m = updated.(Model)
 	assert.Contains(t, m.statusMsg, "deleted")
 	assert.NotNil(t, cmd, "should return a clearStatusMsg tick")

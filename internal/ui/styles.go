@@ -12,6 +12,13 @@ var noColor = os.Getenv("NO_COLOR") != ""
 var activeTheme Theme = ThemeAuto
 var activeIsDark = true // default until terminal background is detected
 
+// autoThemeActive reports whether the active theme follows the terminal's
+// light/dark background (ThemeAuto / ThemeAutoDaltonized). Only these themes
+// react to runtime color-scheme changes; explicit themes are left untouched.
+func autoThemeActive() bool {
+	return activeTheme == ThemeAuto || activeTheme == ThemeAutoDaltonized
+}
+
 // colorBorder, colorCyan, and colorYellow are used directly in diffview.go and help.go
 // for dynamic border/style construction.
 var (
