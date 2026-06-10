@@ -252,4 +252,11 @@ The display-row math lives in a few primitives in `diffview.go`:
 
 `clickToAbsIdx` and `scrollForCommentInput` go through the same primitives, so mouse clicks and the inline comment box stay correct with wrap on. Horizontal scroll is disabled (hOffset forced to 0) while wrapping.
 
+### Scrollbar
+
+When diff-view content overflows the viewport, a scrollbar thumb is drawn on the right border (suppressed when everything fits, so short files stay clean and existing border snapshots are unaffected). Design (#196):
+
+- `overlayScrollbar` replaces the rightmost column (the `│` border char) of the thumb's track rows with a solid `█` block, after all border-title/footer decoration is done (those only touch the top/bottom lines, never the interior right border). A full block — rather than a heavy line like `┃`, which some fonts render indistinguishably from the `│` track — makes the thumb stand out. It's `Bold` and colored `colorCyan` when the pane is focused, else `colorScrollbarThumb` (`p.dim`, a mid gray brighter than the border).
+- Geometry comes from `scrollMetrics()` (total display rows, rows above the viewport, viewport height). Row-based (not logical-line-based) math keeps it correct with soft wrap on. `scrollbarThumb` returns `(top, size, show)` with `size ≈ viewH²/totalRows` clamped to `[1, viewH-1]`; `top` is offset-based so the thumb tracks the viewport, not the cursor.
+
 

@@ -18,6 +18,10 @@ var (
 	colorBorder color.Color = lipgloss.Color("#374151")
 	colorCyan   color.Color = lipgloss.Color("#06b6d4")
 	colorYellow color.Color = lipgloss.Color("#eab308")
+	// colorScrollbarThumb is the right-border scrollbar thumb color when the
+	// diff pane is unfocused — a mid gray, brighter than colorBorder so the
+	// thumb stands out from the border track. Focused panes use colorCyan.
+	colorScrollbarThumb color.Color = lipgloss.Color("#6b7280")
 )
 
 // SetTheme sets the active theme. Called from main.go for --theme overrides,
@@ -131,6 +135,7 @@ func applyTheme(p themeColors) {
 	colorBorder = p.border
 	colorCyan = p.cyan
 	colorYellow = p.yellow
+	colorScrollbarThumb = p.dim
 
 	addedStyle = lipgloss.NewStyle().Foreground(p.addedFg).Background(p.addedBg)
 	removedStyle = lipgloss.NewStyle().Foreground(p.removedFg).Background(p.removedBg)

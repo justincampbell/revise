@@ -732,3 +732,41 @@ func TestSetBorderBottomCounts_NarrowPaneFallback(t *testing.T) {
 	// Should not panic and should produce a valid string
 	assert.NotEmpty(t, result)
 }
+
+func TestScrollbarThumb_HiddenWhenContentFits(t *testing.T) {
+	m := makeDiffViewModel(5, 10)
+	_, _, show := m.scrollbarThumb()
+	assert.False(t, show)
+}
+
+func TestScrollbarThumb_PositionAndSize(t *testing.T) {
+	// 100 lines, 10-row viewport: thumb size ≈ viewH*viewH/total = 1.
+	m := makeDiffViewModel(100, 10)
+
+	m.offset = 0
+	top, size, show := m.scrollbarThumb()
+	assert.True(t, show)
+	assert.Equal(t, 0, top, "thumb sits at the top when offset is 0")
+	assert.GreaterOrEqual(t, size, 1)
+	assert.Less(t, size, 10, "thumb is smaller than the track for a long file")
+
+	// At the bottom, the thumb sits flush against the end of the track.
+	m.offset = m.bottomOffset()
+	topB, sizeB, _ := m.scrollbarThumb()
+	assert.Equal(t, 10-sizeB, topB, "thumb sits at the bottom of the track")
+}
+
+func TestDiffViewRender_ScrollbarThumbVisibility(t *testing.T) {
+	// Long content draws a thumb glyph on the right border.
+	long := makeDiffViewModel(100, 10)
+	long.width = 40
+	long.offset = 0
+	out := ansi.Strip(long.render(true, 3, false))
+	assert.Contains(t, out, "█", "long content should draw a scrollbar thumb")
+
+	// Short content (fits the viewport) draws no thumb.
+	short := makeDiffViewModel(3, 10)
+	short.width = 40
+	shortOut := ansi.Strip(short.render(true, 3, false))
+	assert.NotContains(t, shortOut, "█", "short content should not draw a scrollbar")
+}

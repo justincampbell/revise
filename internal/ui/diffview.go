@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 
@@ -631,6 +632,91 @@ func (m *diffViewModel) viewHeight() int {
 	return h
 }
 
+// scrollMetrics returns the total display rows of all content, the display rows
+// above the current viewport top (offset), and the viewport height in rows.
+// The scrollbar thumb and the scroll-position label both derive from these so
+// they always agree. Row counts (not logical-line counts) make the math correct
+// when soft wrap is on.
+func (m diffViewModel) scrollMetrics() (totalRows, rowsAbove, viewH int) {
+	viewH = m.viewHeight()
+	if len(m.lines) == 0 {
+		return 0, 0, viewH
+	}
+	avail := m.viewWidth()
+	totalRows = m.rowSpan(0, len(m.lines)-1, avail)
+	if m.offset > 0 {
+		rowsAbove = m.rowSpan(0, m.offset-1, avail)
+	}
+	return totalRows, rowsAbove, viewH
+}
+
+// scrollbarThumb returns the thumb's top row and size within the viewport track
+// (viewH rows) and whether to draw it. show is false when all content fits or
+// the viewport is too short to render a meaningful thumb.
+func (m diffViewModel) scrollbarThumb() (top, size int, show bool) {
+	totalRows, rowsAbove, viewH := m.scrollMetrics()
+	if viewH < 2 || totalRows <= viewH {
+		return 0, 0, false
+	}
+	size = int(math.Round(float64(viewH) * float64(viewH) / float64(totalRows)))
+	if size < 1 {
+		size = 1
+	}
+	if size > viewH-1 {
+		size = viewH - 1 // leave at least one row of travel so the thumb can move
+	}
+	maxAbove := totalRows - viewH
+	maxTop := viewH - size
+	frac := 0.0
+	if maxAbove > 0 {
+		frac = float64(rowsAbove) / float64(maxAbove)
+	}
+	frac = math.Min(1, math.Max(0, frac))
+	top = int(math.Round(float64(maxTop) * frac))
+	if top < 0 {
+		top = 0
+	}
+	if top > maxTop {
+		top = maxTop
+	}
+	return top, size, true
+}
+
+// overlayScrollbar draws the scrollbar thumb onto the right border of an
+// already-rendered, bordered box by replacing the rightmost column of the
+// thumb's track rows with a solid block. A full block (rather than a heavy line
+// like ┃, which some fonts render indistinguishably from the │ track) makes the
+// thumb stand out, and it's colored cyan when the pane is focused. No-op when
+// all content fits. Interior rows are lines[1 .. len-2]; track row t → lines[t+1].
+func (m diffViewModel) overlayScrollbar(rendered string, focused bool) string {
+	top, size, show := m.scrollbarThumb()
+	if !show || size <= 0 {
+		return rendered
+	}
+	lines := strings.Split(rendered, "\n")
+	if len(lines) < 3 {
+		return rendered // need a top border, ≥1 interior row, and a bottom border
+	}
+	interior := len(lines) - 2
+
+	thumbColor := colorScrollbarThumb
+	if focused {
+		thumbColor = colorCyan
+	}
+	thumb := lipgloss.NewStyle().Foreground(thumbColor).Bold(true).Render("█")
+
+	for t := top; t < top+size && t < interior; t++ {
+		rowIdx := t + 1
+		line := lines[rowIdx]
+		w := ansi.StringWidth(line)
+		if w < 1 {
+			continue
+		}
+		lines[rowIdx] = ansi.Truncate(line, w-1, "") + thumb
+	}
+	return strings.Join(lines, "\n")
+}
+
 // matchRanges returns the rune-index ranges of every case-insensitive
 // occurrence of query within content. Ranges are [start, end) in runes so
 // callers can slice []rune(content) directly. Returns nil for an empty query
@@ -1178,7 +1264,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		if m.wrapEnabled {
 			rendered = setBorderBottomRight(rendered, modeActiveStyle.Render(" Wrap "), focused)
 		}
-		return rendered
+		return m.overlayScrollbar(rendered, focused)
 	}
 
 	title := ""
@@ -1218,7 +1304,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		right += statusBarStyle.Render(" Whitespace ")
 	}
 	rendered = setBorderBottomRight(rendered, right, focused)
-	return rendered
+	return m.overlayScrollbar(rendered, focused)
 }
 
 // setBorderTitle overlays a styled title onto the top border of a lipgloss-rendered box.
