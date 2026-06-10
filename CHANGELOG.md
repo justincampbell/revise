@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The diff view now shows a scrollbar on the right border when content overflows the viewport: the thumb's size reflects how much of the file is visible and its position shows where you are. It appears only when there's something to scroll, so short files stay uncluttered. Useful for keeping your bearings when reviewing long files, e.g. plans via `revise plan.md`. Works in both git diff and file review mode (#196)
+
 ## [0.5.1] - 2026-06-09
 
 ### Added
