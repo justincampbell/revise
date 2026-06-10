@@ -9,9 +9,9 @@ A terminal UI for reviewing local git changes and sending feedback to Claude Cod
 ## Tech Stack
 
 - **Language**: Go
-- **TUI framework**: `github.com/charmbracelet/bubbletea` (Elm architecture)
-- **Styling**: `github.com/charmbracelet/lipgloss`
-- **Mouse support**: `tea.WithMouseCellMotion()` enabled in main
+- **TUI framework**: `charm.land/bubbletea/v2` (Elm architecture)
+- **Styling**: `charm.land/lipgloss/v2`
+- **Terminal modes**: in Bubble Tea v2, alt screen / mouse / focus reporting are set declaratively on the `tea.View` returned by `Model.View()` (`AltScreen`, `MouseMode`, `ReportFocus`), not via program options. `View()` returns `tea.View` (wrap a string with `tea.NewView`), not a plain `string`.
 
 ## Maintaining This File
 
@@ -209,6 +209,11 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 - Scroll wheel up/down: scrolls whichever panel the cursor is over (help overlay intercepts scroll when visible)
 - Left click on file list: selects the file at that row (accounts for border + header offset)
 - Panel detection uses X position relative to file list width
+- Bubble Tea v2 splits the old `MouseMsg` into per-action types: wheel events arrive as `tea.MouseWheelMsg`, a button press as `tea.MouseClickMsg` (no `Action` check needed — a click *is* a press), release as `tea.MouseReleaseMsg` (unhandled, so releases are ignored). Coordinates/button come from `msg.Mouse()` (`mouseFocusDiff` takes a `tea.Mouse`).
+
+### Theme Detection (light/dark)
+
+The initial light/dark choice for auto themes is detected before the program starts via `lipgloss.HasDarkBackground` in `main.go`. To track OS appearance changes *while running*, `Model.Init` enables DEC mode 2031 (`tea.Raw(ansi.SetModeLightDark)`) when an auto theme is active; the terminal then reports scheme changes as `uv.LightColorSchemeEvent`/`uv.DarkColorSchemeEvent` (`uv` = `github.com/charmbracelet/ultraviolet`, the v2 input layer; `tea.Msg = uv.Event`). `Update` routes these through `applyColorScheme`, which re-runs `SetTheme` and rebuilds the diff lines — but only for auto themes, and only when the scheme actually flipped. Explicit themes are left untouched (#198). Works in file review mode too.
 
 ### Comment Persistence
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -271,7 +271,7 @@ func TestSearch_EscInBoxClears(t *testing.T) {
 	m := makeSearchableFileReview()
 	m = sendKey(m, "/")
 	m = sendKey(m, "alpha")
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.False(t, m.searchActive)
 	assert.Equal(t, "", m.diffView.searchQuery)
 	assert.Empty(t, m.diffView.searchMatches)
@@ -283,7 +283,7 @@ func TestSearch_EscAfterCommitClears(t *testing.T) {
 	m = sendKey(m, "alpha")
 	m = sendSpecialKey(m, tea.KeyEnter)
 	require.Equal(t, "alpha", m.diffView.searchQuery)
-	m = sendSpecialKey(m, tea.KeyEsc)
+	m = sendSpecialKey(m, tea.KeyEscape)
 	assert.Equal(t, "", m.diffView.searchQuery)
 }
 

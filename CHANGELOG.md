@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded to Bubble Tea v2 (and Bubbles v2). No user-facing behavior change on its own, but it's what enables live theme detection below.
+
 ### Fixed
 
 - The `auto` theme now adapts diff-line backgrounds to a light terminal. Previously, on a light background, added/removed lines kept a hardcoded dark background, so the (dark) syntax-highlight text was baked over it and became unreadable. Auto mode on a light terminal now mirrors the `github-light` palette, and the daltonized auto theme picks up the colorblind-safe light syntax colors too (#198)
+- The `auto` theme now follows your terminal's light/dark mode *live* — toggle your OS/terminal appearance while `revise` is open and it recolors immediately, no restart needed (via DEC mode 2031). Explicit themes are left as you set them. Works in both git diff and file review mode (#198)
 
 ## [0.5.2] - 2026-06-10
 

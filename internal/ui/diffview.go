@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 )
@@ -1206,7 +1206,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 		if inputWidth < 10 {
 			inputWidth = 10
 		}
-		m.textInput.Width = inputWidth - 4
+		m.textInput.SetWidth(inputWidth - 4)
 		return commentInputStyle.Width(inputWidth).Render(m.textInput.View())
 	}
 

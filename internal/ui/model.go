@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	uv "github.com/charmbracelet/ultraviolet"
 	commentstore "github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/editor"
 	"github.com/justincampbell/revise/internal/fswatch"
@@ -286,17 +287,26 @@ func (m Model) WithDebug(debug bool) Model {
 }
 
 func (m Model) Init() tea.Cmd {
+	var cmds []tea.Cmd
+	// Enable DEC mode 2031 so the terminal reports OS light/dark color-scheme
+	// changes while running (delivered as uv.Light/DarkColorSchemeEvent). Only
+	// useful for auto themes, which follow the terminal background. This also
+	// applies in file review mode, so the palette tracks the OS appearance.
+	if autoThemeActive() {
+		cmds = append(cmds, tea.Raw(ansi.SetModeLightDark))
+	}
+
 	if m.fileReviewMode {
-		return nil
+		return tea.Batch(cmds...)
 	}
 	// Schedule the first auto-refresh tick. pollGen=0 so a fresh tick
 	// (also gen=0) is accepted; subsequent requestRefresh calls bump
 	// the counter and supersede this one.
-	cmds := []tea.Cmd{
+	cmds = append(cmds,
 		tea.Tick(m.refreshPolicy.Min, func(time.Time) tea.Msg {
 			return refreshTickMsg{gen: 0}
 		}),
-	}
+	)
 	if cmd := listenFSEvents(m.fsWatcher); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -321,7 +331,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.commentInputActive {
 			return m.updateCommentInput(msg)
 		}
@@ -554,14 +564,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateDiffView(msg)
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
+		// Bubble Tea v2 splits the old MouseMsg into per-action types; wheel
+		// scrolling arrives here, left clicks as MouseClickMsg below.
+		mouse := msg.Mouse()
 		if m.showHelp {
-			switch msg.Button {
-			case tea.MouseButtonWheelUp:
+			switch mouse.Button {
+			case tea.MouseWheelUp:
 				if m.helpScroll > 0 {
 					m.helpScroll--
 				}
-			case tea.MouseButtonWheelDown:
+			case tea.MouseWheelDown:
 				if m.helpScroll < helpMaxScroll(m.height) {
 					m.helpScroll++
 				}
@@ -569,82 +582,87 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			if m.mouseFocusDiff(msg) {
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			if m.mouseFocusDiff(mouse) {
 				m.diffView.scrollUp(3)
 			} else {
 				m.fileList.moveUp()
 				m.syncSelectedFile()
 			}
-		case tea.MouseButtonWheelDown:
-			if m.mouseFocusDiff(msg) {
+		case tea.MouseWheelDown:
+			if m.mouseFocusDiff(mouse) {
 				m.diffView.scrollDown(3)
 			} else {
 				m.fileList.moveDown()
 				m.syncSelectedFile()
 			}
-		case tea.MouseButtonWheelLeft:
-			if m.mouseFocusDiff(msg) {
+		case tea.MouseWheelLeft:
+			if m.mouseFocusDiff(mouse) {
 				m.diffView.scrollLeft(hScrollStep)
 			}
-		case tea.MouseButtonWheelRight:
-			if m.mouseFocusDiff(msg) {
+		case tea.MouseWheelRight:
+			if m.mouseFocusDiff(mouse) {
 				m.diffView.scrollRight(hScrollStep)
 			}
-		case tea.MouseButtonLeft:
-			if msg.Action != tea.MouseActionPress {
-				return m, nil
+		}
+		return m, nil
+
+	case tea.MouseClickMsg:
+		// MouseClickMsg is the button-press event (release is MouseReleaseMsg),
+		// so no explicit press-action check is needed.
+		mouse := msg.Mouse()
+		if m.showHelp || mouse.Button != tea.MouseLeft {
+			return m, nil
+		}
+		// Check for status bar slider click
+		if mouse.Y == m.height-1 {
+			if mode := m.sliderModeAt(mouse.X); mode >= 0 && mode != m.mode && m.modeAvailable(mode) {
+				m.mode = mode
+				m.modeExplicitlySet = true
+				return m, m.loadDiff()
 			}
-			// Check for status bar slider click
-			if msg.Y == m.height-1 {
-				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode && m.modeAvailable(mode) {
-					m.mode = mode
-					m.modeExplicitlySet = true
-					return m, m.loadDiff()
+			return m, nil
+		}
+		if !m.mouseFocusDiff(mouse) {
+			// border (1) = 1 line before file entries
+			if !m.commentInputActive {
+				idx := mouse.Y - 1 + m.fileList.offset
+				if idx >= 0 && idx < len(m.fileList.files) {
+					m.fileList.cursor = idx
+					m.syncSelectedFile()
 				}
-				return m, nil
 			}
-			if !m.mouseFocusDiff(msg) {
-				// border (1) = 1 line before file entries
-				if !m.commentInputActive {
-					idx := msg.Y - 1 + m.fileList.offset
-					if idx >= 0 && idx < len(m.fileList.files) {
-						m.fileList.cursor = idx
-						m.syncSelectedFile()
-					}
+		} else {
+			m.focus = focusDiffView
+			// Panel top border is 1 row; map click Y to lines[] index.
+			clickY := mouse.Y - 1
+			if clickY >= 0 {
+				absIdx := m.diffView.clickToAbsIdx(clickY)
+				// Close any open input box before navigating.
+				if m.commentInputActive {
+					m.commentInputActive = false
+					m.diffView.commentInputActive = false
+					m.diffView.fileCommentInput = false
+					m.diffView.textInput.Blur()
 				}
-			} else {
-				m.focus = focusDiffView
-				// Panel top border is 1 row; map click Y to lines[] index.
-				clickY := msg.Y - 1
-				if clickY >= 0 {
-					absIdx := m.diffView.clickToAbsIdx(clickY)
-					// Close any open input box before navigating.
-					if m.commentInputActive {
-						m.commentInputActive = false
-						m.diffView.commentInputActive = false
-						m.diffView.fileCommentInput = false
-						m.diffView.textInput.Blur()
+				if absIdx >= 0 && absIdx < len(m.diffView.lines) {
+					m.diffView.cursor = absIdx
+					// Step back from non-navigable lines to the nearest code line.
+					for m.diffView.cursor > 0 && !m.diffView.isNavigable(m.diffView.cursor) {
+						m.diffView.cursor--
 					}
-					if absIdx >= 0 && absIdx < len(m.diffView.lines) {
-						m.diffView.cursor = absIdx
-						// Step back from non-navigable lines to the nearest code line.
-						for m.diffView.cursor > 0 && !m.diffView.isNavigable(m.diffView.cursor) {
-							m.diffView.cursor--
+					if m.diffView.cursorRef() != nil {
+						// Click in gutter area toggles mark; elsewhere opens comment.
+						diffPanelX := m.fileList.width + 2
+						if m.fullscreen {
+							diffPanelX = 0
 						}
-						if m.diffView.cursorRef() != nil {
-							// Click in gutter area toggles mark; elsewhere opens comment.
-							diffPanelX := m.fileList.width + 2
-							if m.fullscreen {
-								diffPanelX = 0
-							}
-							// border (1) + cursor prefix (1) + gutter (6) = 8
-							if msg.X < diffPanelX+8 {
-								m.toggleMarkAtCursor()
-							} else {
-								m.startCommentInput()
-							}
+						// border (1) + cursor prefix (1) + gutter (6) = 8
+						if mouse.X < diffPanelX+8 {
+							m.toggleMarkAtCursor()
+						} else {
+							m.startCommentInput()
 						}
 					}
 				}
@@ -782,6 +800,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focused = false
 		return m, nil
 
+	// The terminal reports an OS light/dark color-scheme change (DEC mode 2031,
+	// enabled in Init for auto themes). Re-apply the palette live so switching
+	// macOS appearance recolors revise without a restart (#198).
+	case uv.DarkColorSchemeEvent:
+		m.applyColorScheme(true)
+		return m, nil
+	case uv.LightColorSchemeEvent:
+		m.applyColorScheme(false)
+		return m, nil
+	// Sent in response to RequestBackgroundColor (not requested today, handled
+	// for completeness so a background-color reply also tracks the scheme).
+	case tea.BackgroundColorMsg:
+		m.applyColorScheme(msg.IsDark())
+		return m, nil
+
 	case fsEventMsg:
 		// File changed under the watcher. Request a refresh (subject to
 		// debounce) and re-issue the listen Cmd to keep the channel
@@ -885,7 +918,7 @@ func (m *Model) updateLayout() {
 	m.diffView.height = panelH
 }
 
-func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateFileList(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
 		m.fileList.moveDown()
@@ -923,7 +956,7 @@ func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updateDiffView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateDiffView(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
 		m.diffView.moveCursorDown(1)
@@ -991,7 +1024,7 @@ func (m *Model) startSearch() {
 // updateSearchInput handles keys while the search box is open. Typing filters
 // incrementally; Enter commits (matches stay highlighted, n/N navigate them);
 // Esc cancels and clears.
-func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateSearchInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		m.searchActive = false
@@ -1021,7 +1054,7 @@ func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateCommentInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		text := strings.TrimSpace(m.diffView.textInput.Value())
@@ -1049,7 +1082,7 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updateConfirmClear(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateConfirmClear(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.confirmClear = false
 	m.confirmMsg = ""
 	switch msg.String() {
@@ -1066,7 +1099,7 @@ func (m Model) updateConfirmClear(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updateConfirmDiscard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateConfirmDiscard(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.confirmDiscard = false
 	m.confirmMsg = ""
 	switch msg.String() {
@@ -1421,11 +1454,23 @@ func overlayCenter(bg, fg string, width, height int) string {
 	return strings.Join(bgLines, "\n")
 }
 
-func (m Model) mouseFocusDiff(msg tea.MouseMsg) bool {
+// applyColorScheme switches the active palette to match a runtime OS light/dark
+// change. It acts only for auto themes (explicit themes are the user's choice)
+// and only when the scheme actually flipped, then rebuilds the cached diff
+// lines so the new colors take effect immediately.
+func (m *Model) applyColorScheme(isDark bool) {
+	if !autoThemeActive() || isDark == activeIsDark {
+		return
+	}
+	SetTheme(activeTheme, isDark)
+	m.diffView.rebuildLinesPreservingCursor()
+}
+
+func (m Model) mouseFocusDiff(mouse tea.Mouse) bool {
 	if m.fullscreen {
 		return true
 	}
-	return msg.X > m.fileList.width+2
+	return mouse.X > m.fileList.width+2
 }
 
 // sliderModeAt returns the DiffMode at the given X position in the slider,
@@ -1799,7 +1844,19 @@ func (m Model) renderStatusBar() string {
 	return statusBarStyle.Width(m.width).Render(helpHint)
 }
 
-func (m Model) View() string {
+// View returns the rendered screen plus the terminal modes revise needs. In
+// Bubble Tea v2 these modes are set declaratively on the View each render,
+// replacing the v1 program options (WithAltScreen/WithMouseCellMotion/etc.).
+func (m Model) View() tea.View {
+	v := tea.NewView(m.renderScreen())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	// Focus reporting drives auto-refresh; file review mode has no refresh loop.
+	v.ReportFocus = !m.fileReviewMode
+	return v
+}
+
+func (m Model) renderScreen() string {
 	if !m.ready {
 		return "Loading..."
 	}
