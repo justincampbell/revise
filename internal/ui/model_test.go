@@ -65,6 +65,16 @@ func sendSpecialKey(m Model, code rune) Model {
 	return updated.(Model)
 }
 
+// pinExplicitTheme fixes a non-auto theme for the test so FocusMsg doesn't also
+// emit a background-color re-query (which auto themes do, #198). Use it when
+// asserting purely on refresh-scheduling behavior. Restores on cleanup.
+func pinExplicitTheme(t *testing.T) {
+	t.Helper()
+	orig, origDark := activeTheme, activeIsDark
+	t.Cleanup(func() { SetTheme(orig, origDark) })
+	SetTheme(ThemeGithubDark, true)
+}
+
 // focusDiffAndMoveToline focuses the diff view and moves the cursor n lines down.
 func focusDiffAndMoveTo(m Model, n int) Model {
 	m = sendKey(m, "l") // focus diff view
@@ -1672,6 +1682,7 @@ func TestBlur_StopsPolling(t *testing.T) {
 }
 
 func TestFocus_ResumesPolling(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.focused = false
 
@@ -1682,6 +1693,7 @@ func TestFocus_ResumesPolling(t *testing.T) {
 }
 
 func TestFocus_PollsImmediately(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.focused = false
 
@@ -1722,6 +1734,7 @@ func TestFSEvent_RequestsRefreshAndRelistens(t *testing.T) {
 }
 
 func TestRequestRefresh_SkipsWhilePolling(t *testing.T) {
+	pinExplicitTheme(t)
 	m := makeModel("a.go")
 	m.polling = true
 

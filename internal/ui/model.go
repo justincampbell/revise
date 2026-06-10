@@ -293,7 +293,11 @@ func (m Model) Init() tea.Cmd {
 	// useful for auto themes, which follow the terminal background. This also
 	// applies in file review mode, so the palette tracks the OS appearance.
 	if autoThemeActive() {
-		cmds = append(cmds, tea.Raw(ansi.SetModeLightDark))
+		// Enable live OS color-scheme reports (instant where supported) and also
+		// query the background once now, through Bubble Tea's input pipeline, so
+		// detection is consistent even on stacks where mode 2031 is swallowed
+		// (e.g. tmux). On-focus re-querying (see FocusMsg) handles later changes.
+		cmds = append(cmds, tea.Raw(ansi.SetModeLightDark), tea.RequestBackgroundColor)
 	}
 
 	if m.fileReviewMode {
@@ -794,7 +798,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.FocusMsg:
 		m.focused = true
-		return m, m.requestRefresh()
+		var cmds []tea.Cmd
+		// Re-detect the terminal background on focus. Mode 2031 (enabled in Init)
+		// gives instant updates where supported, but it isn't forwarded through
+		// tmux; re-querying the background on focus (focus events DO survive tmux)
+		// catches an OS appearance change made while revise was unfocused — e.g.
+		// switching to System Settings, toggling appearance, switching back (#198).
+		if autoThemeActive() {
+			cmds = append(cmds, tea.RequestBackgroundColor)
+		}
+		if !m.fileReviewMode {
+			cmds = append(cmds, m.requestRefresh())
+		}
+		return m, tea.Batch(cmds...)
 
 	case tea.BlurMsg:
 		m.focused = false
@@ -1711,6 +1727,10 @@ func (m Model) renderDebugStrip() string {
 	if m.polling {
 		polling = "in-flight"
 	}
+	scheme := "light"
+	if activeIsDark {
+		scheme = "dark"
+	}
 
 	// "next" shows what's actually going to happen, not just the
 	// scheduled tick time: while polling, the tick is moot (a poll
@@ -1737,6 +1757,7 @@ func (m Model) renderDebugStrip() string {
 		field("diff", agoAndDur(m.lastDiffLoadStart, m.lastDiffLoadDuration, now)),
 		field("next", nextDisplay),
 		field("gen", fmt.Sprintf("%d", m.pollGen)),
+		field("theme", string(activeTheme)+"/"+scheme),
 	}
 
 	return statusBarStyle.Width(m.width).Render(strings.Join(parts, "  "))
@@ -1851,8 +1872,9 @@ func (m Model) View() tea.View {
 	v := tea.NewView(m.renderScreen())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
-	// Focus reporting drives auto-refresh; file review mode has no refresh loop.
-	v.ReportFocus = !m.fileReviewMode
+	// Focus reporting drives auto-refresh (git mode) and on-focus theme
+	// re-detection (both modes), so enable it everywhere.
+	v.ReportFocus = true
 	return v
 }
 
