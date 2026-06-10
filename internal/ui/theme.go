@@ -73,7 +73,9 @@ func chromaStyleEntries(t Theme) chroma.StyleEntries {
 		return charmtoneDarkChromaEntries(t == ThemeCharmtoneDarkDaltonized)
 	case ThemeGithubDark, ThemeGithubDarkDaltonized:
 		return githubDarkChromaEntries(t == ThemeGithubDarkDaltonized)
-	case ThemeGithubLightDaltonized, ThemeCharmtoneLightDaltonized:
+	case ThemeGithubLightDaltonized, ThemeCharmtoneLightDaltonized, ThemeAutoDaltonized:
+		// ThemeAutoDaltonized only reaches here on a light terminal; on a dark
+		// terminal highlightLine selects the "native" chroma style first.
 		return githubLightDaltonizedChromaEntries()
 	default:
 		return nil // use named style
@@ -237,13 +239,21 @@ func paletteFor(t Theme, isDark bool) themeColors {
 	case ThemeGithubLightDaltonized:
 		return githubLightDaltonizedPalette()
 	case ThemeAutoDaltonized:
-		return autoDaltonizedPalette()
+		return autoDaltonizedPalette(isDark)
 	default: // ThemeAuto
-		return autoPalette()
+		return autoPalette(isDark)
 	}
 }
 
-func autoPalette() themeColors {
+// autoPalette returns the palette for ThemeAuto. On a dark terminal it uses
+// ANSI named colors so it adopts the terminal's own palette; on a light
+// terminal it mirrors the curated github-light palette, because ANSI colors
+// (notably yellow and white) are illegible on a light background and the
+// auto-light syntax highlighter already uses the github chroma style (#198).
+func autoPalette(isDark bool) themeColors {
+	if !isDark {
+		return githubLightPalette()
+	}
 	return themeColors{
 		addedFg:         lipgloss.Green,
 		removedFg:       lipgloss.Red,
@@ -264,8 +274,11 @@ func autoPalette() themeColors {
 	}
 }
 
-func autoDaltonizedPalette() themeColors {
-	p := autoPalette()
+func autoDaltonizedPalette(isDark bool) themeColors {
+	if !isDark {
+		return githubLightDaltonizedPalette()
+	}
+	p := autoPalette(true)
 	p.addedFg = lipgloss.Blue
 	p.addedBg = lipgloss.Color("#1a1f2e")
 	p.gutterAddedFg = lipgloss.Color("27") // ANSI 256: muted blue
