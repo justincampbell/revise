@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-12
+
 ### Added
 
 - Branch mode can be filtered to the last *N* commits instead of reviewing everything since the merge-base. `<` steps back in time (the most recent commit first, then one further back with each press) and `>` steps forward (from the full branch it drops the oldest commit first, then continues toward the most recent); both cycle back to the full branch at the ends. Working tree changes always stay layered on top
