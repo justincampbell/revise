@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -257,4 +259,84 @@ func TestFileListTotals(t *testing.T) {
 	added, removed := m.totals()
 	assert.Equal(t, 2, added)
 	assert.Equal(t, 1, removed)
+}
+
+// commitList builds n dummy commits, newest first.
+func commitList(n int) []git.CommitInfo {
+	cs := make([]git.CommitInfo, n)
+	for i := 0; i < n; i++ {
+		cs[i] = git.CommitInfo{
+			SHA:      fmt.Sprintf("sha%d", n-i),
+			ShortSHA: fmt.Sprintf("s%d", n-i),
+			Subject:  fmt.Sprintf("commit %d", n-i),
+		}
+	}
+	return cs
+}
+
+func TestCommitsSection_HiddenWhenNotBranchMode(t *testing.T) {
+	m := fileListModel{files: makeFiles("a.go"), height: 20, width: 30}
+	m.commits = commitList(3)
+	m.showCommits = false
+	assert.Equal(t, 0, m.commitsSectionHeight())
+	assert.Equal(t, 20, m.viewHeight(), "no commit section means files get the full height")
+}
+
+func TestCommitsSection_HeightAndViewportReservation(t *testing.T) {
+	m := fileListModel{files: makeFiles("a.go"), height: 20, width: 30}
+	m.commits = commitList(4)
+	m.showCommits = true
+	// header + 4 commit rows + separator = 6
+	assert.Equal(t, 6, m.commitsSectionHeight())
+	assert.Equal(t, 14, m.viewHeight(), "file viewport shrinks by the commit section height")
+}
+
+func TestCommitsSection_EffectiveDepth(t *testing.T) {
+	m := fileListModel{height: 20, width: 30, showCommits: true, commits: commitList(5)}
+
+	m.branchDepth = 0 // full
+	assert.Equal(t, 5, m.effectiveDepth())
+
+	m.branchDepth = 2
+	assert.Equal(t, 2, m.effectiveDepth())
+
+	m.branchDepth = 99 // out of range clamps to all
+	assert.Equal(t, 5, m.effectiveDepth())
+}
+
+func TestCommitsSection_CapsRowsAndSummarizesOverflow(t *testing.T) {
+	// A short pane with many commits: rows are capped, leaving file rows.
+	m := fileListModel{files: makeFiles("a.go"), height: 10, width: 40, showCommits: true}
+	m.commits = commitList(30)
+
+	rows := m.commitRowsShown()
+	// budget = height - 2 - commitsMinFileRows = 10 - 2 - 3 = 5
+	assert.Equal(t, 5, rows)
+	assert.Less(t, rows, len(m.commits), "capped below the total")
+
+	// Section height = rows + header + separator; viewport keeps the reserve.
+	assert.Equal(t, 7, m.commitsSectionHeight())
+	assert.GreaterOrEqual(t, m.viewHeight(), commitsMinFileRows)
+
+	// The rendered section shows the cap with a "more" summary and the header.
+	m.branchDepth = 29 // last all-but-one (max filter depth for 30 commits)
+	lines := m.renderCommitsLines(m.width - 2)
+	require.Len(t, lines, 7) // header + 5 rows + separator
+	assert.Contains(t, ansi.Strip(lines[0]), "Last 29 commits")
+	assert.Contains(t, ansi.Strip(lines[5]), "more", "overflow summarized on the last commit row")
+}
+
+func TestCommitsSection_InScopeMarkers(t *testing.T) {
+	m := fileListModel{files: makeFiles("a.go"), height: 20, width: 40, showCommits: true}
+	m.commits = commitList(4)
+	m.branchDepth = 2 // last 2 in scope
+
+	lines := m.renderCommitsLines(m.width - 2)
+	require.Len(t, lines, 6) // header + 4 + separator
+	// commits[0], commits[1] in scope (●); commits[2], commits[3] excluded (·)
+	assert.Contains(t, ansi.Strip(lines[1]), "●")
+	assert.Contains(t, ansi.Strip(lines[2]), "●")
+	assert.Contains(t, ansi.Strip(lines[3]), "·")
+	assert.Contains(t, ansi.Strip(lines[4]), "·")
+	assert.Contains(t, ansi.Strip(lines[0]), "Last 2 commits")
 }

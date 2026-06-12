@@ -21,6 +21,7 @@ var allBindings = []BindingGroup{
 		{Key: "→ (l)", Desc: "Focus diff view", GitOnly: true},
 		{Key: "n/N", Desc: "Next/prev file", GitOnly: true},
 		{Key: "Tab/S-Tab", Desc: "Cycle diff mode", GitOnly: true},
+		{Key: "</>", Desc: "Filter to recent commits (Branch mode)", GitOnly: true},
 		{Key: "f", Desc: "Toggle fullscreen diff", GitOnly: true},
 		{Key: "Esc", Desc: "Back to file list", GitOnly: true},
 		{Key: "r", Desc: "Force refresh diff", GitOnly: true},

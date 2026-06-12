@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -313,81 +314,42 @@ func resolveMergeBase() (string, error) {
 	return mergeBase, nil
 }
 
-// BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
-// The working tree diff runs concurrently with the branch diff computation.
-func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
-	if !hideWhitespace {
-		return BranchDiff(contextLines)
-	}
-
-	// Start working tree diff immediately — it's independent of the branch diff.
-	var wtDiff *Diff
-	var g errgroup.Group
-	g.Go(func() error {
-		var err error
-		wtDiff, err = WorkingTreeDiffOptions(contextLines, true)
-		return err
-	})
-
-	// Meanwhile, compute branch diff.
-	mergeBase, err := resolveMergeBase()
-	if err != nil {
-		_ = g.Wait()
-		return nil, err
-	}
-
-	head, err := CurrentRef()
-	if err != nil {
-		_ = g.Wait()
-		return nil, err
-	}
-
-	var raw string
-	if mergeBase == head {
-		branch, err := DefaultBranch()
-		if err != nil {
-			_ = g.Wait()
-			return nil, err
-		}
-		remote := RemoteName()
-		if remote == "" {
-			_ = g.Wait()
-			return nil, fmt.Errorf("no remote configured")
-		}
-		raw, err = RawDiffBetweenIgnoreWhitespace(head, remote+"/"+branch, contextLines)
-		if err != nil {
-			_ = g.Wait()
-			return nil, err
-		}
-	} else {
-		raw, err = RawDiffBetweenIgnoreWhitespace(mergeBase, "HEAD", contextLines)
-		if err != nil {
-			_ = g.Wait()
-			return nil, err
-		}
-	}
-
-	diff := Parse(raw)
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	diff.Files = composeBranch(diff.Files, wtDiff.Files)
-	return diff, nil
-}
-
 // BranchDiff returns the merge-base diff merged with all working tree changes.
 // This is the broadest view — committed + staged + unstaged + untracked.
 // On the default branch behind the remote, it shows the remote's changes.
-// The working tree diff runs concurrently with the branch diff computation.
 func BranchDiff(contextLines int) (*Diff, error) {
+	diff, _, err := branchDiff(contextLines, false, 0)
+	return diff, err
+}
+
+// BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
+func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
+	diff, _, err := branchDiff(contextLines, hideWhitespace, 0)
+	return diff, err
+}
+
+// BranchDiffDepth is like BranchDiffOptions but limits the committed range to
+// the last `depth` commits (depth <= 0 means the full branch, from the
+// merge-base). Working tree changes are always layered on top. It also returns
+// the number of commits the branch is ahead of the merge-base, so callers can
+// bound a depth selector — 0 when there are no local commits ahead (e.g. on the
+// default branch behind the remote, where depth does not apply).
+func BranchDiffDepth(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
+	return branchDiff(contextLines, hideWhitespace, depth)
+}
+
+// branchDiff computes the committed range merged with working tree changes.
+// The committed range runs from the merge-base to HEAD, optionally shortened to
+// the last `depth` commits. The working tree diff runs concurrently with the
+// branch diff computation. Returns the diff and the number of commits ahead of
+// the merge-base.
+func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
 	// Start working tree diff immediately — it's independent of the branch diff.
 	var wtDiff *Diff
 	var g errgroup.Group
 	g.Go(func() error {
 		var err error
-		wtDiff, err = WorkingTreeDiff(contextLines)
+		wtDiff, err = WorkingTreeDiffOptions(contextLines, hideWhitespace)
 		return err
 	})
 
@@ -395,50 +357,120 @@ func BranchDiff(contextLines int) (*Diff, error) {
 	mergeBase, err := resolveMergeBase()
 	if err != nil {
 		_ = g.Wait()
-		return nil, err
+		return nil, 0, err
 	}
 
 	head, err := CurrentRef()
 	if err != nil {
 		_ = g.Wait()
-		return nil, err
+		return nil, 0, err
 	}
 
 	var raw string
+	var commitsAhead int
 	if mergeBase == head {
 		// merge-base == HEAD: we're on the default branch but the remote
-		// has different commits. Diff HEAD against the remote ref.
+		// has different commits. Diff HEAD against the remote ref. There are
+		// no local commits ahead, so depth does not apply (commitsAhead == 0).
 		branch, err := DefaultBranch()
 		if err != nil {
 			_ = g.Wait()
-			return nil, err
+			return nil, 0, err
 		}
 		remote := RemoteName()
 		if remote == "" {
 			_ = g.Wait()
-			return nil, fmt.Errorf("no remote configured")
+			return nil, 0, fmt.Errorf("no remote configured")
 		}
-		raw, err = RawDiffBetween(head, remote+"/"+branch, contextLines)
+		raw, err = rawDiffBetween(head, remote+"/"+branch, contextLines, hideWhitespace)
 		if err != nil {
 			_ = g.Wait()
-			return nil, err
+			return nil, 0, err
 		}
 	} else {
-		raw, err = RawDiff(mergeBase, contextLines)
+		commitsAhead = CommitsAhead(mergeBase)
+		from := branchFromRef(mergeBase, depth, commitsAhead)
+		raw, err = rawDiffBetween(from, "HEAD", contextLines, hideWhitespace)
 		if err != nil {
 			_ = g.Wait()
-			return nil, err
+			return nil, 0, err
 		}
 	}
 
 	diff := Parse(raw)
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	diff.Files = composeBranch(diff.Files, wtDiff.Files)
-	return diff, nil
+	return diff, commitsAhead, nil
+}
+
+// rawDiffBetween dispatches to the whitespace-ignoring variant when requested.
+func rawDiffBetween(from, to string, contextLines int, hideWhitespace bool) (string, error) {
+	if hideWhitespace {
+		return RawDiffBetweenIgnoreWhitespace(from, to, contextLines)
+	}
+	return RawDiffBetween(from, to, contextLines)
+}
+
+// branchFromRef returns the ref to diff from for a branch view at the given
+// depth. depth <= 0 or depth >= commitsAhead yields the merge-base (the full
+// branch); otherwise HEAD~depth, which is guaranteed to be after the merge-base.
+// Falls back to the merge-base if HEAD~depth cannot be resolved.
+func branchFromRef(mergeBase string, depth, commitsAhead int) string {
+	if depth <= 0 || depth >= commitsAhead {
+		return mergeBase
+	}
+	if ref := resolveRef(fmt.Sprintf("HEAD~%d", depth)); ref != "" {
+		return ref
+	}
+	return mergeBase
+}
+
+// BranchCommits returns the commits the current branch is ahead of its
+// merge-base with the default branch, newest first. Returns nil on the default
+// branch, with no commits ahead, or when the merge-base can't be resolved.
+// Used both to bound the Branch-mode depth selector and to render the commit
+// list, without recomputing the whole diff.
+func BranchCommits() ([]CommitInfo, error) {
+	mergeBase, err := resolveMergeBase()
+	if err != nil {
+		return nil, nil // no merge-base — nothing to list
+	}
+	// %x1f is the ASCII unit separator: a delimiter that can't appear in a
+	// single-line subject (%s), so fields parse unambiguously.
+	out, err := exec.Command("git", "log", "--format=%H%x1f%h%x1f%s", mergeBase+"..HEAD").Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+	var commits []CommitInfo
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\x1f", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		commits = append(commits, CommitInfo{SHA: parts[0], ShortSHA: parts[1], Subject: parts[2]})
+	}
+	return commits, nil
+}
+
+// CommitsAhead returns the number of commits reachable from HEAD but not from
+// base (i.e. `git rev-list --count base..HEAD`). Returns 0 on error.
+func CommitsAhead(base string) int {
+	out, err := exec.Command("git", "rev-list", "--count", base+"..HEAD").Output()
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // StagedOnlyDiffOptions returns only staged changes, optionally ignoring whitespace.
@@ -582,4 +614,3 @@ func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
 
 	return &Diff{Files: composeWorkingTree(staged.Files, unstaged.Files, untracked)}, nil
 }
-

@@ -467,6 +467,137 @@ func TestNewModel_FeatureBranch_StartsOnBranch(t *testing.T) {
 	assert.Equal(t, ModeBranch, m.mode)
 }
 
+// commitsN builds n dummy commits, newest first, for Branch-mode tests.
+func commitsN(n int) []git.CommitInfo {
+	commits := make([]git.CommitInfo, n)
+	for i := 0; i < n; i++ {
+		commits[i] = git.CommitInfo{
+			SHA:      fmt.Sprintf("sha%d", n-i),
+			ShortSHA: fmt.Sprintf("s%d", n-i),
+			Subject:  fmt.Sprintf("commit %d", n-i),
+		}
+	}
+	return commits
+}
+
+// "<" goes back in time from full: most recent commit first, then deeper.
+// ">" reverses it back to full. (User scenario A, with a 4-commit branch.)
+func TestAdjustBranchDepth_BackInTimeThenForward(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(4)
+	m.branchDepth = 0 // full
+
+	require.True(t, m.adjustBranchDepth("<")) // full -> last 1 (most recent)
+	assert.Equal(t, 1, m.branchDepth)
+	require.True(t, m.adjustBranchDepth("<")) // -> last 2
+	assert.Equal(t, 2, m.branchDepth)
+
+	require.True(t, m.adjustBranchDepth(">")) // -> last 1
+	assert.Equal(t, 1, m.branchDepth)
+	require.True(t, m.adjustBranchDepth(">")) // -> full
+	assert.Equal(t, 0, m.branchDepth)
+}
+
+// ">" goes forward in time from full, skipping the redundant "last all" (≡ full
+// branch): it starts at all-but-the-oldest, then drops the oldest each press.
+// "<" reverses it back to full. (User scenario B, 4-commit branch.)
+func TestAdjustBranchDepth_ForwardInTimeThenBack(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(4)
+	m.branchDepth = 0 // full
+
+	require.True(t, m.adjustBranchDepth(">")) // full -> last 3 (drop oldest; skips last 4)
+	assert.Equal(t, 3, m.branchDepth)
+	require.True(t, m.adjustBranchDepth(">")) // -> last 2
+	assert.Equal(t, 2, m.branchDepth)
+
+	require.True(t, m.adjustBranchDepth("<")) // -> last 3
+	assert.Equal(t, 3, m.branchDepth)
+	require.True(t, m.adjustBranchDepth("<")) // -> full (all 4, list hidden)
+	assert.Equal(t, 0, m.branchDepth)
+}
+
+// branchCommitsMsg primes the commit list at startup so the knob works before
+// any diff reload, and clamps a stale out-of-range depth.
+func TestBranchCommitsMsg_PrimesListAndClamps(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchDepth = 9 // stale/out-of-range (only 3 commits)
+
+	updated, _ := m.Update(branchCommitsMsg{commits: commitsN(3)})
+	m = updated.(Model)
+
+	assert.Len(t, m.branchCommitList, 3)
+	assert.Equal(t, 0, m.branchDepth, "out-of-range depth clamps to full")
+	// The list is pushed into the file-list model, but hidden at full depth.
+	assert.Len(t, m.fileList.commits, 3)
+	assert.False(t, m.fileList.showCommits, "hidden when not filtering")
+}
+
+// While filtering (non-zero depth), the commit list is shown.
+func TestBranchCommitsMsg_ShowsListWhenFiltering(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchDepth = 2
+
+	updated, _ := m.Update(branchCommitsMsg{commits: commitsN(4)})
+	m = updated.(Model)
+
+	assert.Equal(t, 2, m.branchDepth, "valid depth preserved")
+	assert.True(t, m.fileList.showCommits)
+}
+
+func TestAdjustBranchDepth_NoopWithFewerThanTwoCommits(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+
+	m.branchCommitList = nil
+	assert.False(t, m.adjustBranchDepth("<"))
+	assert.Equal(t, 0, m.branchDepth)
+
+	m.branchCommitList = commitsN(1)
+	assert.False(t, m.adjustBranchDepth("<"))
+	assert.Equal(t, 0, m.branchDepth)
+}
+
+// A shrinking branch (reset/squash mid-session) clamps an out-of-range depth
+// back to the full-branch sentinel when the next diff load reports the list.
+func TestDiffLoaded_ClampsBranchDepthWhenBranchShrinks(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchDepth = 4
+
+	updated, _ := m.Update(diffLoadedMsg{
+		diff:          &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		isBranchLoad:  true,
+		branchCommits: commitsN(2), // branch now only has 2 commits; depth 4 is invalid
+	})
+	m = updated.(Model)
+
+	assert.Len(t, m.branchCommitList, 2)
+	assert.Equal(t, 0, m.branchDepth, "out-of-range depth resets to full branch")
+}
+
+// A non-Branch load (isBranchLoad false) must not disturb the stored commit list
+// or a depth selection the user set in Branch mode.
+func TestDiffLoaded_PreservesDepthAcrossNonBranchLoad(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(5)
+	m.branchDepth = 2
+
+	updated, _ := m.Update(diffLoadedMsg{
+		diff:         &git.Diff{Files: []git.FileDiff{{Path: "a.go", Status: git.StatusModified}}},
+		isBranchLoad: false, // e.g. a Staged-mode load
+	})
+	m = updated.(Model)
+
+	assert.Len(t, m.branchCommitList, 5, "list untouched by non-Branch load")
+	assert.Equal(t, 2, m.branchDepth, "depth selection preserved")
+}
+
 func TestNewModel_DefaultBranch_StartsOnStaged(t *testing.T) {
 	m := New(&git.Diff{}, true)
 	assert.Equal(t, ModeStaged, m.mode)

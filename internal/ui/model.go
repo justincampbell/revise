@@ -82,9 +82,18 @@ type diffLoadedMsg struct {
 	diff            *git.Diff
 	err             error
 	onDefaultBranch bool
-	noCommits       bool          // true if the repo has no commits at load time
-	fromPoll        bool          // true when triggered by auto-refresh polling
-	duration        time.Duration // time the diff load took (used by --debug overlay)
+	noCommits       bool             // true if the repo has no commits at load time
+	fromPoll        bool             // true when triggered by auto-refresh polling
+	duration        time.Duration    // time the diff load took (used by --debug overlay)
+	isBranchLoad    bool             // true for ModeBranch loads (carries branchCommits)
+	branchCommits   []git.CommitInfo // commits ahead of merge-base, newest first (Branch mode)
+}
+
+// branchCommitsMsg carries the commits the branch is ahead of its merge-base,
+// computed once at startup so the Branch-mode depth selector (< / >) and the
+// commit list work immediately without waiting for the first diff reload.
+type branchCommitsMsg struct {
+	commits []git.CommitInfo
 }
 
 // debugTickMsg fires once per second in --debug mode so the debug strip
@@ -134,6 +143,14 @@ type Model struct {
 	noCommits         bool // true when the repo has no commits yet (#189)
 	contextLines      int
 	hideWhitespace    bool
+
+	// Branch-mode commit depth (<, >). branchDepth 0 means the full branch
+	// (all commits ahead of the merge-base); N>0 limits Branch mode to the
+	// last N commits. branchCommitList is the commits ahead of the merge-base
+	// (newest first) from the last load, used to bound the selector and render
+	// the commit list in the file-list pane.
+	branchDepth      int
+	branchCommitList []git.CommitInfo
 
 	comments           comments
 	marks              marks
@@ -300,6 +317,15 @@ func (m Model) Init() tea.Cmd {
 	if cmd := listenFSEvents(m.fsWatcher); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	// On a feature branch (initial mode is ModeBranch), prime the commit list
+	// so the depth selector, its status-bar hint, and the commit list in the
+	// file-list pane are live from the start.
+	if m.mode == ModeBranch {
+		cmds = append(cmds, func() tea.Msg {
+			commits, _ := git.BranchCommits()
+			return branchCommitsMsg{commits: commits}
+		})
+	}
 	if m.debug {
 		cmds = append(cmds, tea.Tick(time.Second, func(time.Time) tea.Msg { return debugTickMsg{} }))
 	}
@@ -456,6 +482,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+
+		// Branch-mode commit-depth knob: "<" narrows to fewer commits (down to
+		// the last one), ">" widens back toward the full branch. No-op outside
+		// Branch mode or when there's nothing to narrow.
+		case "<", ">":
+			if m.fileReviewMode || m.mode != ModeBranch {
+				return m, nil
+			}
+			if m.adjustBranchDepth(msg.String()) {
+				m.syncBranchCommits() // move the highlight immediately
+				return m, m.loadDiff()
+			}
+			return m, nil
 
 		// n/N navigate search matches while a search is active, otherwise
 		// they move between files (the default).
@@ -659,6 +698,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLayout()
 		return m, nil
 
+	case branchCommitsMsg:
+		m.setBranchCommits(msg.commits)
+		m.syncBranchCommits()
+		return m, nil
+
 	case diffLoadedMsg:
 		m.lastDiffLoadDuration = msg.duration
 		if msg.err != nil {
@@ -667,6 +711,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.diff = msg.diff
 		m.noCommits = msg.noCommits
+
+		// Update the branch commit list (Branch-mode loads only; other modes
+		// leave the stored list and depth selection untouched).
+		if msg.isBranchLoad {
+			m.setBranchCommits(msg.branchCommits)
+		}
 
 		// Update default-branch status so Branch mode becomes
 		// available (or unavailable) dynamically.
@@ -705,6 +755,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fileList = newFileListModel(m.diff.Files)
 		m.fileList.comments = m.comments
 		m.fileList.marks = m.marks
+		m.syncBranchCommits()
 		m.updateLayout()
 		// Re-select the same file if it still exists, otherwise
 		// keep the cursor at the same index (clamped to the list).
@@ -1499,6 +1550,51 @@ func (m *Model) cycleMode(direction int) {
 	m.modeExplicitlySet = true
 }
 
+// setBranchCommits records the branch's commit list and clamps an out-of-range
+// depth selection back to the full-branch sentinel (e.g. after a reset/squash
+// shrinks the branch below the current depth).
+func (m *Model) setBranchCommits(commits []git.CommitInfo) {
+	m.branchCommitList = commits
+	// Valid filter depths are 1..len-1 ("last len" ≡ full branch); a depth at or
+	// past the end (e.g. the branch shrank via reset/squash) resets to full.
+	if m.branchDepth >= len(m.branchCommitList) {
+		m.branchDepth = 0
+	}
+}
+
+// adjustBranchDepth steps the Branch-mode commit filter. branchDepth 0 is the
+// full branch (all commits ahead of the merge-base); N>0 shows the last N
+// commits. "last total" would be identical to the full branch, so it's skipped:
+// the selection cycles through [full, 1, 2, …, total-1].
+//   - "<" goes back in time — from full it starts at the most recent commit
+//     (last 1) and each press reaches one commit further back.
+//   - ">" goes forward in time — from full it starts at all-but-the-oldest
+//     (last total-1) and each press drops the oldest, toward the most recent.
+//
+// Both wrap back to full at the ends. Returns true when the depth changed (a
+// reload is needed).
+func (m *Model) adjustBranchDepth(key string) bool {
+	total := len(m.branchCommitList)
+	if total < 2 {
+		return false // 0 or 1 commit — nothing to filter
+	}
+
+	ring := total // states: full(0) plus last-1 … last-(total-1)
+	cur := m.branchDepth
+	switch key {
+	case "<":
+		cur = (cur + 1) % ring
+	case ">":
+		cur = (cur - 1 + ring) % ring
+	}
+
+	if cur == m.branchDepth {
+		return false
+	}
+	m.branchDepth = cur
+	return true
+}
+
 // requestRefresh is the single funnel for "something says state may have
 // changed — please poll" (FocusMsg, fsEventMsg, etc.). It bumps pollGen
 // so any earlier scheduled tick is invalidated, then either fires a
@@ -1559,6 +1655,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 	mode := m.mode
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
+	depth := m.branchDepth
 	m.lastDiffLoadStart = time.Now()
 	start := m.lastDiffLoadStart
 	return func() tea.Msg {
@@ -1568,9 +1665,17 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 
 		var diff *git.Diff
 		var err error
+		// The commit list is only meaningful in Branch mode; isBranchLoad stays
+		// false elsewhere so the handler leaves the stored list (and depth
+		// selection) untouched.
+		var branchCommits []git.CommitInfo
+		isBranchLoad := mode == ModeBranch
 		switch mode {
 		case ModeBranch:
-			diff, err = git.BranchDiffOptions(ctx, hideWS)
+			diff, _, err = git.BranchDiffDepth(ctx, hideWS, depth)
+			if err == nil {
+				branchCommits, _ = git.BranchCommits()
+			}
 		case ModeStaged:
 			diff, err = git.WorkingTreeDiffOptions(ctx, hideWS)
 		case ModeStagedOnly:
@@ -1578,12 +1683,22 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 		case ModeUnstaged:
 			diff, err = git.UnstagedOnlyDiffOptions(ctx, hideWS)
 		}
-		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, noCommits: !git.HasCommits(), fromPoll: fromPoll, duration: time.Since(start)}
+		return diffLoadedMsg{diff: diff, err: err, onDefaultBranch: onDefault, noCommits: !git.HasCommits(), fromPoll: fromPoll, duration: time.Since(start), isBranchLoad: isBranchLoad, branchCommits: branchCommits}
 	}
 }
 
 func (m *Model) syncSelectedFile() {
 	m.diffView.setFile(m.fileList.selectedFile())
+}
+
+// syncBranchCommits pushes the branch commit list and current depth into the
+// file-list model so it can render the "Commits" section. The section is only
+// shown while actively filtering (Branch mode with a non-zero depth) — at full
+// branch it stays hidden.
+func (m *Model) syncBranchCommits() {
+	m.fileList.commits = m.branchCommitList
+	m.fileList.branchDepth = m.branchDepth
+	m.fileList.showCommits = m.mode == ModeBranch && m.branchDepth != 0
 }
 
 func (m *Model) nextFile() {
@@ -1789,14 +1904,41 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
 
+	// In Branch mode, lead with the commit-range indicator + depth knob hint.
+	prefix := ""
+	if depthHint := m.branchDepthHint(); depthHint != "" {
+		prefix = depthHint + statusBarStyle.Render("  ")
+	}
+
 	count := len(m.comments)
 	if count > 0 {
-		hint := pluralize(count, "comment", "comments") +
+		hint := prefix + pluralize(count, "comment", "comments") +
 			"  " + helpKeyStyle.Render("e") + statusBarStyle.Render(" export") +
 			"  " + helpHint
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
-	return statusBarStyle.Width(m.width).Render(helpHint)
+	return statusBarStyle.Width(m.width).Render(prefix + helpHint)
+}
+
+// branchDepthHint renders the Branch-mode commit-range indicator for the status
+// bar, e.g. "all 5 commits  < fewer" or "last 2 of 5 commits  </> adjust".
+// Returns "" when not applicable (not Branch mode, or fewer than 2 commits to
+// choose between).
+func (m Model) branchDepthHint() string {
+	total := len(m.branchCommitList)
+	if m.mode != ModeBranch || total < 2 {
+		return ""
+	}
+	keys := helpKeyStyle.Render("<") + statusBarStyle.Render("/") + helpKeyStyle.Render(">")
+	if m.branchDepth == 0 {
+		// Full branch — the commit list is hidden; advertise the filter.
+		return statusBarStyle.Render(fmt.Sprintf("%d commits  ", total)) + keys + statusBarStyle.Render(" filter")
+	}
+	noun := "commits"
+	if m.branchDepth == 1 {
+		noun = "commit"
+	}
+	return statusBarStyle.Render(fmt.Sprintf("last %d %s  ", m.branchDepth, noun)) + keys + statusBarStyle.Render(" adjust")
 }
 
 func (m Model) View() string {

@@ -45,6 +45,10 @@ Cycle through modes with `Tab` / `Shift+Tab`:
 | **Staged** | Staged + unstaged + untracked |
 | **Unstaged** | Unstaged + untracked only (narrowest) |
 
+In **Branch** mode, filter the committed range to the last *N* commits with `<` / `>` instead of reviewing everything since the merge-base. `<` steps back in time (the most recent commit first, then one further back with each press); `>` steps forward (from the full branch it drops the oldest commit first, then continues toward the most recent). Both cycle back to the full branch at the ends, and working tree changes always stay layered on top.
+
+While filtering, a **Commits** section appears at the top of the file-list pane listing the branch's commits (newest first) so you can see what's in scope: in-scope commits are highlighted with a `●`, and excluded commits are dimmed with a `·`. At the full branch the section is hidden.
+
 ### File Review
 
 Review any file with comments:
@@ -90,6 +94,7 @@ Press `?` inside revise to see the help overlay.
 | `→` (`l`) | Focus diff view |
 | `n` / `N` | Next / prev file (or search match while searching) |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
+| `<` / `>` | Fewer / more commits (Branch mode) |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list |
 | `?` | Toggle help |

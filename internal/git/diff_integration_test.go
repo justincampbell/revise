@@ -1,8 +1,8 @@
 package git
 
 import (
-	"os/exec"
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,7 +21,7 @@ func TestIsGitRepo_Inside(t *testing.T) {
 
 func TestIsGitRepo_Outside(t *testing.T) {
 	orig, _ := os.Getwd()
-	os.Chdir(t.TempDir())                      //nolint:errcheck // test setup
+	os.Chdir(t.TempDir())                //nolint:errcheck // test setup
 	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck // best-effort restore
 	assert.False(t, IsGitRepo())
 }
@@ -898,4 +898,145 @@ func TestStatusFingerprint_ChangesOnCommit(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, fp1, fp2, "commit must change fingerprint even when working tree returns to clean")
+}
+
+// ============================================================================
+// BranchDiffDepth / CommitsAhead
+// ============================================================================
+
+func TestCommitsAhead_CountsCommitsSinceMergeBase(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n")
+	r.Add("two.go")
+	r.Commit("add two")
+	r.Chdir()
+
+	mergeBase, err := MergeBase("main")
+	require.NoError(t, err)
+	assert.Equal(t, 2, CommitsAhead(mergeBase))
+}
+
+func TestBranchCommits_ListsNewestFirst(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n")
+	r.Add("two.go")
+	r.Commit("add two")
+	r.Chdir()
+
+	commits, err := BranchCommits()
+	require.NoError(t, err)
+	require.Len(t, commits, 2)
+	assert.Equal(t, "add two", commits[0].Subject, "newest first")
+	assert.Equal(t, "add one", commits[1].Subject)
+	assert.NotEmpty(t, commits[0].ShortSHA)
+	assert.NotEmpty(t, commits[0].SHA)
+}
+
+func TestBranchCommits_EmptyOnDefaultBranch(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.Chdir()
+
+	commits, err := BranchCommits()
+	require.NoError(t, err)
+	assert.Empty(t, commits)
+}
+
+func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n\nfunc one() {}\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n\nfunc two() {}\n")
+	r.Add("two.go")
+	r.Commit("add two")
+	r.WriteFile("three.go", "package main\n\nfunc three() {}\n")
+	r.Add("three.go")
+	r.Commit("add three")
+	r.Chdir()
+
+	// Depth 0 (full branch): 3 commits ahead, all three files.
+	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 3, ahead)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "one.go")
+	assert.Contains(t, paths, "two.go")
+	assert.Contains(t, paths, "three.go")
+
+	// Depth 1: only the last commit (three.go).
+	diff, ahead, err = BranchDiffDepth(DefaultContextLines, false, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 3, ahead)
+	paths = filePaths(diff)
+	assert.NotContains(t, paths, "one.go")
+	assert.NotContains(t, paths, "two.go")
+	assert.Contains(t, paths, "three.go")
+
+	// Depth 2: the last two commits (two.go, three.go).
+	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 2)
+	require.NoError(t, err)
+	paths = filePaths(diff)
+	assert.NotContains(t, paths, "one.go")
+	assert.Contains(t, paths, "two.go")
+	assert.Contains(t, paths, "three.go")
+
+	// Depth >= total clamps to the full branch.
+	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 99)
+	require.NoError(t, err)
+	paths = filePaths(diff)
+	assert.Contains(t, paths, "one.go")
+	assert.Contains(t, paths, "three.go")
+}
+
+// Working tree changes are always layered on top of the depth-limited range,
+// so a depth-1 view shows the last commit plus uncommitted work.
+func TestBranchDiffDepth_IncludesWorkingTree(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n\nfunc one() {}\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n\nfunc two() {}\n")
+	r.Add("two.go")
+	r.Commit("add two")
+
+	// Uncommitted working tree file.
+	r.WriteFile("wip.go", "package main\n\nfunc wip() {}\n")
+	r.Chdir()
+
+	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 2, ahead)
+	paths := filePaths(diff)
+	assert.NotContains(t, paths, "one.go")
+	assert.Contains(t, paths, "two.go")
+	assert.Contains(t, paths, "wip.go")
 }

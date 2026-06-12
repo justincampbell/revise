@@ -57,6 +57,12 @@ var (
 	selectedStyle   lipgloss.Style
 	unselectedStyle lipgloss.Style
 
+	// Branch-mode commit list (file-list pane)
+	commitHeaderStyle   lipgloss.Style
+	commitMarkerStyle   lipgloss.Style
+	commitInScopeStyle  lipgloss.Style
+	commitExcludedStyle lipgloss.Style
+
 	// Status indicators
 	statusModified        lipgloss.Style
 	statusAdded           lipgloss.Style
@@ -161,6 +167,11 @@ func applyTheme(p themeColors) {
 
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)
 	unselectedStyle = lipgloss.NewStyle().Foreground(p.dim)
+
+	commitHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(p.dim)
+	commitMarkerStyle = lipgloss.NewStyle().Foreground(p.cyan)
+	commitInScopeStyle = lipgloss.NewStyle().Foreground(p.white)
+	commitExcludedStyle = lipgloss.NewStyle().Foreground(p.dim)
 
 	statusModified = lipgloss.NewStyle().Foreground(p.yellow)
 	statusAdded = lipgloss.NewStyle().Foreground(p.addedFg)

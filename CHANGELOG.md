@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Branch mode can be filtered to the last *N* commits instead of reviewing everything since the merge-base. `<` steps back in time (the most recent commit first, then one further back with each press) and `>` steps forward (from the full branch it drops the oldest commit first, then continues toward the most recent); both cycle back to the full branch at the ends. Working tree changes always stay layered on top
+- While filtering, a **Commits** section appears at the top of the file-list pane listing the branch's commits (newest first): in-scope commits are highlighted with a `●`, excluded ones dimmed with a `·`, so you can see exactly which commits you're reviewing. It's hidden at the full branch (when not filtering)
+
 ### Fixed
 
 - The `auto` theme now adapts diff-line backgrounds to a light terminal. Previously, on a light background, added/removed lines kept a hardcoded dark background, so the (dark) syntax-highlight text was baked over it and became unreadable. Auto mode on a light terminal now mirrors the `github-light` palette, and the daltonized auto theme picks up the colorblind-safe light syntax colors too (#198)

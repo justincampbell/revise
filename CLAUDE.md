@@ -166,6 +166,22 @@ Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (nar
 - Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `StagedOnlyDiff()`, `UnstagedOnlyDiff()`
 - Untracked files are merged into "Unstaged" — no separate untracked mode
 
+#### Branch-mode commit filter (`<` / `>`)
+
+Branch mode can be filtered from "everything since the merge-base" to "the last N commits". The selection cycles through `[full, last 1, last 2, …, last total-1]` (ring size `total`; "last total" is identical to the full branch, so it's skipped): `<` goes **back in time** (from full it starts at the most recent commit and each press reaches one further back), `>` goes **forward in time** (from full it starts at all-but-the-oldest — i.e. immediately drops the oldest — and each press drops the next oldest). Both wrap to full at the ends. Working tree changes are always layered on top regardless of depth.
+
+- `git.BranchDiffDepth(ctx, hideWS, depth)` replaces the committed range's `from` ref: `depth <= 0` (or `>= commitsAhead`) → merge-base (full branch); otherwise `HEAD~depth` (clamped to the merge-base via `branchFromRef`). It also returns `CommitsAhead(mergeBase)`. `BranchDiff`/`BranchDiffOptions` are thin `depth=0` wrappers over the shared `branchDiff` core.
+- Model state: `branchDepth` (0 = full branch; N = last N commits, valid range 1..total-1) and `branchCommitList` (commits ahead of merge-base, newest first; count = `len`). `adjustBranchDepth("<"/">")` is pure modular arithmetic over a ring of size `total` (depth never equals `total`, since that would just be the full branch). `diffLoadedMsg` carries the list with an `isBranchLoad` flag (true only for `ModeBranch` loads) so non-Branch loads don't clobber the list or the depth selection. `setBranchCommits` clamps a now-invalid depth (`>= total`, e.g. after reset/squash) back to 0.
+- The knob is a no-op when not in Branch mode or when fewer than 2 commits are ahead. The status bar shows the state via `branchDepthHint()` (`N commits  </> filter` at full; `last N commits  </> adjust` while filtering); the mode slider's fixed click regions are untouched. The `mergeBase == HEAD` case (default branch behind remote) has `commitsAhead == 0`, so the filter never applies there.
+
+##### Commit list in the file-list pane
+
+While filtering (Branch mode, `branchDepth != 0`), a "Commits" section renders above the file list so you can see *which* commits are in scope. It's **hidden at the full branch** — `syncBranchCommits` sets `fileListModel.showCommits = mode == ModeBranch && branchDepth != 0`.
+
+- `git.BranchCommits()` returns `[]git.CommitInfo{SHA, ShortSHA, Subject}` for `mergeBase..HEAD`, newest first (parsed from `git log --format=%H%x1f%h%x1f%s`, splitting on the ASCII unit separator so subjects can't break parsing). Loaded once at startup via `branchCommitsMsg` and refreshed on every Branch-mode diff load.
+- `syncBranchCommits` pushes the list + `branchDepth` + the `showCommits` flag into `fileListModel`; it's called on load, on startup priming, and immediately on `<` / `>` (so the highlight moves before the reload completes).
+- Rendering lives in `filelist.go` (`renderCommitsLines`/`renderCommitRow`, manual TDD per the UI-rendering rule, but the geometry — `effectiveDepth`/`commitRowsShown`/`commitsSectionHeight`/`viewHeight` — is unit-tested). The section is a `Last N commits` header + one row per commit (`●` in scope, `·` excluded/dim) + separator. `viewHeight()` subtracts `commitsSectionHeight()` so the file viewport and all scroll math shrink to make room. Rows are capped (`commitsMinFileRows` reserve) with a `… +N more` summary when a short pane can't show every commit; since in-scope commits are newest (top), truncation only drops excluded ones.
+
 ### UI Layout
 
 - Fixed file list width: 30 chars (or `width/3` on narrow terminals < 80 cols)

@@ -5,14 +5,21 @@ type Diff struct {
 	Files []FileDiff
 }
 
+// CommitInfo summarizes one commit for the Branch-mode commit list.
+type CommitInfo struct {
+	SHA      string // full commit hash
+	ShortSHA string // abbreviated hash
+	Subject  string // first line of the commit message
+}
+
 // FileStatus represents the type of change.
 type FileStatus string
 
 const (
-	StatusModified FileStatus = "M"
-	StatusAdded    FileStatus = "A"
-	StatusDeleted  FileStatus = "D"
-	StatusRenamed  FileStatus = "R"
+	StatusModified  FileStatus = "M"
+	StatusAdded     FileStatus = "A"
+	StatusDeleted   FileStatus = "D"
+	StatusRenamed   FileStatus = "R"
 	StatusUntracked FileStatus = "?"
 )
 
