@@ -118,7 +118,8 @@ Press `?` inside revise to see the help overlay.
 | `}` / `{` (`]` / `[`) | Next / prev blank line |
 | `/` | Search the diff (highlights matches) |
 | `n` / `N` | Next / prev search match (while searching) |
-| `+` / `-` | More / fewer context lines |
+| `+` / `-` | More / fewer context lines (by 3; by 1 below 3) |
+| `0` | Reset context lines to the default |
 | `w` | Toggle hide whitespace |
 | `W` | Toggle soft line wrap |
 | `g` / `G` | Top / bottom |
