@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-24
+
 ### Added
 
 - `0` resets the diff context lines straight back to the default — no more pressing `-` repeatedly to get back after cranking context way up (#168)
