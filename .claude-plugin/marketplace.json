@@ -1,0 +1,16 @@
+{
+  "name": "revise",
+  "owner": {
+    "name": "Justin Campbell"
+  },
+  "plugins": [
+    {
+      "name": "revise",
+      "source": "./plugin",
+      "description": "Review local changes (or any file) in the revise TUI and act on the comments you leave",
+      "skills": [
+        "./skills/revise"
+      ]
+    }
+  ]
+}

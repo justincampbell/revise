@@ -151,9 +151,25 @@ internal/
     border_snapshot_test.go    # golden tests for pane border composition
     help_test.go               # help overlay, padRight, pluralize tests
     styles_demo.go             # --styles-demo output for visual testing
+.claude-plugin/
+  marketplace.json             # marketplace manifest at repo root (so `/plugin marketplace add justincampbell/revise` finds it); plugin source ./plugin
+plugin/                        # the Claude Code plugin itself
+  skills/revise/SKILL.md       # /revise skill instructions
+  CLAUDE.md                    # plugin-level instructions (loaded when enabled)
+  README.md                    # plugin install/usage docs
 ```
 
 ## Key Decisions
+
+### Claude Code Plugin (`plugin/`)
+
+revise ships its own Claude Code plugin so `/revise` is distributed from the same repo as the binary (the binary and plugin install separately — the skill assumes `revise` is already on PATH). The `/revise` skill launches revise with `--output <tmpfile>`, waits for the user to quit, then reads the comments back and works through them — the automated version of the manual "review in revise, paste the `# Code Review Comments` output into Claude" loop.
+
+- In tmux it opens revise in a `display-popup -E` (near-fullscreen, 90%×90%), which **blocks until the popup closes** — so the launching call returns exactly when the user quits revise. Outside tmux it asks the user to run revise themselves.
+- `--output` must precede the positional file arg (`revise --output <out> <file>`); Go's `flag` package stops parsing at the first positional, so the reverse order silently drops the flag.
+- `/revise` reviews the current diff; `/revise <file>` reviews a single file. The export format the skill parses (`## <file>`, `<n>: \`code\``, `> comment`, file-level bare `> comment`, `> [flagged]`) is produced by `formatExport` in `internal/ui/comment.go`.
+
+
 
 ### Diff Strategy
 

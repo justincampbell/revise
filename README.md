@@ -138,6 +138,20 @@ Press `?` inside revise to see the help overlay.
 | `E` | Open current file at cursor line in `$VISUAL`/`$EDITOR` (fallback: `vi`) |
 | `!` | Report issue on GitHub |
 
+## Claude Code Plugin
+
+revise ships a Claude Code plugin (in [`plugin/`](plugin/)) that adds a `/revise` skill: Claude opens revise for you to review, then reads your inline comments back and works through them.
+
+```sh
+/plugin marketplace add justincampbell/revise
+/plugin install revise@revise
+```
+
+The plugin and the binary install separately — the skill assumes `revise` is already on your PATH. See [`plugin/README.md`](plugin/README.md) for details.
+
+- `/revise` — review the current diff, then address the comments you leave.
+- `/revise <file>` — review a single file (e.g. a plan), then address the comments.
+
 ## Inspiration
 
 - [difit](https://github.com/yoshiko-pg/difit) -- browser-based local diff viewer with comment/copy-prompt features
