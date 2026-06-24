@@ -968,18 +968,48 @@ func TestModelPrevHunk_Key(t *testing.T) {
 
 // --- Context lines tests ---
 
+// stepContext steps by 1 below the default for fine control near zero, then by
+// DefaultContextLines (3) at the default and above, clamping at 0. The sequence
+// is therefore symmetric: 0,1,2,3,6,9,... in both directions.
+func TestStepContext(t *testing.T) {
+	tests := []struct {
+		name     string
+		start    int
+		increase bool
+		want     int
+	}{
+		{"increase from 0 (sub-default, by 1)", 0, true, 1},
+		{"increase from 1 (sub-default, by 1)", 1, true, 2},
+		{"increase from 2 (sub-default, by 1)", 2, true, 3},
+		{"increase from default (by 3)", git.DefaultContextLines, true, 6},
+		{"increase from 6 (by 3)", 6, true, 9},
+		{"decrease from 9 (by 3)", 9, false, 6},
+		{"decrease from 6 (by 3)", 6, false, 3},
+		{"decrease from default (sub-default, by 1)", git.DefaultContextLines, false, 2},
+		{"decrease from 2 (by 1)", 2, false, 1},
+		{"decrease from 1 (by 1)", 1, false, 0},
+		{"decrease from 0 clamps", 0, false, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, stepContext(tt.start, tt.increase))
+		})
+	}
+}
+
 func TestModelPlus_IncreasesContextLines(t *testing.T) {
 	m := makeModel("a.go")
 	assert.Equal(t, git.DefaultContextLines, m.contextLines)
 	m = sendKey(m, "+")
-	assert.Equal(t, git.DefaultContextLines+1, m.contextLines)
+	// From the default (3), + steps by 3.
+	assert.Equal(t, git.DefaultContextLines+3, m.contextLines)
 }
 
 func TestModelMinus_DecreasesContextLines(t *testing.T) {
 	m := makeModel("a.go")
-	m.contextLines = 5
+	m.contextLines = 6
 	m = sendKey(m, "-")
-	assert.Equal(t, 4, m.contextLines)
+	assert.Equal(t, 3, m.contextLines)
 }
 
 func TestModelMinus_ClampsAtZero(t *testing.T) {
@@ -993,15 +1023,31 @@ func TestModelEquals_IncreasesContextLines(t *testing.T) {
 	// "=" is the unshifted version of "+" on most keyboards
 	m := makeModel("a.go")
 	m = sendKey(m, "=")
-	assert.Equal(t, git.DefaultContextLines+1, m.contextLines)
+	assert.Equal(t, git.DefaultContextLines+3, m.contextLines)
 }
 
 func TestModelUnderscore_DecreasesContextLines(t *testing.T) {
 	// "_" is the shifted version of "-" on most keyboards
 	m := makeModel("a.go")
-	m.contextLines = 5
+	m.contextLines = 6
 	m = sendKey(m, "_")
-	assert.Equal(t, 4, m.contextLines)
+	assert.Equal(t, 3, m.contextLines)
+}
+
+func TestModelZero_ResetsContextToDefault(t *testing.T) {
+	m := makeModel("a.go")
+	m.contextLines = 30
+	m = sendKey(m, "0")
+	assert.Equal(t, git.DefaultContextLines, m.contextLines)
+}
+
+func TestModelZero_NoopInFileReviewMode(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	m.contextLines = 30
+	m = sendKey(m, "0")
+	assert.Equal(t, 30, m.contextLines)
 }
 
 // --- Stage/Unstage/Discard tests ---

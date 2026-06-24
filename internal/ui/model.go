@@ -458,7 +458,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		// Git-only keys — no-op in file review mode
-		case "tab", "shift+tab", "w", "+", "=", "-", "_":
+		case "tab", "shift+tab", "w", "+", "=", "-", "_", "0":
 			if m.fileReviewMode {
 				return m, nil
 			}
@@ -473,11 +473,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.hideWhitespace = !m.hideWhitespace
 				return m, m.loadDiff()
 			case "+", "=":
-				m.contextLines++
+				m.contextLines = stepContext(m.contextLines, true)
 				return m, m.loadDiff()
 			case "-", "_":
-				if m.contextLines > 0 {
-					m.contextLines--
+				if next := stepContext(m.contextLines, false); next != m.contextLines {
+					m.contextLines = next
+					return m, m.loadDiff()
+				}
+				return m, nil
+			case "0":
+				// Reset context straight back to the default after cranking it
+				// high (no need to step all the way back down).
+				if m.contextLines != git.DefaultContextLines {
+					m.contextLines = git.DefaultContextLines
 					return m, m.loadDiff()
 				}
 				return m, nil
@@ -1536,6 +1544,27 @@ func (m Model) modeAvailable(mode DiffMode) bool {
 }
 
 // cycleMode advances the mode by direction (+1 or -1), wrapping around.
+// stepContext returns the context-line count after one +/- step. Below the
+// default it moves by a single line so the 0..3 range stays reachable for fine
+// control; at the default and above it moves by DefaultContextLines so large
+// adjustments don't require a flurry of keypresses. Clamped to >= 0. The
+// resulting sequence is symmetric in both directions: 0,1,2,3,6,9,...
+func stepContext(c int, increase bool) int {
+	if increase {
+		if c < git.DefaultContextLines {
+			return c + 1
+		}
+		return c + git.DefaultContextLines
+	}
+	if c <= git.DefaultContextLines {
+		if c <= 0 {
+			return 0
+		}
+		return c - 1
+	}
+	return c - git.DefaultContextLines
+}
+
 func (m *Model) cycleMode(direction int) {
 	modes := m.availableModes()
 	currentIdx := 0

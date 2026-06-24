@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `0` resets the diff context lines straight back to the default — no more pressing `-` repeatedly to get back after cranking context way up (#168)
+
+### Changed
+
+- `+` / `-` now adjust context lines by 3 at a time (by 1 below 3, so the 0–3 range stays reachable), making large adjustments much faster (#168)
+
 ## [0.6.0] - 2026-06-12
 
 ### Added
