@@ -3,6 +3,7 @@
   "owner": {
     "name": "Justin Campbell"
   },
+  "description": "Claude Code plugin for the revise TUI — review local changes or any file and act on the comments you leave",
   "plugins": [
     {
       "name": "revise",
