@@ -6,7 +6,7 @@ import (
 )
 
 func TestLoadDiffForMode_UnknownMode(t *testing.T) {
-	_, err := loadDiffForMode("bogus")
+	_, err := loadDiffForMode("bogus", false)
 	if err == nil {
 		t.Fatal("expected error for unknown mode")
 	}

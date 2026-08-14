@@ -97,6 +97,8 @@ func HunkSourceLabel(s HunkSource) string {
 		return "staged"
 	case SourceUnstaged:
 		return "unstaged"
+	case SourceOverlap:
+		return "overlap"
 	}
 	return ""
 }

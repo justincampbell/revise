@@ -1045,6 +1045,7 @@ func renderHunkHeader(h git.Hunk) string {
 	}
 
 	style := hunkStyle
+	tagStyle := hunkSourceTagStyle
 	switch h.Source {
 	case git.SourceBranch:
 		style = hunkBranchStyle
@@ -1052,9 +1053,12 @@ func renderHunkHeader(h git.Hunk) string {
 		style = hunkStagedStyle
 	case git.SourceUnstaged:
 		style = hunkUnstagedStyle
+	case git.SourceOverlap:
+		style = hunkOverlapStyle
+		tagStyle = hunkOverlapTagStyle
 	}
 
-	tag := hunkSourceTagStyle.Render("[" + label + "]")
+	tag := tagStyle.Render("[" + label + "]")
 	if header == "" {
 		return tag
 	}

@@ -979,7 +979,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	r.Chdir()
 
 	// Depth 0 (full branch): 3 commits ahead, all three files.
-	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 0)
+	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 0, false)
 	require.NoError(t, err)
 	assert.Equal(t, 3, ahead)
 	paths := filePaths(diff)
@@ -988,7 +988,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth 1: only the last commit (three.go).
-	diff, ahead, err = BranchDiffDepth(DefaultContextLines, false, 1)
+	diff, ahead, err = BranchDiffDepth(DefaultContextLines, false, 1, false)
 	require.NoError(t, err)
 	assert.Equal(t, 3, ahead)
 	paths = filePaths(diff)
@@ -997,7 +997,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth 2: the last two commits (two.go, three.go).
-	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 2)
+	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 2, false)
 	require.NoError(t, err)
 	paths = filePaths(diff)
 	assert.NotContains(t, paths, "one.go")
@@ -1005,7 +1005,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth >= total clamps to the full branch.
-	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 99)
+	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 99, false)
 	require.NoError(t, err)
 	paths = filePaths(diff)
 	assert.Contains(t, paths, "one.go")
@@ -1032,7 +1032,7 @@ func TestBranchDiffDepth_IncludesWorkingTree(t *testing.T) {
 	r.WriteFile("wip.go", "package main\n\nfunc wip() {}\n")
 	r.Chdir()
 
-	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 1)
+	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 1, false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, ahead)
 	paths := filePaths(diff)
