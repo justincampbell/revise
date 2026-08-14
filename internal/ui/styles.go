@@ -38,15 +38,17 @@ func SetTheme(t Theme, isDark bool) {
 
 var (
 	// Line styles
-	addedStyle         lipgloss.Style
-	removedStyle       lipgloss.Style
-	contextStyle       lipgloss.Style
-	hunkStyle          lipgloss.Style
-	hunkBranchStyle    lipgloss.Style
-	hunkStagedStyle    lipgloss.Style
-	hunkUnstagedStyle  lipgloss.Style
-	hunkSourceTagStyle lipgloss.Style
-	fileStyle          lipgloss.Style
+	addedStyle          lipgloss.Style
+	removedStyle        lipgloss.Style
+	contextStyle        lipgloss.Style
+	hunkStyle           lipgloss.Style
+	hunkBranchStyle     lipgloss.Style
+	hunkStagedStyle     lipgloss.Style
+	hunkUnstagedStyle   lipgloss.Style
+	hunkOverlapStyle    lipgloss.Style
+	hunkSourceTagStyle  lipgloss.Style
+	hunkOverlapTagStyle lipgloss.Style
+	fileStyle           lipgloss.Style
 
 	// Gutter styles
 	addedGutterStyle   lipgloss.Style
@@ -150,7 +152,11 @@ func applyTheme(p themeColors) {
 	hunkBranchStyle = lipgloss.NewStyle().Foreground(p.dim)
 	hunkStagedStyle = lipgloss.NewStyle().Foreground(p.cyan)
 	hunkUnstagedStyle = lipgloss.NewStyle().Foreground(p.yellow)
+	hunkOverlapStyle = lipgloss.NewStyle().Foreground(p.overlapFg)
 	hunkSourceTagStyle = lipgloss.NewStyle().Foreground(p.dim).Italic(true)
+	// The overlap tag matches the other source tags' italic styling, but gets
+	// its own accent color so collapsed/merged hunks stand out from them.
+	hunkOverlapTagStyle = lipgloss.NewStyle().Foreground(p.overlapFg).Italic(true)
 	fileStyle = lipgloss.NewStyle().Bold(true).Foreground(p.white)
 
 	gutterAdded := p.gutterAddedFg
@@ -248,7 +254,9 @@ func applyNoColor() {
 	hunkBranchStyle = lipgloss.NewStyle()
 	hunkStagedStyle = lipgloss.NewStyle()
 	hunkUnstagedStyle = lipgloss.NewStyle()
+	hunkOverlapStyle = lipgloss.NewStyle()
 	hunkSourceTagStyle = lipgloss.NewStyle()
+	hunkOverlapTagStyle = lipgloss.NewStyle()
 	fileStyle = lipgloss.NewStyle().Bold(true)
 	selectedStyle = lipgloss.NewStyle().Bold(true)
 	unselectedStyle = lipgloss.NewStyle()

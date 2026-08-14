@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/devwatch"
 	"github.com/justincampbell/revise/internal/fswatch"
@@ -125,7 +125,9 @@ func main() {
 	if onDefaultBranch {
 		diff, err = git.WorkingTreeDiff(git.DefaultContextLines)
 	} else {
-		diff, err = git.BranchDiff(git.DefaultContextLines)
+		// Overlap-collapse is on by default (matches the model's initial state),
+		// so the first paint matches what the UI shows before any reload.
+		diff, _, err = git.BranchDiffDepth(git.DefaultContextLines, false, 0, true)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -293,9 +295,10 @@ func runDiff(args []string) {
 	fs := flag.NewFlagSet("diff", flag.ExitOnError)
 	modeFlag := fs.String("mode", "", "Diff mode: branch, staged, staged-only, unstaged (default: auto-detect)")
 	hunksFlag := fs.Bool("hunks", false, "Print TUI-style hunks (file path header, line-number gutter) instead of unified diff")
+	overlapFlag := fs.Bool("overlap", false, "Branch mode: collapse committed + working-tree edits to the same lines into one hunk")
 	_ = fs.Parse(args)
 
-	diff, err := loadDiffForMode(*modeFlag)
+	diff, err := loadDiffForMode(*modeFlag, *overlapFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -310,12 +313,23 @@ func runDiff(args []string) {
 
 // loadDiffForMode returns a *git.Diff for the given mode string. An empty
 // mode auto-detects (branch on feature branches, working-tree on default).
-func loadDiffForMode(mode string) (*git.Diff, error) {
+func loadDiffForMode(mode string, overlap bool) (*git.Diff, error) {
 	switch mode {
 	case "":
-		return git.GetDiff()
+		// Mirror GetDiff's auto-detection, but thread the overlap flag through
+		// the Branch-mode path (GetDiff itself doesn't take it).
+		onDefault, err := git.IsOnDefaultBranch()
+		if err != nil {
+			return nil, err
+		}
+		if onDefault {
+			return git.WorkingTreeDiff(git.DefaultContextLines)
+		}
+		diff, _, err := git.BranchDiffDepth(git.DefaultContextLines, false, 0, overlap)
+		return diff, err
 	case "branch":
-		return git.BranchDiff(git.DefaultContextLines)
+		diff, _, err := git.BranchDiffDepth(git.DefaultContextLines, false, 0, overlap)
+		return diff, err
 	case "staged":
 		return git.WorkingTreeDiff(git.DefaultContextLines)
 	case "staged-only":
