@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Claude Code plugin (`plugin/`) with a `/revise` skill: Claude opens revise for review (in a tmux popup), then reads back your inline comments via `--output` and works through them. `/revise` reviews the current diff; `/revise <file>` reviews a single file (#146)
 
+### Fixed
+
+- Pressing `m` to mark a line in file review mode (`revise <file>`) crashed the program. The file-review constructor never initialized the marks map, so the first mark write panicked
+
 ## [0.6.1] - 2026-06-24
 
 ### Added

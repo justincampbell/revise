@@ -2070,6 +2070,82 @@ func TestFileReviewMode_CommentStillWorks(t *testing.T) {
 	assert.True(t, m.commentInputActive)
 }
 
+// TestKeyPress_NeverPanics is a regression guard for the whole class of bug
+// where a constructor forgets to initialize a map/slice (or leaves a nil
+// pointer) and the first keystroke that touches it crashes the program. The
+// original case: NewFileReview didn't initialize marks, so pressing "m" in
+// file review mode panicked with "assignment to entry in nil map".
+//
+// It sends every single-key input — all printable ASCII plus the special
+// keys — to a normal-state model in each mode/focus and asserts none panic.
+// It only calls Update; returned tea.Cmds (which is where git mutations,
+// editor/browser launches, and clipboard writes live) are never executed, so
+// the test has no external side effects.
+func TestKeyPress_NeverPanics(t *testing.T) {
+	lines := []git.Line{
+		{Type: git.LineContext, Content: "alpha", OldNum: 1, NewNum: 1},
+		{Type: git.LineContext, Content: "beta", OldNum: 2, NewNum: 2},
+	}
+
+	gitDiffView := makeModelWithDiff("file.go", lines)
+	gitDiffView = sendKey(gitDiffView, "l") // focus diff view
+	gitDiffView = sendKey(gitDiffView, "j") // put cursor on a code line
+
+	variants := []struct {
+		name string
+		m    Model
+	}{
+		{"file-review", makeFileReviewModel(lines)},
+		{"git/file-list", makeModelWithDiff("file.go", lines)},
+		{"git/diff-view", gitDiffView},
+	}
+
+	runeKeys := make([]string, 0, 94)
+	for r := rune(0x21); r <= rune(0x7e); r++ { // '!'..'~'
+		runeKeys = append(runeKeys, string(r))
+	}
+	specialKeys := []tea.KeyType{
+		tea.KeyTab, tea.KeyShiftTab, tea.KeyEsc, tea.KeyEnter,
+		tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight,
+		tea.KeyPgUp, tea.KeyPgDown, tea.KeyHome, tea.KeyEnd,
+		tea.KeySpace, tea.KeyCtrlU, tea.KeyBackspace,
+	}
+
+	for _, v := range variants {
+		for _, k := range runeKeys {
+			func(variant, key string, m Model) {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("panic on key %q in %s: %v", key, variant, r)
+					}
+				}()
+				m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+			}(v.name, k, v.m)
+		}
+		for _, kt := range specialKeys {
+			func(variant string, keyType tea.KeyType, m Model) {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("panic on key %q in %s: %v", keyType.String(), variant, r)
+					}
+				}()
+				m.Update(tea.KeyMsg{Type: keyType})
+			}(v.name, kt, v.m)
+		}
+	}
+}
+
+func TestFileReviewMode_MarkStillWorks(t *testing.T) {
+	m := makeFileReviewModel([]git.Line{
+		{Type: git.LineContext, Content: "hello", OldNum: 1, NewNum: 1},
+	})
+	require.NotNil(t, m.diffView.cursorRef())
+	m = sendKey(m, "m")
+	assert.Len(t, m.marks, 1, "pressing m should add a mark")
+	m = sendKey(m, "m")
+	assert.Empty(t, m.marks, "pressing m again should remove the mark")
+}
+
 func TestFileReviewMode_ExportedComments(t *testing.T) {
 	m := makeFileReviewModel([]git.Line{
 		{Type: git.LineContext, Content: "hello world", OldNum: 1, NewNum: 1},

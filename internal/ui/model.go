@@ -201,9 +201,12 @@ func NewFileReview(diff *git.Diff, filePath string) Model {
 	dv := newDiffViewModel()
 
 	c := make(comments)
+	mk := make(marks)
 	dv.comments = c
+	dv.marks = mk
 	dv.fileReviewMode = true
 	fl.comments = c
+	fl.marks = mk
 
 	if len(diff.Files) > 0 {
 		dv.setFile(&diff.Files[0])
@@ -216,6 +219,7 @@ func NewFileReview(diff *git.Diff, filePath string) Model {
 		focus:          focusDiffView,
 		fullscreen:     true,
 		comments:       c,
+		marks:          mk,
 		mode:           ModeStaged,
 		fileReviewMode: true,
 		fileReviewPath: filePath,
