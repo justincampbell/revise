@@ -318,32 +318,37 @@ func resolveMergeBase() (string, error) {
 // This is the broadest view — committed + staged + unstaged + untracked.
 // On the default branch behind the remote, it shows the remote's changes.
 func BranchDiff(contextLines int) (*Diff, error) {
-	diff, _, err := branchDiff(contextLines, false, 0)
+	diff, _, err := branchDiff(contextLines, false, 0, false)
 	return diff, err
 }
 
 // BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
 func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
-	diff, _, err := branchDiff(contextLines, hideWhitespace, 0)
+	diff, _, err := branchDiff(contextLines, hideWhitespace, 0, false)
 	return diff, err
 }
 
 // BranchDiffDepth is like BranchDiffOptions but limits the committed range to
 // the last `depth` commits (depth <= 0 means the full branch, from the
-// merge-base). Working tree changes are always layered on top. It also returns
-// the number of commits the branch is ahead of the merge-base, so callers can
-// bound a depth selector — 0 when there are no local commits ahead (e.g. on the
-// default branch behind the remote, where depth does not apply).
-func BranchDiffDepth(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
-	return branchDiff(contextLines, hideWhitespace, depth)
+// merge-base). Working tree changes are always layered on top. When overlap is
+// true, files whose committed and working-tree edits touch the same lines are
+// collapsed to a single merge-base→worktree diff (see composeOverlap); when
+// false, committed and working-tree hunks are stacked and tagged by source. It
+// also returns the number of commits the branch is ahead of the merge-base, so
+// callers can bound a depth selector — 0 when there are no local commits ahead
+// (e.g. on the default branch behind the remote, where depth does not apply).
+func BranchDiffDepth(contextLines int, hideWhitespace bool, depth int, overlap bool) (*Diff, int, error) {
+	return branchDiff(contextLines, hideWhitespace, depth, overlap)
 }
 
 // branchDiff computes the committed range merged with working tree changes.
 // The committed range runs from the merge-base to HEAD, optionally shortened to
 // the last `depth` commits. The working tree diff runs concurrently with the
-// branch diff computation. Returns the diff and the number of commits ahead of
-// the merge-base.
-func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
+// branch diff computation. When overlap is true, files edited both in commits
+// and in the working tree on the same lines are collapsed to a single net diff
+// instead of stacked. Returns the diff and the number of commits ahead of the
+// merge-base.
+func branchDiff(contextLines int, hideWhitespace bool, depth int, overlap bool) (*Diff, int, error) {
 	// Start working tree diff immediately — it's independent of the branch diff.
 	var wtDiff *Diff
 	var g errgroup.Group
@@ -368,10 +373,13 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 
 	var raw string
 	var commitsAhead int
+	var from string
+	remoteCase := false
 	if mergeBase == head {
 		// merge-base == HEAD: we're on the default branch but the remote
 		// has different commits. Diff HEAD against the remote ref. There are
 		// no local commits ahead, so depth does not apply (commitsAhead == 0).
+		remoteCase = true
 		branch, err := DefaultBranch()
 		if err != nil {
 			_ = g.Wait()
@@ -389,7 +397,7 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 		}
 	} else {
 		commitsAhead = CommitsAhead(mergeBase)
-		from := branchFromRef(mergeBase, depth, commitsAhead)
+		from = branchFromRef(mergeBase, depth, commitsAhead)
 		raw, err = rawDiffBetween(from, "HEAD", contextLines, hideWhitespace)
 		if err != nil {
 			_ = g.Wait()
@@ -403,7 +411,13 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 		return nil, 0, err
 	}
 
-	diff.Files = composeBranch(diff.Files, wtDiff.Files)
+	// The remote-divergence case has no local commit layer to overlap with the
+	// working tree, so it always uses plain stacking.
+	if remoteCase || !overlap {
+		diff.Files = composeBranch(diff.Files, wtDiff.Files)
+	} else {
+		diff.Files = composeOverlap(diff.Files, wtDiff.Files, from, contextLines, hideWhitespace)
+	}
 	return diff, commitsAhead, nil
 }
 

@@ -143,6 +143,10 @@ type Model struct {
 	noCommits         bool // true when the repo has no commits yet (#189)
 	contextLines      int
 	hideWhitespace    bool
+	// mergeOverlap collapses committed + working-tree edits to the same lines
+	// into one hunk in Branch mode (the "o" toggle). On by default; only
+	// affects ModeBranch loads.
+	mergeOverlap bool
 
 	// Branch-mode commit depth (<, >). branchDepth 0 means the full branch
 	// (all commits ahead of the merge-base); N>0 limits Branch mode to the
@@ -273,6 +277,7 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		onDefaultBranch: onDefaultBranch,
 		noCommits:       !git.HasCommits(),
 		contextLines:    git.DefaultContextLines,
+		mergeOverlap:    true,
 		refreshPolicy:   refresh.Default,
 		lastFingerprint: initialFP,
 		focused:         true,
@@ -458,7 +463,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		// Git-only keys — no-op in file review mode
-		case "tab", "shift+tab", "w", "+", "=", "-", "_", "0":
+		case "tab", "shift+tab", "w", "o", "+", "=", "-", "_", "0":
 			if m.fileReviewMode {
 				return m, nil
 			}
@@ -472,6 +477,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "w":
 				m.hideWhitespace = !m.hideWhitespace
 				return m, m.loadDiff()
+			case "o":
+				m.mergeOverlap = !m.mergeOverlap
+				state := "off"
+				if m.mergeOverlap {
+					state = "on"
+				}
+				m.statusMsg = "Overlap collapse: " + state
+				return m, tea.Batch(
+					m.loadDiff(),
+					tea.Tick(2*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} }),
+				)
 			case "+", "=":
 				m.contextLines = stepContext(m.contextLines, true)
 				return m, m.loadDiff()
@@ -1684,6 +1700,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 	mode := m.mode
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
+	overlap := m.mergeOverlap
 	depth := m.branchDepth
 	m.lastDiffLoadStart = time.Now()
 	start := m.lastDiffLoadStart
@@ -1701,7 +1718,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 		isBranchLoad := mode == ModeBranch
 		switch mode {
 		case ModeBranch:
-			diff, _, err = git.BranchDiffDepth(ctx, hideWS, depth)
+			diff, _, err = git.BranchDiffDepth(ctx, hideWS, depth, overlap)
 			if err == nil {
 				branchCommits, _ = git.BranchCommits()
 			}

@@ -49,6 +49,8 @@ In **Branch** mode, filter the committed range to the last *N* commits with `<` 
 
 While filtering, a **Commits** section appears at the top of the file-list pane listing the branch's commits (newest first) so you can see what's in scope: in-scope commits are highlighted with a `●`, and excluded commits are dimmed with a `·`. At the full branch the section is hidden.
 
+By default, when a line was changed both in a commit and again in the working tree, Branch mode **collapses** the two into a single net `[overlap]` hunk (base → working tree) instead of stacking a `[branch]` hunk and an `[unstaged]` hunk with a misleading intermediate state that never existed on disk. Files whose committed and working-tree edits touch *different* lines keep their separate `[branch]` / `[unstaged]` tags. Toggle this collapsing off/on with `o`.
+
 ### File Review
 
 Review any file with comments:
@@ -95,6 +97,7 @@ Press `?` inside revise to see the help overlay.
 | `n` / `N` | Next / prev file (or search match while searching) |
 | `Tab` / `Shift+Tab` | Cycle diff mode |
 | `<` / `>` | Fewer / more commits (Branch mode) |
+| `o` | Toggle overlap collapse (Branch mode) |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list |
 | `?` | Toggle help |
