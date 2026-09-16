@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-16
+
 ### Added
 
 - Claude Code plugin (`plugin/`) with a `/revise` skill: Claude opens revise for review (in a tmux popup), then reads back your inline comments via `--output` and works through them. `/revise` reviews the current diff; `/revise <file>` reviews a single file (#146)
