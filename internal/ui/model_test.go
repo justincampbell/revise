@@ -549,6 +549,122 @@ func TestBranchCommitsMsg_ShowsListWhenFiltering(t *testing.T) {
 	assert.True(t, m.fileList.showCommits)
 }
 
+// With a single commit selected, "," and "." step that commit back and forward
+// through history, clamping at the oldest commit and at HEAD.
+func TestAdjustBranchEnd_StepsSingleCommitThroughHistory(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(4)
+
+	require.True(t, m.adjustBranchDepth("<")) // HEAD only
+	assert.Equal(t, [2]int{1, 0}, [2]int{m.branchDepth, m.branchSkip})
+
+	require.True(t, m.adjustBranchEnd(",")) // HEAD~1 only
+	assert.Equal(t, [2]int{2, 1}, [2]int{m.branchDepth, m.branchSkip})
+	require.True(t, m.adjustBranchEnd(",")) // HEAD~2 only
+	assert.Equal(t, [2]int{3, 2}, [2]int{m.branchDepth, m.branchSkip})
+	require.True(t, m.adjustBranchEnd(",")) // oldest only: start is the merge-base
+	assert.Equal(t, [2]int{0, 3}, [2]int{m.branchDepth, m.branchSkip})
+	assert.False(t, m.adjustBranchEnd(","), "no older commit to step to")
+
+	require.True(t, m.adjustBranchEnd(".")) // HEAD~2 only
+	assert.Equal(t, [2]int{3, 2}, [2]int{m.branchDepth, m.branchSkip})
+	require.True(t, m.adjustBranchEnd("."))
+	require.True(t, m.adjustBranchEnd(".")) // HEAD only
+	assert.Equal(t, [2]int{1, 0}, [2]int{m.branchDepth, m.branchSkip})
+	assert.False(t, m.adjustBranchEnd("."), "already at HEAD")
+}
+
+// With more than one commit selected, "," and "." move only the end.
+func TestAdjustBranchEnd_MovesEndOfWiderRange(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(4)
+
+	assert.False(t, m.adjustBranchEnd("."), "full branch already ends at HEAD")
+
+	require.True(t, m.adjustBranchEnd(",")) // all but HEAD
+	assert.Equal(t, [2]int{0, 1}, [2]int{m.branchDepth, m.branchSkip})
+	require.True(t, m.adjustBranchEnd(","))
+	assert.Equal(t, [2]int{0, 2}, [2]int{m.branchDepth, m.branchSkip})
+	require.True(t, m.adjustBranchEnd("."))
+	require.True(t, m.adjustBranchEnd(".")) // back to full
+	assert.Equal(t, [2]int{0, 0}, [2]int{m.branchDepth, m.branchSkip})
+}
+
+// The start ring only covers commits at or before the end.
+func TestAdjustBranchDepth_RingStopsAtEnd(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(4)
+	m.branchSkip = 1
+
+	require.True(t, m.adjustBranchDepth("<")) // full -> HEAD~1 only
+	assert.Equal(t, 2, m.branchDepth)
+	require.True(t, m.adjustBranchDepth("<"))
+	assert.Equal(t, 3, m.branchDepth)
+	require.True(t, m.adjustBranchDepth("<")) // -> full
+	assert.Equal(t, 0, m.branchDepth)
+
+	require.True(t, m.adjustBranchDepth(">")) // full -> drop oldest
+	assert.Equal(t, 3, m.branchDepth)
+	require.True(t, m.adjustBranchDepth(">"))
+	assert.Equal(t, 2, m.branchDepth)
+	require.True(t, m.adjustBranchDepth(">")) // wraps to full
+	assert.Equal(t, 0, m.branchDepth)
+	assert.Equal(t, 1, m.branchSkip, "end untouched by start knob")
+
+	m.branchSkip = 3 // only the oldest commit is left to select
+	assert.False(t, m.adjustBranchDepth("<"))
+}
+
+func TestEndKeys_OnlyInBranchMode(t *testing.T) {
+	m := makeModel("a.go")
+	m.branchCommitList = commitsN(3)
+
+	m.mode = ModeStaged
+	m = sendKey(m, ",")
+	assert.Equal(t, 0, m.branchSkip)
+
+	m.mode = ModeBranch
+	m = sendKey(m, ",")
+	assert.Equal(t, 1, m.branchSkip)
+	assert.True(t, m.fileList.showCommits, "commit list shows while the end is moved")
+	assert.Equal(t, 1, m.fileList.branchSkip)
+}
+
+func TestSetBranchCommits_ResetsRangeWhenEndOutOfRange(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchDepth = 0
+	m.branchSkip = 3
+
+	m.setBranchCommits(commitsN(2))
+	assert.Equal(t, [2]int{0, 0}, [2]int{m.branchDepth, m.branchSkip})
+
+	m.branchDepth = 3
+	m.branchSkip = 2
+	m.setBranchCommits(commitsN(5))
+	assert.Equal(t, [2]int{3, 2}, [2]int{m.branchDepth, m.branchSkip}, "valid range preserved")
+}
+
+func TestBranchDepthHint_DescribesRange(t *testing.T) {
+	m := makeModel("a.go")
+	m.mode = ModeBranch
+	m.branchCommitList = commitsN(5)
+
+	assert.Contains(t, ansi.Strip(m.branchDepthHint()), "5 commits")
+
+	m.branchDepth = 2
+	assert.Contains(t, ansi.Strip(m.branchDepthHint()), "last 2 commits")
+
+	m.branchDepth, m.branchSkip = 3, 2
+	assert.Contains(t, ansi.Strip(m.branchDepthHint()), "commit 3 of 5")
+
+	m.branchDepth, m.branchSkip = 0, 1
+	assert.Contains(t, ansi.Strip(m.branchDepthHint()), "commits 1–4 of 5")
+}
+
 func TestAdjustBranchDepth_NoopWithFewerThanTwoCommits(t *testing.T) {
 	m := makeModel("a.go")
 	m.mode = ModeBranch

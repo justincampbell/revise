@@ -318,40 +318,47 @@ func resolveMergeBase() (string, error) {
 // This is the broadest view — committed + staged + unstaged + untracked.
 // On the default branch behind the remote, it shows the remote's changes.
 func BranchDiff(contextLines int) (*Diff, error) {
-	diff, _, err := branchDiff(contextLines, false, 0)
+	diff, _, err := branchDiff(contextLines, false, 0, 0)
 	return diff, err
 }
 
 // BranchDiffOptions returns BranchDiff with optional whitespace ignoring.
 func BranchDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
-	diff, _, err := branchDiff(contextLines, hideWhitespace, 0)
+	diff, _, err := branchDiff(contextLines, hideWhitespace, 0, 0)
 	return diff, err
 }
 
-// BranchDiffDepth is like BranchDiffOptions but limits the committed range to
-// the last `depth` commits (depth <= 0 means the full branch, from the
-// merge-base). Working tree changes are always layered on top. It also returns
-// the number of commits the branch is ahead of the merge-base, so callers can
-// bound a depth selector — 0 when there are no local commits ahead (e.g. on the
-// default branch behind the remote, where depth does not apply).
-func BranchDiffDepth(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
-	return branchDiff(contextLines, hideWhitespace, depth)
+// BranchDiffRange is like BranchDiffOptions but limits the committed range.
+// depth sets the start: the last `depth` commits (<= 0 means the full branch,
+// from the merge-base). skip sets the end: HEAD~skip (<= 0 means HEAD). Working
+// tree changes are layered on top only when the range ends at HEAD. A skip that
+// would leave the range empty is ignored. It also returns the number of commits
+// the branch is ahead of the merge-base, so callers can bound the selection — 0
+// when there are no local commits ahead (e.g. on the default branch behind the
+// remote, where depth and skip do not apply).
+func BranchDiffRange(contextLines int, hideWhitespace bool, depth, skip int) (*Diff, int, error) {
+	return branchDiff(contextLines, hideWhitespace, depth, skip)
 }
 
 // branchDiff computes the committed range merged with working tree changes.
-// The committed range runs from the merge-base to HEAD, optionally shortened to
-// the last `depth` commits. The working tree diff runs concurrently with the
-// branch diff computation. Returns the diff and the number of commits ahead of
-// the merge-base.
-func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, error) {
-	// Start working tree diff immediately — it's independent of the branch diff.
+// The committed range runs from the merge-base to HEAD, optionally shortened
+// by depth (start) and skip (end). The working tree diff runs concurrently with
+// the branch diff computation. Returns the diff and the number of commits ahead
+// of the merge-base.
+func branchDiff(contextLines int, hideWhitespace bool, depth, skip int) (*Diff, int, error) {
 	var wtDiff *Diff
 	var g errgroup.Group
-	g.Go(func() error {
-		var err error
-		wtDiff, err = WorkingTreeDiffOptions(contextLines, hideWhitespace)
-		return err
-	})
+	startWorkingTree := func() {
+		g.Go(func() error {
+			var err error
+			wtDiff, err = WorkingTreeDiffOptions(contextLines, hideWhitespace)
+			return err
+		})
+	}
+	// Start working tree diff immediately — it's independent of the branch diff.
+	if skip <= 0 {
+		startWorkingTree()
+	}
 
 	// Meanwhile, compute branch diff.
 	mergeBase, err := resolveMergeBase()
@@ -368,6 +375,7 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 
 	var raw string
 	var commitsAhead int
+	to := "HEAD"
 	if mergeBase == head {
 		// merge-base == HEAD: we're on the default branch but the remote
 		// has different commits. Diff HEAD against the remote ref. There are
@@ -390,7 +398,8 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 	} else {
 		commitsAhead = CommitsAhead(mergeBase)
 		from := branchFromRef(mergeBase, depth, commitsAhead)
-		raw, err = rawDiffBetween(from, "HEAD", contextLines, hideWhitespace)
+		to = branchToRef(depth, skip, commitsAhead)
+		raw, err = rawDiffBetween(from, to, contextLines, hideWhitespace)
 		if err != nil {
 			_ = g.Wait()
 			return nil, 0, err
@@ -399,6 +408,13 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 
 	diff := Parse(raw)
 
+	if to != "HEAD" {
+		tagHunks(diff.Files, SourceBranch)
+		return diff, commitsAhead, nil
+	}
+	if skip > 0 {
+		startWorkingTree() // skip was out of range, so the range ends at HEAD after all
+	}
 	if err := g.Wait(); err != nil {
 		return nil, 0, err
 	}
@@ -427,6 +443,23 @@ func branchFromRef(mergeBase string, depth, commitsAhead int) string {
 		return ref
 	}
 	return mergeBase
+}
+
+// branchToRef returns the ref to diff to for a branch view ending `skip`
+// commits before HEAD. Returns "HEAD" when skip <= 0 or when skip would leave no
+// commits between the start (see branchFromRef) and the end.
+func branchToRef(depth, skip, commitsAhead int) string {
+	inRange := commitsAhead
+	if depth > 0 && depth < commitsAhead {
+		inRange = depth
+	}
+	if skip <= 0 || skip >= inRange {
+		return "HEAD"
+	}
+	if ref := resolveRef(fmt.Sprintf("HEAD~%d", skip)); ref != "" {
+		return ref
+	}
+	return "HEAD"
 }
 
 // BranchCommits returns the commits the current branch is ahead of its
