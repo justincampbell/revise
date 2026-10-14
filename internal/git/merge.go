@@ -1,11 +1,14 @@
 package git
 
-// composeWorkingTree merges staged + unstaged + untracked file diffs into a
-// single set. Hunks are tagged by source before merging.
-func composeWorkingTree(staged, unstaged, untracked []FileDiff) []FileDiff {
+// composeWorkingTree merges staged + unstaged + conflicted + untracked file
+// diffs into a single set. Hunks are tagged by source before merging.
+// Conflicted paths never appear in the parsed staged/unstaged diffs (git
+// renders them as combined diffs, which Parse skips), so they're appended.
+func composeWorkingTree(staged, unstaged, conflicted, untracked []FileDiff) []FileDiff {
 	tagHunks(staged, SourceStaged)
 	tagHunks(unstaged, SourceUnstaged)
 	result := mergeFileDiffs(staged, unstaged)
+	result = append(result, conflicted...)
 	return append(result, untracked...)
 }
 
@@ -54,6 +57,10 @@ func mergeFileDiffs(base, overlay []FileDiff) []FileDiff {
 				copy(combined, result[idx].Hunks)
 				combined = append(combined, f.Hunks...)
 				result[idx].Hunks = combined
+				if f.Status == StatusConflicted {
+					// An unresolved conflict outranks the committed status.
+					result[idx].Status = StatusConflicted
+				}
 			}
 		} else {
 			result = append(result, f)

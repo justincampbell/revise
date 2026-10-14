@@ -92,6 +92,31 @@ func (r *TestRepo) Chdir() {
 	r.t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck // best-effort restore
 }
 
+// gitExpectFail runs a git command that is expected to fail (e.g. a rebase or
+// merge that stops on conflicts), fataling the test if it succeeds.
+func (r *TestRepo) gitExpectFail(args ...string) {
+	r.t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = r.Dir
+	if out, err := cmd.CombinedOutput(); err == nil {
+		r.t.Fatalf("git %v: expected failure, got success\n%s", args, out)
+	}
+}
+
+// RebaseExpectConflict rebases the current branch onto `onto`, expecting it
+// to stop on a conflict.
+func (r *TestRepo) RebaseExpectConflict(onto string) {
+	r.t.Helper()
+	r.gitExpectFail("rebase", onto)
+}
+
+// MergeExpectConflict merges `branch` into the current branch, expecting it
+// to stop on a conflict.
+func (r *TestRepo) MergeExpectConflict(branch string) {
+	r.t.Helper()
+	r.gitExpectFail("merge", "--no-edit", branch)
+}
+
 // StagedDiffRaw returns the raw output of git diff --cached.
 func (r *TestRepo) StagedDiffRaw() string {
 	return r.mustGit("diff", "--cached")
@@ -248,6 +273,31 @@ func aheadOfRemoteRepo(t *testing.T) *TestRepo {
 	r.Add("local-change.go")
 	r.Commit("local commit")
 
+	r.Chdir()
+	return r
+}
+
+// divergedRepo returns a TestRepo where main and feature (checked out) each
+// changed the same line of base.go, so rebasing or merging them conflicts.
+// Feature also modifies other.go, which applies cleanly.
+// CWD is changed to the repo for the duration of the test.
+func divergedRepo(t *testing.T) *TestRepo {
+	t.Helper()
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.WriteFile("other.go", "package main\n")
+	r.Add("base.go", "other.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* FEATURE */ }\n")
+	r.WriteFile("other.go", "package main\n\n// OTHER\n")
+	r.Add("base.go", "other.go")
+	r.Commit("feature change")
+	r.mustGit("checkout", "main")
+	r.WriteFile("base.go", "package main\n\nfunc base() { /* MAIN */ }\n")
+	r.Add("base.go")
+	r.Commit("main change")
+	r.mustGit("checkout", "feature")
 	r.Chdir()
 	return r
 }

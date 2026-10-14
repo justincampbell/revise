@@ -1114,6 +1114,77 @@ func TestModelUnstageKey_OnUnstagedHunk_ShowsError(t *testing.T) {
 	assert.Contains(t, m.statusMsg, "staged")
 }
 
+// makeModelWithConflictedFile creates a model with a single conflicted file.
+// With hunks=false it mimics a modify/delete conflict with nothing to diff.
+func makeModelWithConflictedFile(hunks bool) Model {
+	f := git.FileDiff{Path: "conflict.go", Status: git.StatusConflicted}
+	if hunks {
+		f.Hunks = []git.Hunk{{
+			Header:   "@@ -1,1 +1,4 @@",
+			Source:   git.SourceUnstaged,
+			OldStart: 1, OldCount: 1, NewStart: 1, NewCount: 4,
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "<<<<<<< HEAD", NewNum: 1},
+				{Type: git.LineContext, Content: "a", OldNum: 1, NewNum: 2},
+				{Type: git.LineAdded, Content: "=======", NewNum: 3},
+				{Type: git.LineAdded, Content: ">>>>>>> abc (feat)", NewNum: 4},
+			},
+		}}
+	}
+	m := New(&git.Diff{Files: []git.FileDiff{f}}, false)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	return updated.(Model)
+}
+
+func TestModelStageHunk_OnConflictedFile_ShowsHint(t *testing.T) {
+	m := makeModelWithConflictedFile(true)
+	m = sendKey(m, "l") // focus diff
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.Contains(t, m.statusMsg, "conflict")
+	assert.Contains(t, m.statusMsg, "S")
+	// The returned cmd only clears the status message; no git apply runs.
+	require.NotNil(t, cmd)
+	assert.IsType(t, clearStatusMsg{}, cmd())
+}
+
+func TestModelStageFile_OnConflictedFile_ReturnsCmd(t *testing.T) {
+	m := makeModelWithConflictedFile(true)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "staging the whole file marks the conflict resolved")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelStageFile_OnConflictedFileWithoutHunks_ReturnsCmd(t *testing.T) {
+	m := makeModelWithConflictedFile(false)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated.(Model)
+	assert.NotNil(t, cmd, "a conflict with nothing to diff can still be staged")
+	assert.Empty(t, m.statusMsg)
+}
+
+func TestModelDiscard_OnConflictedFile_Refuses(t *testing.T) {
+	m := makeModelWithConflictedFile(true)
+	m = sendKey(m, "D")
+	assert.False(t, m.confirmDiscard)
+	assert.Contains(t, m.statusMsg, "conflict")
+
+	m = makeModelWithConflictedFile(true)
+	m = sendKey(m, "l") // focus diff
+	m = sendKey(m, "D")
+	assert.False(t, m.confirmDiscard)
+	assert.Contains(t, m.statusMsg, "conflict")
+}
+
+func TestModelStatusBar_ShowsConflictCount(t *testing.T) {
+	m := makeModelWithConflictedFile(true)
+	assert.Contains(t, ansi.Strip(m.renderStatusBar()), "1 conflict")
+
+	m = makeModelWithSourcedHunk(git.SourceUnstaged)
+	assert.NotContains(t, ansi.Strip(m.renderStatusBar()), "conflict")
+}
+
 func TestModelDiscardKey_OnUnstagedHunk_PromptsConfirmation(t *testing.T) {
 	m := makeModelWithSourcedHunk(git.SourceUnstaged)
 	m = sendKey(m, "l") // focus diff

@@ -302,6 +302,12 @@ func (m *diffViewModel) buildLines() {
 		m.lineRefs = append(m.lineRefs, ref)
 	}
 
+	conflicted := m.file.Status == git.StatusConflicted
+	if conflicted {
+		add(conflictNoticeStyle.Render("  ⚠ Merge conflict — resolve it, then stage the file (S) to mark it resolved"), nil)
+		add("", nil)
+	}
+
 	// Binary files: show a placeholder instead of diff content.
 	if m.file.IsBinary {
 		add("  Binary file — cannot display diff", nil)
@@ -356,7 +362,11 @@ func (m *diffViewModel) buildLines() {
 					langOverride = codeLang
 				}
 			}
-			add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery, langOverride), ref)
+			if conflicted && !isMarked && isConflictMarker(line.Content) {
+				add(renderConflictMarkerLine(line, m.searchQuery), ref)
+			} else {
+				add(renderDiffLine(line, isMarked, fillWidth, m.file.Path, p, indentSize, m.searchQuery, langOverride), ref)
+			}
 
 			// If this code line has a saved comment, add a display line below it.
 			key := ref.commentKey(m.file.Path)
@@ -1033,6 +1043,41 @@ func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p t
 		}
 	}
 	return gutterStyle.Render(gutter) + content
+}
+
+// isConflictMarker reports whether content is a git conflict marker line:
+// `<<<<<<<`, `|||||||` or `>>>>>>>` (optionally followed by a space and a
+// label), or a bare `=======`.
+func isConflictMarker(content string) bool {
+	if content == "=======" {
+		return true
+	}
+	for _, prefix := range []string{"<<<<<<<", "|||||||", ">>>>>>>"} {
+		if rest, ok := strings.CutPrefix(content, prefix); ok {
+			return rest == "" || rest[0] == ' '
+		}
+	}
+	return false
+}
+
+// renderConflictMarkerLine renders a conflict marker line in a conflicted
+// file: the usual gutter, with the marker itself bold red instead of
+// syntax-highlighted, so the ours/theirs boundaries stand out.
+func renderConflictMarkerLine(l git.Line, query string) string {
+	gutterStyle := contextGutterStyle
+	switch l.Type {
+	case git.LineAdded:
+		gutterStyle = addedGutterStyle
+	case git.LineRemoved:
+		gutterStyle = removedGutterStyle
+	}
+	content := conflictMarkerStyle.Render(l.Content)
+	if query != "" {
+		if cols := matchColumnRanges(l.Content, query); len(cols) > 0 {
+			content = overlaySearchHighlight(content, cols)
+		}
+	}
+	return gutterStyle.Render(git.FormatGutter(l)) + content
 }
 
 func renderHunkHeader(h git.Hunk) string {

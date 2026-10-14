@@ -501,7 +501,8 @@ func StagedOnlyDiff(contextLines int) (*Diff, error) {
 	return diff, nil
 }
 
-// UnstagedOnlyDiffOptions returns unstaged changes + untracked files, optionally ignoring whitespace.
+// UnstagedOnlyDiffOptions returns unstaged changes + conflicted + untracked
+// files, optionally ignoring whitespace.
 func UnstagedOnlyDiffOptions(contextLines int, hideWhitespace bool) (*Diff, error) {
 	var raw string
 	var err error
@@ -515,6 +516,11 @@ func UnstagedOnlyDiffOptions(contextLines int, hideWhitespace bool) (*Diff, erro
 	}
 	diff := Parse(raw)
 	tagHunks(diff.Files, SourceUnstaged)
+	conflicted, err := ConflictedFiles(contextLines, hideWhitespace)
+	if err != nil {
+		return nil, err
+	}
+	diff.Files = append(diff.Files, conflicted...)
 	untracked, err := UntrackedFiles()
 	if err != nil {
 		return nil, err
@@ -523,23 +529,9 @@ func UnstagedOnlyDiffOptions(contextLines int, hideWhitespace bool) (*Diff, erro
 	return diff, nil
 }
 
-// UnstagedOnlyDiff returns unstaged changes + untracked files.
+// UnstagedOnlyDiff returns unstaged changes + conflicted + untracked files.
 func UnstagedOnlyDiff(contextLines int) (*Diff, error) {
-	raw, err := UnstagedDiff(contextLines)
-	if err != nil {
-		return nil, err
-	}
-
-	diff := Parse(raw)
-	tagHunks(diff.Files, SourceUnstaged)
-
-	untracked, err := UntrackedFiles()
-	if err != nil {
-		return nil, err
-	}
-	diff.Files = append(diff.Files, untracked...)
-
-	return diff, nil
+	return UnstagedOnlyDiffOptions(contextLines, false)
 }
 
 // WorkingTreeDiff returns staged + unstaged + untracked changes.
@@ -575,11 +567,11 @@ func GetDiff() (*Diff, error) {
 	return BranchDiff(DefaultContextLines)
 }
 
-// getWorkingTreeDiff returns staged + unstaged + untracked changes.
-// The three git operations run concurrently for faster results.
+// getWorkingTreeDiff returns staged + unstaged + conflicted + untracked changes.
+// The git operations run concurrently for faster results.
 func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
 	var stagedRaw, unstagedRaw string
-	var untracked []FileDiff
+	var conflicted, untracked []FileDiff
 
 	var g errgroup.Group
 	g.Go(func() error {
@@ -602,6 +594,11 @@ func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
 	})
 	g.Go(func() error {
 		var err error
+		conflicted, err = ConflictedFiles(contextLines, hideWhitespace)
+		return err
+	})
+	g.Go(func() error {
+		var err error
 		untracked, err = UntrackedFiles()
 		return err
 	})
@@ -612,5 +609,5 @@ func getWorkingTreeDiff(contextLines int, hideWhitespace bool) (*Diff, error) {
 	staged := Parse(stagedRaw)
 	unstaged := Parse(unstagedRaw)
 
-	return &Diff{Files: composeWorkingTree(staged.Files, unstaged.Files, untracked)}, nil
+	return &Diff{Files: composeWorkingTree(staged.Files, unstaged.Files, conflicted, untracked)}, nil
 }

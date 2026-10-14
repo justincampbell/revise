@@ -1232,6 +1232,12 @@ func (m *Model) stageCurrentHunk() tea.Cmd {
 		return nil
 	}
 	hunk := m.diffView.file.Hunks[idx]
+	if m.diffView.file.Status == git.StatusConflicted {
+		// The index holds conflict stages, not a single version a hunk
+		// patch could apply to.
+		m.statusMsg = "Can't stage a hunk of a conflicted file — stage the whole file (S) once resolved"
+		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+	}
 	if hunk.Source != git.SourceUnstaged {
 		m.statusMsg = "Can only stage unstaged hunks"
 		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
@@ -1269,6 +1275,9 @@ func (m *Model) discardCurrentHunk() tea.Cmd {
 	if idx < 0 || m.diffView.file == nil {
 		return nil
 	}
+	if m.diffView.file.Status == git.StatusConflicted {
+		return m.conflictDiscardRefusal()
+	}
 	hunk := m.diffView.file.Hunks[idx]
 	if hunk.Source == git.SourceBranch {
 		m.statusMsg = "Cannot discard committed changes"
@@ -1291,7 +1300,9 @@ func (m *Model) stageCurrentFile() tea.Cmd {
 	if file == nil {
 		return nil
 	}
-	if !fileHasSource(file, git.SourceUnstaged) {
+	// A conflicted file is always stageable: `git add` marks it resolved, even
+	// when there's nothing to diff (e.g. a modify/delete conflict).
+	if file.Status != git.StatusConflicted && !fileHasSource(file, git.SourceUnstaged) {
 		m.statusMsg = "No unstaged changes to stage"
 		return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
 	}
@@ -1319,11 +1330,22 @@ func (m *Model) unstageCurrentFile() tea.Cmd {
 	}
 }
 
+// conflictDiscardRefusal explains why discard is disabled for a conflicted
+// file: `git checkout -- <path>` refuses unmerged paths, and reverting a hunk
+// would leave the index unmerged.
+func (m *Model) conflictDiscardRefusal() tea.Cmd {
+	m.statusMsg = "Can't discard a conflicted file — resolve the conflict in your editor (E)"
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return clearStatusMsg{} })
+}
+
 // discardCurrentFile prompts for confirmation, then discards all changes in the current file.
 func (m *Model) discardCurrentFile() tea.Cmd {
 	file := m.diffView.file
 	if file == nil {
 		return nil
+	}
+	if file.Status == git.StatusConflicted {
+		return m.conflictDiscardRefusal()
 	}
 	hasUnstaged := fileHasSource(file, git.SourceUnstaged)
 	hasStaged := fileHasSource(file, git.SourceStaged)
@@ -1937,10 +1959,14 @@ func (m Model) renderStatusBar() string {
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
 
-	// In Branch mode, lead with the commit-range indicator + depth knob hint.
+	// Unresolved conflicts lead, since they block a rebase/merge from
+	// continuing. Then, in Branch mode, the commit-range indicator + depth knob.
 	prefix := ""
+	if n := m.fileList.conflictCount(); n > 0 {
+		prefix = conflictNoticeStyle.Render(pluralize(n, "conflict", "conflicts")) + statusBarStyle.Render("  ")
+	}
 	if depthHint := m.branchDepthHint(); depthHint != "" {
-		prefix = depthHint + statusBarStyle.Render("  ")
+		prefix += depthHint + statusBarStyle.Render("  ")
 	}
 
 	count := len(m.comments)

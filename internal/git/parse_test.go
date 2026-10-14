@@ -198,6 +198,46 @@ func TestParseMixedBinaryAndText(t *testing.T) {
 	assert.Len(t, diff.Files[1].Hunks, 1)
 }
 
+// combinedDiffAfterFile is `git diff` output during a conflict: a normal file
+// followed by the combined (`diff --cc`) diff of an unmerged path.
+const combinedDiffAfterFile = `diff --git a/clean.go b/clean.go
+index 2fa992c..587be6b 100644
+--- a/clean.go
++++ b/clean.go
+@@ -1 +1 @@
+-keep
++x
+diff --cc conflict.go
+index af70335,ac05874..0000000
+--- a/conflict.go
++++ b/conflict.go
+@@@ -1,3 -1,3 +1,7 @@@
+  a
+++<<<<<<< HEAD
+ +MAIN
+++=======
++ FEAT
+++>>>>>>> 825d057 (feat)
+  c
+`
+
+func TestParseSkipsCombinedDiff(t *testing.T) {
+	diff := Parse(combinedDiffAfterFile)
+
+	require.Len(t, diff.Files, 1, "combined diff sections are skipped")
+	f := diff.Files[0]
+	assert.Equal(t, "clean.go", f.Path)
+	require.Len(t, f.Hunks, 1)
+	assert.Len(t, f.Hunks[0].Lines, 2, "conflict lines must not leak into the previous file")
+}
+
+func TestParseIgnoresUnmergedPathNotice(t *testing.T) {
+	diff := Parse("* Unmerged path conflict.go\n" + sampleDiff)
+
+	require.Len(t, diff.Files, 1)
+	assert.Equal(t, "main.go", diff.Files[0].Path)
+}
+
 func TestParseLineNumbers(t *testing.T) {
 	diff := Parse(sampleDiff)
 	h := diff.Files[0].Hunks[0]

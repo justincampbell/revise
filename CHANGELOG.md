@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Files with unresolved rebase/merge/cherry-pick conflicts now appear in the file list with a red `U` status. Their diff (working tree vs `HEAD`) shows the conflict markers highlighted under a "Merge conflict" notice, and the status bar shows how many conflicts remain. Staging the file (`S`) marks it resolved; hunk staging and discard are disabled for conflicted files
+
+### Fixed
+
+- Conflicted files were invisible: `git diff` renders them as combined (`diff --cc`) diffs, which the parser didn't recognize. When one followed a normal file, its conflict lines were also attached to that file as a bogus extra hunk
+
 ## [0.7.0] - 2026-09-16
 
 ### Added

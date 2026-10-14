@@ -18,22 +18,34 @@ func Parse(raw string) *Diff {
 	var currentHunk *Hunk
 	var oldNum, newNum int
 
+	flush := func() {
+		if currentFile != nil {
+			if currentHunk != nil {
+				currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
+			}
+			diff.Files = append(diff.Files, *currentFile)
+		}
+		currentFile = nil
+		currentHunk = nil
+	}
+
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 
 		// New file diff header
 		if strings.HasPrefix(line, "diff --git ") {
-			if currentFile != nil {
-				if currentHunk != nil {
-					currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
-					currentHunk = nil
-				}
-				diff.Files = append(diff.Files, *currentFile)
-			}
+			flush()
 			currentFile = &FileDiff{}
-			currentHunk = nil
 			currentFile.Path = parseFilePath(line)
 			currentFile.Status = StatusModified
+			continue
+		}
+
+		// Combined diff of an unmerged path (`git diff` during a conflict).
+		// Its multi-parent format doesn't fit the Line model, so skip the
+		// whole section; ConflictedFiles supplies these paths instead.
+		if strings.HasPrefix(line, "diff --cc ") || strings.HasPrefix(line, "diff --combined ") {
+			flush()
 			continue
 		}
 
@@ -117,14 +129,7 @@ func Parse(raw string) *Diff {
 		}
 	}
 
-	// Flush last file and hunk
-	if currentFile != nil {
-		if currentHunk != nil {
-			currentFile.Hunks = append(currentFile.Hunks, *currentHunk)
-		}
-		diff.Files = append(diff.Files, *currentFile)
-	}
-
+	flush()
 	return diff
 }
 

@@ -21,6 +21,10 @@ const (
 	StatusDeleted   FileStatus = "D"
 	StatusRenamed   FileStatus = "R"
 	StatusUntracked FileStatus = "?"
+	// StatusConflicted marks an unmerged path (rebase/merge/cherry-pick
+	// conflict). Its hunks diff the working tree, conflict markers and all,
+	// against HEAD.
+	StatusConflicted FileStatus = "U"
 )
 
 // FileDiff represents the diff for a single file.
