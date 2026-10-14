@@ -76,6 +76,6 @@ func BenchmarkComposeWorkingTree(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		composeWorkingTree(staged, unstaged, untracked)
+		composeWorkingTree(staged, unstaged, nil, untracked)
 	}
 }

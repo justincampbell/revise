@@ -770,3 +770,60 @@ func TestDiffViewRender_ScrollbarThumbVisibility(t *testing.T) {
 	shortOut := ansi.Strip(short.render(true, 3, false))
 	assert.NotContains(t, shortOut, "█", "short content should not draw a scrollbar")
 }
+
+func TestIsConflictMarker(t *testing.T) {
+	tests := []struct {
+		content string
+		want    bool
+	}{
+		{"<<<<<<< HEAD", true},
+		{"<<<<<<< ", true},
+		{"=======", true},
+		{">>>>>>> 825d057 (feat)", true},
+		{"||||||| merged common ancestors", true},
+		{"<<<<<<<", true},
+		{"<<<<<<<< eight", false},
+		{"======= trailing", false},
+		{"  <<<<<<< indented", false},
+		{"<< shift", false},
+		{"// =======", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.content, func(t *testing.T) {
+			assert.Equal(t, tt.want, isConflictMarker(tt.content))
+		})
+	}
+}
+
+func TestBuildLines_ConflictedFileShowsNotice(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 80
+	m.height = 20
+	m.setFile(&git.FileDiff{
+		Path:   "a.go",
+		Status: git.StatusConflicted,
+		Hunks: []git.Hunk{{
+			Source: git.SourceUnstaged,
+			Lines: []git.Line{
+				{Type: git.LineAdded, Content: "<<<<<<< HEAD", NewNum: 1},
+				{Type: git.LineContext, Content: "x", OldNum: 1, NewNum: 2},
+			},
+		}},
+	})
+
+	require.NotEmpty(t, m.lines)
+	assert.Contains(t, ansi.Strip(m.lines[0]), "conflict")
+	assert.Nil(t, m.lineRefs[0], "notice line is not navigable")
+	assert.True(t, m.isNavigable(m.cursor), "cursor lands on a code line")
+}
+
+func TestBuildLines_ConflictedFileWithoutHunks(t *testing.T) {
+	m := newDiffViewModel()
+	m.width = 80
+	m.height = 20
+	m.setFile(&git.FileDiff{Path: "gone.go", Status: git.StatusConflicted})
+
+	require.NotEmpty(t, m.lines)
+	assert.Contains(t, ansi.Strip(m.lines[0]), "conflict")
+}

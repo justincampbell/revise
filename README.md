@@ -79,6 +79,7 @@ Comments are also output on exit in normal git diff mode.
 - **Inline comments** -- add comments on any diff line, export for AI feedback
 - **Hunk staging** -- stage, unstage, or discard individual hunks or entire files
 - **File status colors** -- status indicators change color based on staging state (dim=branch, yellow=unstaged, green=staged, cyan=partial)
+- **Merge conflicts** -- files with unresolved rebase/merge conflicts show a red `U`, their conflict markers are highlighted, and the status bar counts them; stage the file (`S`) once resolved
 - **Mouse support** -- click to select files, scroll to navigate
 - **NO_COLOR** -- respects the [`NO_COLOR`](https://no-color.org) environment variable
 

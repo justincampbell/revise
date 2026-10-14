@@ -203,6 +203,11 @@ func TestStatusIndicator(t *testing.T) {
 
 		// Branch+staged: green
 		{"modified branch+staged", git.StatusModified, stagingSources{branch: true, staged: true}, statusAdded.Render("M")},
+
+		// Conflicted: always the conflict style, regardless of staging
+		{"conflicted unstaged", git.StatusConflicted, stagingSources{unstaged: true}, statusConflicted.Render("U")},
+		{"conflicted branch+unstaged", git.StatusConflicted, stagingSources{branch: true, unstaged: true}, statusConflicted.Render("U")},
+		{"conflicted no hunks", git.StatusConflicted, stagingSources{}, statusConflicted.Render("U")},
 	}
 
 	for _, tt := range tests {
@@ -223,6 +228,7 @@ func TestStatusLetter(t *testing.T) {
 		{git.StatusDeleted, "D"},
 		{git.StatusRenamed, "R"},
 		{git.StatusUntracked, "?"},
+		{git.StatusConflicted, "U"},
 	}
 
 	for _, tt := range tests {
@@ -230,6 +236,16 @@ func TestStatusLetter(t *testing.T) {
 			assert.Equal(t, tt.want, statusLetter(tt.status))
 		})
 	}
+}
+
+func TestConflictCount(t *testing.T) {
+	files := []git.FileDiff{
+		{Path: "a.go", Status: git.StatusModified},
+		{Path: "b.go", Status: git.StatusConflicted},
+		{Path: "c.go", Status: git.StatusConflicted},
+	}
+	assert.Equal(t, 2, newFileListModel(files).conflictCount())
+	assert.Equal(t, 0, newFileListModel(files[:1]).conflictCount())
 }
 
 func TestFileListTotals(t *testing.T) {

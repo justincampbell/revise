@@ -27,6 +27,7 @@ func PrintStylesDemo() {
 		git.StatusDeleted,
 		git.StatusRenamed,
 		git.StatusUntracked,
+		git.StatusConflicted,
 	}
 
 	stagingStates := []struct {
@@ -70,6 +71,7 @@ func PrintStylesDemo() {
 	fmt.Println("  " + statusPartiallyStaged.Render("■") + " cyan    = partially staged")
 	fmt.Println("  " + statusDeleted.Render("■") + " red     = deleted")
 	fmt.Println("  " + statusUntracked.Render("■") + " cyan    = untracked")
+	fmt.Println("  " + statusConflicted.Render("U") + " red     = merge conflict (unresolved)")
 }
 
 func statusName(s git.FileStatus) string {
@@ -84,6 +86,8 @@ func statusName(s git.FileStatus) string {
 		return "Renamed"
 	case git.StatusUntracked:
 		return "Untracked"
+	case git.StatusConflicted:
+		return "Conflicted"
 	default:
 		return ""
 	}

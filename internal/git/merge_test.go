@@ -219,6 +219,22 @@ func TestMergeFileDiffs_ModifiedThenDeleted(t *testing.T) {
 	require.Len(t, result[0].Hunks, 2, "should combine hunks from both")
 }
 
+func TestMergeFileDiffs_ConflictedOverlayWins(t *testing.T) {
+	branch := []FileDiff{
+		{Path: "a.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ branch @@", Source: SourceBranch}}},
+	}
+	wt := []FileDiff{
+		{Path: "a.go", Status: StatusConflicted, Hunks: []Hunk{{Header: "@@ conflict @@", Source: SourceUnstaged}}},
+	}
+
+	result := mergeFileDiffs(branch, wt)
+
+	require.Len(t, result, 1)
+	assert.Equal(t, StatusConflicted, result[0].Status)
+	assert.Len(t, result[0].Hunks, 2)
+	assert.Equal(t, StatusModified, branch[0].Status, "input must not be mutated")
+}
+
 func TestMergeFileDiffs_EmptyInputs(t *testing.T) {
 	result := mergeFileDiffs(nil, nil)
 	assert.Empty(t, result)
@@ -255,21 +271,24 @@ func TestMergeFileDiffs_EmptyBaseWithOverlay(t *testing.T) {
 func TestComposeWorkingTree_MergesAllSources(t *testing.T) {
 	staged := []FileDiff{{Path: "a.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ staged @@"}}}}
 	unstaged := []FileDiff{{Path: "b.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ unstaged @@"}}}}
+	conflicted := []FileDiff{{Path: "d.go", Status: StatusConflicted, Hunks: []Hunk{{Header: "@@ conflict @@", Source: SourceUnstaged}}}}
 	untracked := []FileDiff{{Path: "c.go", Status: StatusUntracked, Hunks: []Hunk{{Header: "@@ untracked @@", Source: SourceUnstaged}}}}
 
-	result := composeWorkingTree(staged, unstaged, untracked)
+	result := composeWorkingTree(staged, unstaged, conflicted, untracked)
 
-	require.Len(t, result, 3)
+	require.Len(t, result, 4)
 	assert.Equal(t, SourceStaged, result[0].Hunks[0].Source)
 	assert.Equal(t, SourceUnstaged, result[1].Hunks[0].Source)
-	assert.Equal(t, SourceUnstaged, result[2].Hunks[0].Source)
+	assert.Equal(t, "d.go", result[2].Path)
+	assert.Equal(t, StatusConflicted, result[2].Status)
+	assert.Equal(t, SourceUnstaged, result[3].Hunks[0].Source)
 }
 
 func TestComposeWorkingTree_SameFileStagedAndUnstaged(t *testing.T) {
 	staged := []FileDiff{{Path: "a.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ staged @@"}}}}
 	unstaged := []FileDiff{{Path: "a.go", Status: StatusModified, Hunks: []Hunk{{Header: "@@ unstaged @@"}}}}
 
-	result := composeWorkingTree(staged, unstaged, nil)
+	result := composeWorkingTree(staged, unstaged, nil, nil)
 
 	require.Len(t, result, 1, "same file should appear once")
 	require.Len(t, result[0].Hunks, 2)
@@ -278,7 +297,7 @@ func TestComposeWorkingTree_SameFileStagedAndUnstaged(t *testing.T) {
 }
 
 func TestComposeWorkingTree_EmptyInputs(t *testing.T) {
-	result := composeWorkingTree(nil, nil, nil)
+	result := composeWorkingTree(nil, nil, nil, nil)
 	assert.Empty(t, result)
 }
 

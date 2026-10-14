@@ -69,6 +69,11 @@ var (
 	statusDeleted         lipgloss.Style
 	statusUntracked       lipgloss.Style
 	statusPartiallyStaged lipgloss.Style
+	statusConflicted      lipgloss.Style
+
+	// Merge-conflict rendering in the diff view
+	conflictMarkerStyle lipgloss.Style // <<<<<<< / ======= / >>>>>>> lines
+	conflictNoticeStyle lipgloss.Style // banner above a conflicted file's diff
 
 	// Dim variants for branch-only (committed) indicators
 	statusDimModified lipgloss.Style
@@ -178,6 +183,10 @@ func applyTheme(p themeColors) {
 	statusDeleted = lipgloss.NewStyle().Foreground(p.removedFg)
 	statusUntracked = lipgloss.NewStyle().Foreground(p.cyan)
 	statusPartiallyStaged = lipgloss.NewStyle().Foreground(p.cyan)
+	statusConflicted = lipgloss.NewStyle().Bold(true).Reverse(true).Foreground(p.removedFg)
+
+	conflictMarkerStyle = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg)
+	conflictNoticeStyle = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg)
 
 	statusDimModified = lipgloss.NewStyle().Foreground(p.dimYellow)
 	statusDimAdded = lipgloss.NewStyle().Foreground(p.dimGreen)
@@ -257,6 +266,9 @@ func applyNoColor() {
 	statusDeleted = lipgloss.NewStyle()
 	statusUntracked = lipgloss.NewStyle()
 	statusPartiallyStaged = lipgloss.NewStyle()
+	statusConflicted = lipgloss.NewStyle().Bold(true).Reverse(true)
+	conflictMarkerStyle = lipgloss.NewStyle().Bold(true)
+	conflictNoticeStyle = lipgloss.NewStyle().Bold(true)
 	statusDimModified = lipgloss.NewStyle()
 	statusDimAdded = lipgloss.NewStyle()
 	statusDimDeleted = lipgloss.NewStyle()

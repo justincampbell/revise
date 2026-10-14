@@ -119,6 +119,17 @@ func (m fileListModel) totals() (added, removed int) {
 	return added, removed
 }
 
+// conflictCount is the number of files with unresolved merge conflicts.
+func (m fileListModel) conflictCount() int {
+	n := 0
+	for _, f := range m.files {
+		if f.Status == git.StatusConflicted {
+			n++
+		}
+	}
+	return n
+}
+
 func fileTotals(f git.FileDiff) (added, removed int) {
 	for _, h := range f.Hunks {
 		for _, l := range h.Lines {
@@ -286,12 +297,18 @@ func statusLetter(s git.FileStatus) string {
 		return "R"
 	case git.StatusUntracked:
 		return "?"
+	case git.StatusConflicted:
+		return "U"
 	default:
 		return " "
 	}
 }
 
 func statusStyle(s git.FileStatus, staging stagingSources) lipgloss.Style {
+	// Unresolved conflict outranks any staging state.
+	if s == git.StatusConflicted {
+		return statusConflicted
+	}
 	// Partially staged: cyan
 	if staging.staged && staging.unstaged {
 		return statusPartiallyStaged

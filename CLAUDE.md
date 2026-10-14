@@ -108,6 +108,8 @@ internal/
     parse.go                   # unified diff parser
     format.go                  # plain-text diff formatter (revise diff subcommand)
     untracked.go               # untracked file detection
+    conflicts.go               # unmerged-path (rebase/merge conflict) detection
+    conflicts_test.go          # conflict integration tests (real rebases/merges)
     merge_test.go              # mergeFileDiffs/compose unit tests
     merge_bench_test.go        # merge performance benchmarks
     parse_test.go              # parser unit tests
@@ -181,6 +183,15 @@ Four modes: ModeBranch (broadest), ModeStaged, ModeStagedOnly, ModeUnstaged (nar
 - `IsOnDefaultBranch()` checks if merge-base == HEAD; re-evaluated on every diff refresh so Branch mode appears dynamically after `git checkout -b`
 - Per-mode git functions: `BranchDiff()`, `WorkingTreeDiff()`, `StagedOnlyDiff()`, `UnstagedOnlyDiff()`
 - Untracked files are merged into "Unstaged" — no separate untracked mode
+
+#### Merge conflicts
+
+Unmerged paths (from a rebase/merge/cherry-pick that stopped on conflicts) get `StatusConflicted` (`U`) and appear wherever untracked files do (Branch, Staged, Unstaged — not StagedOnly).
+
+- `git diff` renders unmerged paths as combined `diff --cc` diffs (two-column `++`/` +` prefixes, `@@@` headers) that don't fit the two-sided `Line` model. `Parse` skips those sections entirely (flushing the current file first — otherwise the `@@@` lines leak into the previous file's hunk). `git diff --cached` emits `* Unmerged path <p>`, which `Parse` already ignores.
+- `ConflictedFiles` lists paths via `git ls-files --unmerged -z` (index-only, cheap on every refresh) and diffs them with `git diff HEAD -- <paths>`, so conflict markers appear as added lines with ordinary line numbers that comments can anchor to. Hunks are tagged `SourceUnstaged`. Paths with nothing to diff (e.g. modify/delete) still get an empty entry so the conflict is never hidden.
+- `mergeFileDiffs` lets an overlay `StatusConflicted` override the base status, so Branch mode shows `U` even though the path also has committed hunks.
+- UI: the `U` indicator ignores staging colors; `buildLines` adds a notice banner and renders `isConflictMarker` lines in `conflictMarkerStyle`; the status bar leads with `N conflicts`. File staging is always allowed (`git add` marks it resolved, even with no hunks); hunk staging and discard are refused with a hint, since `git apply --cached` and `git checkout --` don't work on unmerged index entries.
 
 #### Branch-mode commit filter (`<` / `>`)
 
