@@ -39,6 +39,10 @@ const (
 	SourceBranch   HunkSource = "Branch"
 	SourceStaged   HunkSource = "Staged"
 	SourceUnstaged HunkSource = "Unstaged"
+	// SourceOverlap tags a hunk produced by collapsing committed and
+	// working-tree edits to the same lines into a single merge-base→worktree
+	// diff (Branch mode's overlap-collapse composition).
+	SourceOverlap HunkSource = "Overlap"
 )
 
 // Hunk represents a single diff hunk.

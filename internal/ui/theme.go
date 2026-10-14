@@ -207,6 +207,10 @@ type themeColors struct {
 	white  color.Color
 	border color.Color
 
+	// overlapFg is the accent for the [overlap] hunk tag and its header — a
+	// purple, distinct from the branch/staged/unstaged label colors.
+	overlapFg color.Color
+
 	dimGreen  color.Color
 	dimRed    color.Color
 	dimYellow color.Color
@@ -264,6 +268,7 @@ func autoPalette(isDark bool) themeColors {
 		dim:             lipgloss.BrightBlack,
 		white:           lipgloss.White,
 		border:          lipgloss.BrightBlack,
+		overlapFg:       lipgloss.BrightMagenta,
 		dimGreen:        lipgloss.Color("28"),
 		dimRed:          lipgloss.Color("88"),
 		dimYellow:       lipgloss.Yellow,
@@ -295,6 +300,7 @@ func charmtoneDarkPalette() themeColors {
 		removedBg: lipgloss.Color("#412130"), // Toast
 		cyan:      lipgloss.Color("#00A4FF"), // Malibu
 		yellow:    lipgloss.Color("#E8FF27"), // Citron
+		overlapFg: lipgloss.Color("#C77DFF"), // purple
 		dim:       lipgloss.Color("#605F6B"), // Oyster
 		white:     lipgloss.Color("#DFDBDD"), // Ash
 		border:    lipgloss.Color("#4D4C57"), // Iron
@@ -324,6 +330,7 @@ func charmtoneLightPalette() themeColors {
 		removedBg: lipgloss.Color("#ffd7d5"),
 		cyan:      lipgloss.Color("#0369a1"),
 		yellow:    lipgloss.Color("#92400e"),
+		overlapFg: lipgloss.Color("#8250df"), // purple
 		dim:       lipgloss.Color("#6b7280"),
 		white:     lipgloss.Color("#111827"),
 		border:    lipgloss.Color("#d1d5db"),
@@ -353,6 +360,7 @@ func githubDarkPalette() themeColors {
 		removedBg: lipgloss.Color("#3d0b0b"),
 		cyan:      lipgloss.Color("#58a6ff"),
 		yellow:    lipgloss.Color("#e3b341"),
+		overlapFg: lipgloss.Color("#bc8cff"), // purple
 		dim:       lipgloss.Color("#8b949e"),
 		white:     lipgloss.Color("#c9d1d9"),
 		border:    lipgloss.Color("#30363d"),
@@ -382,6 +390,7 @@ func githubLightPalette() themeColors {
 		removedBg: lipgloss.Color("#ffd7d5"),
 		cyan:      lipgloss.Color("#0369a1"),
 		yellow:    lipgloss.Color("#92400e"),
+		overlapFg: lipgloss.Color("#8250df"), // purple
 		dim:       lipgloss.Color("#6b7280"),
 		white:     lipgloss.Color("#111827"),
 		border:    lipgloss.Color("#d1d5db"),

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Branch mode collapses committed + working-tree edits to the same lines into a single net `[overlap]` hunk (base → working tree) instead of stacking `[branch]` and `[unstaged]` hunks with a misleading intermediate state; files whose edits touch different lines keep their separate source tags. On by default, toggle with `o`. Also available non-interactively via `revise diff --overlap`
+
 ## [0.7.0] - 2026-09-16
 
 ### Added
