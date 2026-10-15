@@ -144,12 +144,14 @@ type Model struct {
 	contextLines      int
 	hideWhitespace    bool
 
-	// Branch-mode commit depth (<, >). branchDepth 0 means the full branch
-	// (all commits ahead of the merge-base); N>0 limits Branch mode to the
-	// last N commits. branchCommitList is the commits ahead of the merge-base
-	// (newest first) from the last load, used to bound the selector and render
-	// the commit list in the file-list pane.
+	// Branch-mode commit range. branchDepth (<, >) is the start: 0 means the
+	// full branch (all commits ahead of the merge-base); N>0 starts at the
+	// last N commits. branchSkip (",", ".") is the end: the number of newest
+	// commits excluded (0 = HEAD plus the working tree). branchCommitList is the
+	// commits ahead of the merge-base (newest first) from the last load, used to
+	// bound the selector and render the commit list in the file-list pane.
 	branchDepth      int
+	branchSkip       int
 	branchCommitList []git.CommitInfo
 
 	comments           comments
@@ -495,14 +497,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-		// Branch-mode commit-depth knob: "<" narrows to fewer commits (down to
-		// the last one), ">" widens back toward the full branch. No-op outside
-		// Branch mode or when there's nothing to narrow.
-		case "<", ">":
+		// Branch-mode commit range: "<"/">" move the start, ","/"." the end.
+		// No-op outside Branch mode or when there's nothing to narrow.
+		case "<", ">", ",", ".":
 			if m.fileReviewMode || m.mode != ModeBranch {
 				return m, nil
 			}
-			if m.adjustBranchDepth(msg.String()) {
+			key := msg.String()
+			changed := false
+			if key == "<" || key == ">" {
+				changed = m.adjustBranchDepth(key)
+			} else {
+				changed = m.adjustBranchEnd(key)
+			}
+			if changed {
 				m.syncBranchCommits() // move the highlight immediately
 				return m, m.loadDiff()
 			}
@@ -1583,49 +1591,102 @@ func (m *Model) cycleMode(direction int) {
 	m.modeExplicitlySet = true
 }
 
-// setBranchCommits records the branch's commit list and clamps an out-of-range
-// depth selection back to the full-branch sentinel (e.g. after a reset/squash
-// shrinks the branch below the current depth).
+// setBranchCommits records the branch's commit list and resets an out-of-range
+// selection back to the full branch (e.g. after a reset/squash shrinks the
+// branch below the current depth or skip).
 func (m *Model) setBranchCommits(commits []git.CommitInfo) {
 	m.branchCommitList = commits
-	// Valid filter depths are 1..len-1 ("last len" ≡ full branch); a depth at or
-	// past the end (e.g. the branch shrank via reset/squash) resets to full.
+	// Valid filter depths are 1..len-1 ("last len" ≡ full branch).
 	if m.branchDepth >= len(m.branchCommitList) {
 		m.branchDepth = 0
 	}
+	if _, start := m.branchRange(); m.branchSkip > start {
+		m.branchDepth, m.branchSkip = 0, 0
+	}
 }
 
-// adjustBranchDepth steps the Branch-mode commit filter. branchDepth 0 is the
-// full branch (all commits ahead of the merge-base); N>0 shows the last N
-// commits. "last total" would be identical to the full branch, so it's skipped:
-// the selection cycles through [full, 1, 2, …, total-1].
-//   - "<" goes back in time — from full it starts at the most recent commit
-//     (last 1) and each press reaches one commit further back.
-//   - ">" goes forward in time — from full it starts at all-but-the-oldest
-//     (last total-1) and each press drops the oldest, toward the most recent.
+// branchRange returns the in-scope commits as newest-first indices into
+// branchCommitList: end is the newest, start the oldest (end <= start).
+func (m Model) branchRange() (end, start int) {
+	total := len(m.branchCommitList)
+	start = total - 1
+	if m.branchDepth > 0 && m.branchDepth < total {
+		start = m.branchDepth - 1
+	}
+	return m.branchSkip, start
+}
+
+// setBranchRange stores a range from branchRange's index form. Returns true
+// when it changed (a reload is needed).
+func (m *Model) setBranchRange(end, start int) bool {
+	depth := start + 1
+	if depth >= len(m.branchCommitList) {
+		depth = 0 // starting at the oldest commit ≡ the full branch
+	}
+	if depth == m.branchDepth && end == m.branchSkip {
+		return false
+	}
+	m.branchDepth, m.branchSkip = depth, end
+	return true
+}
+
+// adjustBranchDepth moves the start of the Branch-mode commit range. The start
+// cycles through [full, end, end+1, …, total-2], so it never passes the end.
+//   - "<" goes back in time — from full it starts at the end commit (a single
+//     commit) and each press reaches one commit further back.
+//   - ">" goes forward in time — from full it starts at all-but-the-oldest and
+//     each press drops the oldest, toward the end.
 //
-// Both wrap back to full at the ends. Returns true when the depth changed (a
-// reload is needed).
+// Both wrap back to full at the ends. Returns true when the range changed.
 func (m *Model) adjustBranchDepth(key string) bool {
 	total := len(m.branchCommitList)
 	if total < 2 {
 		return false // 0 or 1 commit — nothing to filter
 	}
 
-	ring := total // states: full(0) plus last-1 … last-(total-1)
-	cur := m.branchDepth
+	end, start := m.branchRange()
+	ring := total - end
+	pos := start - end
 	switch key {
 	case "<":
-		cur = (cur + 1) % ring
+		pos = (pos + 1) % ring
 	case ">":
-		cur = (cur - 1 + ring) % ring
+		pos = (pos - 1 + ring) % ring
 	}
+	return m.setBranchRange(end, end+pos)
+}
 
-	if cur == m.branchDepth {
+// adjustBranchEnd moves the end of the Branch-mode commit range: "," back in
+// time, "." forward toward HEAD. With a single commit selected, the start moves
+// with it, so repeated presses step one commit at a time through history.
+// Clamps at the oldest commit and at HEAD. Returns true when the range changed.
+func (m *Model) adjustBranchEnd(key string) bool {
+	total := len(m.branchCommitList)
+	if total < 2 {
 		return false
 	}
-	m.branchDepth = cur
-	return true
+
+	end, start := m.branchRange()
+	single := end == start
+	switch key {
+	case ",":
+		if end == total-1 {
+			return false
+		}
+		end++
+		if single {
+			start++
+		}
+	case ".":
+		if end == 0 {
+			return false
+		}
+		end--
+		if single {
+			start--
+		}
+	}
+	return m.setBranchRange(end, start)
 }
 
 // requestRefresh is the single funnel for "something says state may have
@@ -1689,6 +1750,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 	ctx := m.contextLines
 	hideWS := m.hideWhitespace
 	depth := m.branchDepth
+	skip := m.branchSkip
 	m.lastDiffLoadStart = time.Now()
 	start := m.lastDiffLoadStart
 	return func() tea.Msg {
@@ -1705,7 +1767,7 @@ func (m *Model) loadDiffWithOptions(fromPoll bool) tea.Cmd {
 		isBranchLoad := mode == ModeBranch
 		switch mode {
 		case ModeBranch:
-			diff, _, err = git.BranchDiffDepth(ctx, hideWS, depth)
+			diff, _, err = git.BranchDiffRange(ctx, hideWS, depth, skip)
 			if err == nil {
 				branchCommits, _ = git.BranchCommits()
 			}
@@ -1724,14 +1786,15 @@ func (m *Model) syncSelectedFile() {
 	m.diffView.setFile(m.fileList.selectedFile())
 }
 
-// syncBranchCommits pushes the branch commit list and current depth into the
+// syncBranchCommits pushes the branch commit list and current range into the
 // file-list model so it can render the "Commits" section. The section is only
-// shown while actively filtering (Branch mode with a non-zero depth) — at full
-// branch it stays hidden.
+// shown while actively filtering (Branch mode with a non-zero depth or skip) —
+// at full branch it stays hidden.
 func (m *Model) syncBranchCommits() {
 	m.fileList.commits = m.branchCommitList
 	m.fileList.branchDepth = m.branchDepth
-	m.fileList.showCommits = m.mode == ModeBranch && m.branchDepth != 0
+	m.fileList.branchSkip = m.branchSkip
+	m.fileList.showCommits = m.mode == ModeBranch && (m.branchDepth != 0 || m.branchSkip != 0)
 }
 
 func (m *Model) nextFile() {
@@ -1954,7 +2017,7 @@ func (m Model) renderStatusBar() string {
 }
 
 // branchDepthHint renders the Branch-mode commit-range indicator for the status
-// bar, e.g. "all 5 commits  < fewer" or "last 2 of 5 commits  </> adjust".
+// bar, e.g. "all 5 commits  </> ,/. filter" or "commit 3 of 5  </> start  ,/. end".
 // Returns "" when not applicable (not Branch mode, or fewer than 2 commits to
 // choose between).
 func (m Model) branchDepthHint() string {
@@ -1962,16 +2025,13 @@ func (m Model) branchDepthHint() string {
 	if m.mode != ModeBranch || total < 2 {
 		return ""
 	}
-	keys := helpKeyStyle.Render("<") + statusBarStyle.Render("/") + helpKeyStyle.Render(">")
-	if m.branchDepth == 0 {
-		// Full branch — the commit list is hidden; advertise the filter.
-		return statusBarStyle.Render(fmt.Sprintf("%d commits  ", total)) + keys + statusBarStyle.Render(" filter")
+	startKeys := helpKeyStyle.Render("<") + statusBarStyle.Render("/") + helpKeyStyle.Render(">")
+	endKeys := helpKeyStyle.Render(",") + statusBarStyle.Render("/") + helpKeyStyle.Render(".")
+	label := statusBarStyle.Render(commitRangeLabel(total, m.branchDepth, m.branchSkip) + "  ")
+	if m.branchDepth == 0 && m.branchSkip == 0 {
+		return label + startKeys + statusBarStyle.Render(" ") + endKeys + statusBarStyle.Render(" filter")
 	}
-	noun := "commits"
-	if m.branchDepth == 1 {
-		noun = "commit"
-	}
-	return statusBarStyle.Render(fmt.Sprintf("last %d %s  ", m.branchDepth, noun)) + keys + statusBarStyle.Render(" adjust")
+	return label + startKeys + statusBarStyle.Render(" start  ") + endKeys + statusBarStyle.Render(" end")
 }
 
 func (m Model) View() string {

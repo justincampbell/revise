@@ -21,6 +21,7 @@ type fileListModel struct {
 	// Branch-mode commit list, rendered as a section above the files.
 	commits     []git.CommitInfo // newest first
 	branchDepth int              // 0 = full branch; N = last N commits in scope
+	branchSkip  int              // newest commits excluded from scope
 	showCommits bool             // true in Branch mode with commits to show
 }
 
@@ -202,27 +203,52 @@ func (m fileListModel) renderCommitsLines(innerWidth int) []string {
 	eff := m.effectiveDepth()
 	rows := m.commitRowsShown()
 
-	// The section only shows while filtering, so the header always describes a
-	// "last N" selection (never the full branch).
-	label := fmt.Sprintf("Last %d commits", eff)
-	if eff == 1 {
-		label = "Last commit"
-	}
-
+	label := commitRangeLabel(total, m.branchDepth, m.branchSkip)
+	label = strings.ToUpper(label[:1]) + label[1:]
 	lines := []string{ansi.Truncate(commitHeaderStyle.Render(label), innerWidth, "")}
 
-	truncated := rows < total
-	for i := 0; i < rows; i++ {
-		if truncated && i == rows-1 {
-			hidden := total - i // remaining commits, including this slot
-			lines = append(lines, commitExcludedStyle.Render(fmt.Sprintf("  … +%d more", hidden)))
-			break
+	shown := rows
+	top := 0
+	if rows < total {
+		shown = rows - 1 // last row summarizes the hidden commits
+		if eff > shown {
+			top = min(m.branchSkip, total-shown)
 		}
-		lines = append(lines, m.renderCommitRow(m.commits[i], i < eff, innerWidth))
+	}
+	for i := top; i < top+shown; i++ {
+		lines = append(lines, m.renderCommitRow(m.commits[i], i >= m.branchSkip && i < eff, innerWidth))
+	}
+	if shown < rows {
+		lines = append(lines, commitExcludedStyle.Render(fmt.Sprintf("  … +%d more", total-shown)))
 	}
 
 	lines = append(lines, commitHeaderStyle.Render(strings.Repeat("─", innerWidth)))
 	return lines
+}
+
+// commitRangeLabel describes a Branch-mode commit range, numbering commits from
+// the oldest (1) to the newest (total): "all 5 commits", "last 2 commits",
+// "commit 3 of 5", "commits 2–4 of 5".
+func commitRangeLabel(total, depth, skip int) string {
+	start := total
+	if depth > 0 && depth < total {
+		start = depth
+	}
+	if skip == 0 {
+		switch start {
+		case total:
+			return fmt.Sprintf("all %d commits", total)
+		case 1:
+			return "last commit"
+		default:
+			return fmt.Sprintf("last %d commits", start)
+		}
+	}
+	oldest, newest := total-start+1, total-skip
+	if oldest == newest {
+		return fmt.Sprintf("commit %d of %d", newest, total)
+	}
+	return fmt.Sprintf("commits %d–%d of %d", oldest, newest, total)
 }
 
 // renderCommitRow formats one commit as "<marker> <subject>". In-scope commits

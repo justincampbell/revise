@@ -901,7 +901,7 @@ func TestStatusFingerprint_ChangesOnCommit(t *testing.T) {
 }
 
 // ============================================================================
-// BranchDiffDepth / CommitsAhead
+// BranchDiffRange / CommitsAhead
 // ============================================================================
 
 func TestCommitsAhead_CountsCommitsSinceMergeBase(t *testing.T) {
@@ -960,7 +960,7 @@ func TestBranchCommits_EmptyOnDefaultBranch(t *testing.T) {
 	assert.Empty(t, commits)
 }
 
-func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
+func TestBranchDiffRange_LimitsToLastNCommits(t *testing.T) {
 	r := NewTestRepo(t)
 	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
 	r.Add("base.go")
@@ -979,7 +979,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	r.Chdir()
 
 	// Depth 0 (full branch): 3 commits ahead, all three files.
-	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 0)
+	diff, ahead, err := BranchDiffRange(DefaultContextLines, false, 0, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 3, ahead)
 	paths := filePaths(diff)
@@ -988,7 +988,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth 1: only the last commit (three.go).
-	diff, ahead, err = BranchDiffDepth(DefaultContextLines, false, 1)
+	diff, ahead, err = BranchDiffRange(DefaultContextLines, false, 1, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 3, ahead)
 	paths = filePaths(diff)
@@ -997,7 +997,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth 2: the last two commits (two.go, three.go).
-	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 2)
+	diff, _, err = BranchDiffRange(DefaultContextLines, false, 2, 0)
 	require.NoError(t, err)
 	paths = filePaths(diff)
 	assert.NotContains(t, paths, "one.go")
@@ -1005,7 +1005,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 	assert.Contains(t, paths, "three.go")
 
 	// Depth >= total clamps to the full branch.
-	diff, _, err = BranchDiffDepth(DefaultContextLines, false, 99)
+	diff, _, err = BranchDiffRange(DefaultContextLines, false, 99, 0)
 	require.NoError(t, err)
 	paths = filePaths(diff)
 	assert.Contains(t, paths, "one.go")
@@ -1014,7 +1014,7 @@ func TestBranchDiffDepth_LimitsToLastNCommits(t *testing.T) {
 
 // Working tree changes are always layered on top of the depth-limited range,
 // so a depth-1 view shows the last commit plus uncommitted work.
-func TestBranchDiffDepth_IncludesWorkingTree(t *testing.T) {
+func TestBranchDiffRange_IncludesWorkingTree(t *testing.T) {
 	r := NewTestRepo(t)
 	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
 	r.Add("base.go")
@@ -1032,11 +1032,82 @@ func TestBranchDiffDepth_IncludesWorkingTree(t *testing.T) {
 	r.WriteFile("wip.go", "package main\n\nfunc wip() {}\n")
 	r.Chdir()
 
-	diff, ahead, err := BranchDiffDepth(DefaultContextLines, false, 1)
+	diff, ahead, err := BranchDiffRange(DefaultContextLines, false, 1, 0)
 	require.NoError(t, err)
 	assert.Equal(t, 2, ahead)
 	paths := filePaths(diff)
 	assert.NotContains(t, paths, "one.go")
 	assert.Contains(t, paths, "two.go")
+	assert.Contains(t, paths, "wip.go")
+}
+
+// A non-zero skip ends the range at HEAD~skip, so depth=skip+1 isolates a
+// single historical commit. Working tree changes describe HEAD, not that
+// commit, so they are not layered on.
+func TestBranchDiffRange_SkipIsolatesHistoricalCommit(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n\nfunc base() {}\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n\nfunc one() {}\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n\nfunc two() {}\n")
+	r.Add("two.go")
+	r.Commit("add two")
+	r.WriteFile("three.go", "package main\n\nfunc three() {}\n")
+	r.Add("three.go")
+	r.Commit("add three")
+	r.WriteFile("wip.go", "package main\n\nfunc wip() {}\n")
+	r.Chdir()
+
+	diff, ahead, err := BranchDiffRange(DefaultContextLines, false, 2, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 3, ahead)
+	assert.Equal(t, []string{"two.go"}, filePaths(diff))
+	for _, h := range diff.Files[0].Hunks {
+		assert.Equal(t, SourceBranch, h.Source)
+	}
+
+	// Full start with skip: everything except the newest commit.
+	diff, _, err = BranchDiffRange(DefaultContextLines, false, 0, 1)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "one.go")
+	assert.Contains(t, paths, "two.go")
+	assert.NotContains(t, paths, "three.go")
+	assert.NotContains(t, paths, "wip.go")
+}
+
+// A skip that would leave no commits in range is ignored (full range to HEAD,
+// working tree included).
+func TestBranchDiffRange_InvalidSkipFallsBackToHEAD(t *testing.T) {
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("feature")
+
+	r.WriteFile("one.go", "package main\n")
+	r.Add("one.go")
+	r.Commit("add one")
+	r.WriteFile("two.go", "package main\n")
+	r.Add("two.go")
+	r.Commit("add two")
+	r.WriteFile("wip.go", "package main\n")
+	r.Chdir()
+
+	diff, _, err := BranchDiffRange(DefaultContextLines, false, 1, 1)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "two.go")
+	assert.Contains(t, paths, "wip.go")
+
+	diff, _, err = BranchDiffRange(DefaultContextLines, false, 0, 5)
+	require.NoError(t, err)
+	paths = filePaths(diff)
+	assert.Contains(t, paths, "one.go")
 	assert.Contains(t, paths, "wip.go")
 }

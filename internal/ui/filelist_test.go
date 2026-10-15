@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -339,4 +340,58 @@ func TestCommitsSection_InScopeMarkers(t *testing.T) {
 	assert.Contains(t, ansi.Strip(lines[3]), "·")
 	assert.Contains(t, ansi.Strip(lines[4]), "·")
 	assert.Contains(t, ansi.Strip(lines[0]), "Last 2 commits")
+}
+
+func TestCommitRangeLabel(t *testing.T) {
+	tests := []struct {
+		depth, skip int
+		want        string
+	}{
+		{0, 0, "all 5 commits"},
+		{1, 0, "last commit"},
+		{3, 0, "last 3 commits"},
+		{3, 2, "commit 3 of 5"},
+		{0, 4, "commit 1 of 5"},
+		{4, 1, "commits 2–4 of 5"},
+		{0, 1, "commits 1–4 of 5"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, commitRangeLabel(5, tt.depth, tt.skip), "depth=%d skip=%d", tt.depth, tt.skip)
+	}
+}
+
+func TestCommitsSection_InScopeMarkersWithSkip(t *testing.T) {
+	m := fileListModel{files: makeFiles("a.go"), height: 20, width: 40, showCommits: true}
+	m.commits = commitList(4)
+	m.branchDepth = 3
+	m.branchSkip = 1 // commits[1], commits[2] in scope
+
+	lines := m.renderCommitsLines(m.width - 2)
+	require.Len(t, lines, 6)
+	assert.Contains(t, ansi.Strip(lines[0]), "Commits 2–3 of 4")
+	assert.Contains(t, ansi.Strip(lines[1]), "·")
+	assert.Contains(t, ansi.Strip(lines[2]), "●")
+	assert.Contains(t, ansi.Strip(lines[3]), "●")
+	assert.Contains(t, ansi.Strip(lines[4]), "·")
+}
+
+// When rows are capped, the visible window scrolls so in-scope commits deep in
+// history stay visible.
+func TestCommitsSection_CappedWindowShowsInScopeCommits(t *testing.T) {
+	m := fileListModel{files: makeFiles("a.go"), height: 10, width: 40, showCommits: true}
+	m.commits = commitList(30)
+	m.branchDepth = 21
+	m.branchSkip = 20 // only commits[20] in scope
+
+	lines := m.renderCommitsLines(m.width - 2)
+	require.Len(t, lines, 7) // header + 5 rows + separator
+	var inScope int
+	for _, l := range lines[1:6] {
+		if strings.Contains(ansi.Strip(l), "●") {
+			inScope++
+			assert.Contains(t, ansi.Strip(l), m.commits[20].Subject)
+		}
+	}
+	assert.Equal(t, 1, inScope)
+	assert.Contains(t, ansi.Strip(lines[5]), "more")
 }
