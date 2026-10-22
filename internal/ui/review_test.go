@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,6 +137,42 @@ func TestCtrlC_QuitsWithNoVerdictFromPromptAndInput(t *testing.T) {
 	m, cmd = pressSpecial(m, tea.KeyCtrlC)
 	assert.True(t, isQuit(cmd))
 	assert.Equal(t, VerdictNone, m.verdict)
+}
+
+func makeVerdictModelWithStore(t *testing.T) (Model, string) {
+	m, storePath := makeModelWithStore(t, "a.go", []git.Line{{Type: git.LineAdded, Content: "x", NewNum: 1}})
+	m = m.WithVerdict()
+	m.comments[commentKey{file: "a.go", lineNum: 1}] = "fix"
+	m.saveComments()
+	require.FileExists(t, storePath)
+	return m, storePath
+}
+
+func TestVerdict_FinishingDeletesStore(t *testing.T) {
+	for _, key := range []string{"a", "r"} {
+		m, storePath := makeVerdictModelWithStore(t)
+		m, _ = pressKey(m, "q")
+		m, _ = pressKey(m, key)
+		m, cmd := pressSpecial(m, tea.KeyEnter)
+		require.True(t, isQuit(cmd))
+		assert.NoFileExists(t, storePath, key)
+		assert.Contains(t, m.ExportedComments(), "> fix", "export still has the comments")
+	}
+}
+
+func TestVerdict_NoneKeepsStore(t *testing.T) {
+	m, storePath := makeVerdictModelWithStore(t)
+	m, _ = pressKey(m, "q")
+	_, cmd := pressKey(m, "q")
+	require.True(t, isQuit(cmd))
+	assert.FileExists(t, storePath)
+
+	m, storePath = makeVerdictModelWithStore(t)
+	m, _ = pressKey(m, "q")
+	m, _ = pressKey(m, "a")
+	_, cmd = pressSpecial(m, tea.KeyCtrlC)
+	require.True(t, isQuit(cmd))
+	assert.FileExists(t, storePath)
 }
 
 func TestExportedComments_VerdictFirstLine(t *testing.T) {

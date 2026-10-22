@@ -144,6 +144,8 @@ internal/
     syntax_test.go             # highlight, fence detection, indent guide tests
     comment.go                 # comment types, serialization for persistence
     comment_test.go            # comment encode/decode tests
+    anchor.go                  # content anchors for persisted comments; re-anchor / outdated on load
+    anchor_test.go             # reanchor, capture, round-trip, outdated export tests
     review.go                  # --brief panel and --verdict prompt / export header
     review_test.go             # brief layout, verdict key flow, export format tests
     help.go                    # help overlay
@@ -242,7 +244,7 @@ For callers (e.g. a planning session) that launch revise for someone else's revi
 
 - **Brief**: `WithBrief` stores the markdown lines; `renderBrief` draws a bordered panel (highlighted line by line as Markdown, word-wrapped, capped at `briefMaxLines` with a `… +N more lines` row) or, when collapsed with `b`, a one-row `▸ Brief: <title>` strip. `briefHeight()` is subtracted in `updateLayout` and from mouse click Y; a click inside the brief toggles it.
 - **Verdict**: `WithVerdict` makes `q` open a centered prompt (`verdictPrompt`). `a`/`r` set the verdict and open `reviewInput` for an optional review-level comment; Enter quits, Esc goes back to the prompt and resets the verdict. `Ctrl+C` always quits with `none`. These modal states are checked first in `Update`'s key handling.
-- **Output contract**: with `--verdict`, `ExportedComments` is never empty and its first line is exactly `verdict: <approve|request-changes|none>` (callers parse it with `head -1`), followed by an optional `# Review` block, then the unchanged `formatExport` output. Without `--verdict` the output is byte-for-byte the same as before.
+- **Output contract**: with `--verdict`, `ExportedComments` is never empty and its first line is exactly `verdict: <approve|request-changes|none>` (callers parse it with `head -1`), followed by an optional `# Review` block, then the unchanged `formatExport` output (and `# Outdated Comments`, if any). Without `--verdict` the output is byte-for-byte the same as before.
 
 ### Keyboard Bindings
 
@@ -259,6 +261,14 @@ Bubbletea maps the Escape key to the string `"esc"` (not `"escape"`) — use `ca
 ### Comment Persistence
 
 Comments are persisted to `os.TempDir()/revise/<hash>.json` where hash = `sha256(repoRoot + ":" + branchName)[:16]`. Auto-saved on every add/edit/delete, loaded on startup. The `internal/comments/` package handles storage; `internal/ui/comment.go` handles serialization between the internal `commentKey` struct and string-keyed JSON.
+
+Keys are line numbers, so a branch rewritten between runs used to restore comments onto unrelated lines. `internal/ui/anchor.go` fixes this:
+- `saveComments` calls `captureAnchors`, which records each comment's and mark's trimmed line content.
+- On load, `reanchor` checks it against `workingTreeSource`: the working-tree file for the new side (falling back to the diff if unreadable), and the diff's old lines for removed lines. If the same line still matches, nothing changes. If the content moved, the comment moves to the nearest free matching line. If the content is gone, the comment becomes an `outdatedComment` and is exported under `# Outdated Comments`; outdated marks are dropped.
+- Anchors and outdated comments are stored under `anchor:` / `outdated:` prefixed keys in the same flat string map. They fail `decodeCommentKey`, so older builds skip them instead of failing to load.
+- Comments without an anchor (written by older builds) and file-level comments are never moved.
+
+`--fresh` deletes the store before startup. With `--verdict`, finishing a review (approve or request changes) deletes it on exit, while a `none` exit keeps it so an accidental quit can be resumed.
 
 File-level comments use `lineNum: 0` in the `commentKey` struct (diff line numbers are always >= 1). They are displayed at the top of the diff view before hunks, and exported as "File comment: ..." in the export format.
 

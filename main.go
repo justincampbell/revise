@@ -50,6 +50,7 @@ func main() {
 	noWatchFlag := flag.Bool("no-watch", false, "Disable fsnotify-based refresh; auto-refresh runs on a timer only")
 	briefFlag := flag.String("brief", "", "Show a markdown file as a context panel above the review")
 	verdictFlag := flag.Bool("verdict", false, "Ask for a verdict on quit; output starts with a `verdict:` line")
+	freshFlag := flag.Bool("fresh", false, "Discard this branch's saved comments on start")
 	flag.Parse()
 
 	if *helpFlag {
@@ -152,6 +153,12 @@ func main() {
 			branch = "HEAD"
 		}
 		storePath = comments.StorePath(repoRoot, branch)
+	}
+	if *freshFlag {
+		if err := comments.Delete(storePath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: --fresh: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	m := opts.apply(ui.NewWithStorePath(diff, onDefaultBranch, storePath, version).
@@ -414,7 +421,9 @@ Flags:
   --brief <file>        Show a markdown file as a context panel above the review (b toggles)
   --verdict             On quit, ask for a verdict (approve / request changes) and a
                           review comment; output's first line is "verdict: <value>"
-                          (approve, request-changes, or none)
+                          (approve, request-changes, or none). Approving or
+                          requesting changes also clears this branch's saved comments
+  --fresh               Discard this branch's saved comments on start
   --dev                 Auto-restart when the binary is replaced (development)
   --debug               Show a refresh-debug strip with live timings above the status bar
   --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)

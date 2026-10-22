@@ -90,6 +90,10 @@ verdict: approve
 ...
 ```
 
+Comments are saved per repo and branch, so quitting and relaunching resumes the review. Approving or requesting changes clears them, so a finished review doesn't come back on the next run. Quitting with no verdict keeps them. Pass `--fresh` to start with no saved comments.
+
+If the branch changed between runs, each saved comment follows its line's content. A comment whose line no longer exists is listed under `# Outdated Comments` at the end of the output, quoting the line it was written on.
+
 ### Subcommands
 
 | Command | Description |

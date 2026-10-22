@@ -10,7 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Branch mode can now move the *end* of the commit range with `,` / `.`, alongside `<` / `>` for the start, so you can review a single commit or a range that ends before `HEAD`. With one commit selected, `,` / `.` step it back and forward through history. Working tree changes are only layered on top while the range ends at `HEAD`
 - `--brief <file>` shows a markdown file as a context panel above the review, so whoever launched revise can say what the change is and what to look at. `b` collapses and expands it
-- `--verdict` makes `q` ask for a verdict (approve, request changes, or quit without one) plus an optional review-level comment. The output is then always written, and its first line is `verdict: <value>`, so a caller can tell "approved with no comments" from "closed by accident"
+- `--verdict` makes `q` ask for a verdict (approve, request changes, or quit without one) plus an optional review-level comment. The output is then always written, and its first line is `verdict: <value>`, so a caller can tell "approved with no comments" from "closed by accident". Approving or requesting changes also clears the branch's saved comments, while quitting without a verdict keeps them for resuming
+- `--fresh` discards the branch's saved comments on start
+
+### Fixed
+
+- Saved comments no longer land on the wrong line after the branch is rewritten between runs. revise now stores each comment's line content and re-anchors on load: the comment follows its line if it moved, and if the line is gone the comment is exported under `# Outdated Comments` instead of being attached to whatever now has that line number
 
 ## [0.7.0] - 2026-09-16
 

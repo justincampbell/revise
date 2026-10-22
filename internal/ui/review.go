@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	commentstore "github.com/justincampbell/revise/internal/comments"
 )
 
 // Verdict is the reviewer's overall decision, chosen on quit when --verdict is set.
@@ -159,6 +160,8 @@ func (m Model) updateReviewInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.reviewComment = strings.TrimSpace(m.reviewInput.Value())
 		m.reviewInputActive = false
 		m.reviewInput.Blur()
+		// A finished review shouldn't resurface on the next run; a "none" exit keeps the store so it can be resumed.
+		_ = commentstore.Delete(m.storePath)
 		return m, tea.Quit
 	case "esc":
 		m.reviewInputActive = false
