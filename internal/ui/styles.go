@@ -128,6 +128,10 @@ var (
 	// Confirm dialog styles
 	confirmStyle    lipgloss.Style
 	confirmKeyStyle lipgloss.Style
+
+	briefStyle      lipgloss.Style
+	briefTitleStyle lipgloss.Style
+	verdictStyle    lipgloss.Style
 )
 
 func init() {
@@ -238,6 +242,16 @@ func applyTheme(p themeColors) {
 		BorderForeground(p.removedFg).
 		Padding(1, 2)
 	confirmKeyStyle = lipgloss.NewStyle().Bold(true).Foreground(p.removedFg)
+
+	briefStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.dim).
+		Padding(0, 1)
+	briefTitleStyle = lipgloss.NewStyle().Foreground(p.dim)
+	verdictStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.cyan).
+		Padding(1, 2)
 }
 
 func applyNoColor() {
@@ -293,4 +307,7 @@ func applyNoColor() {
 	helpStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2, 0)
 	confirmStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 	confirmKeyStyle = lipgloss.NewStyle().Bold(true)
+	briefStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	briefTitleStyle = lipgloss.NewStyle()
+	verdictStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2)
 }

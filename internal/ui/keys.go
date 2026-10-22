@@ -26,8 +26,16 @@ var allBindings = []BindingGroup{
 		{Key: "f", Desc: "Toggle fullscreen diff", GitOnly: true},
 		{Key: "Esc", Desc: "Back to file list", GitOnly: true},
 		{Key: "r", Desc: "Force refresh diff", GitOnly: true},
+		{Key: "b", Desc: "Toggle brief panel (--brief)"},
 		{Key: "?", Desc: "Toggle help"},
-		{Key: "q", Desc: "Quit"},
+		{Key: "q", Desc: "Quit (--verdict: finish review)"},
+		{Key: "Ctrl+C", Desc: "Quit immediately (no verdict)"},
+	}},
+	{"Finish Review (--verdict)", []Binding{
+		{Key: "a", Desc: "Approve"},
+		{Key: "r", Desc: "Request changes"},
+		{Key: "q", Desc: "Quit without a verdict"},
+		{Key: "Esc", Desc: "Keep reviewing"},
 	}},
 	{"File List", []Binding{
 		{Key: "j/k, ↑/↓", Desc: "Navigate files", GitOnly: true},
