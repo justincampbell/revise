@@ -301,3 +301,19 @@ func TestBriefMouseClick_InBriefTogglesIt(t *testing.T) {
 	assert.False(t, m.briefExpanded)
 	assert.Equal(t, 0, m.fileList.cursor)
 }
+
+func TestReviewInput_LongCommentWrapsInsideDialog(t *testing.T) {
+	m := makeVerdictModel()
+	m, _ = pressKey(m, "q")
+	m, _ = pressKey(m, "r")
+	m = typeText(m, longComment+" "+longComment)
+
+	dialog := m.renderVerdictDialog()
+	for _, r := range plainRows(dialog) {
+		assert.LessOrEqual(t, ansi.StringWidth(r), m.width)
+	}
+	words := strings.Fields(ansi.Strip(dialog))
+	assert.Contains(t, words, "box")
+	assert.Contains(t, words, "the")
+	assert.Equal(t, longComment+" "+longComment, m.reviewInput.Value())
+}

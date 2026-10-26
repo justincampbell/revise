@@ -149,6 +149,8 @@ internal/
     review.go                  # --brief panel and --verdict prompt / export header
     review_test.go             # brief layout, verdict key flow, export format tests
     help.go                    # help overlay
+    textbox.go                 # soft-wrapping free-text input (comment + review boxes), asTyped burst guard
+    textbox_test.go            # wrap/grow, newline flattening, multi-rune burst tests
     model_test.go              # model key routing tests
     filelist_test.go           # navigation and truncate tests
     diffview_test.go           # scroll logic and gutter format tests
@@ -297,6 +299,16 @@ The fs watcher is attached via `Model.WithFSWatcher(w)`. If `fswatch.New` fails 
 - **Match list**: `searchMatches` holds navigable line indices containing the query; `searchIdx` is the current position (-1 when none). `computeSearchMatches` scans `lineRef.content` (plain source text, stored at build time).
 - **Navigation**: `nextMatch`/`prevMatch` wrap. After moving, `ensureMatchVisible` scrolls horizontally (when wrap is off) so an off-screen match is brought into the viewport. `n`/`N` in `model.go` route to these when `searchQuery != ""`, otherwise to next/prev file (the default). While the search box is open, all keys (including `n`/`N`) feed the query.
 - **Lifecycle**: `/` → `startSearch` (records `searchOrigin = cursor`, focuses the diff view). Typing → `setSearch` (incremental: rebuild, recompute, jump to first match at/after `searchOrigin`, wrapping). `Enter` commits (box closes, query/matches retained, status bar shows `current/total` + nav hint). `Esc` clears — both inside the box and after committing (a guard before the main key switch in `Update` intercepts `esc` when `searchQuery != ""`).
+
+### Free-text Inputs
+
+The comment box (`diffView.textInput`) and the `--verdict` review box (`reviewInput`) are `bubbles/textarea` models built by `newTextBox`. They stay single-line (the InsertNewline binding is disabled, and pasted newlines are flattened to spaces), soft-wrap, and grow with the text:
+
+- Width and height are set in Update, never in View. Setting them on the View copy left the model unsized during Update, so text ran off-screen. `fitTextBox` runs after every keystroke, on open, and in `updateLayout`. The inline box height is dynamic (`inputBoxHeight()` = text rows + 2), and `scrollForCommentInput` runs again as the box grows.
+- After growing, the textarea's viewport never scrolls back up, so `fitTextBox` re-sets the value (which goes to the top) and restores the cursor.
+- The textarea styles are lipgloss **v1** (bubbles v1), so `textbox.go` imports it as `lipglossv1` alongside the package's lipgloss v2.
+- Every input handler calls `asTyped(msg)` first. Fast typing or an unbracketed paste arrives as a single multi-rune `KeyRunes` message, so `msg.String()` can equal `"right"`/`"end"`/`"enter"` and match a binding. Marking the message as `Paste` makes `String()` bracket it, so it gets inserted as text.
+- The search box stays a `textinput` (one status-bar row), with its `Width` set in `updateLayout` so it scrolls horizontally.
 
 ### Soft Line Wrap
 

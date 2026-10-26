@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
@@ -204,7 +204,7 @@ type Model struct {
 	verdictEnabled    bool // --verdict: q opens the verdict prompt
 	verdictPrompt     bool
 	reviewInputActive bool
-	reviewInput       textinput.Model
+	reviewInput       textarea.Model
 	verdict           Verdict
 	reviewComment     string
 }
@@ -983,18 +983,25 @@ func (m *Model) updateLayout() {
 	if m.fullscreen {
 		m.diffView.width = m.width - 2
 		m.diffView.height = panelH
-		return
+	} else {
+		listW := fileListWidth
+		if m.width < 80 {
+			listW = m.width / 3
+		}
+
+		m.fileList.width = listW
+		m.fileList.height = panelH
+		m.diffView.width = m.width - listW - 3 // file list right border (1) + gap (1) + diff left border (1)
+		m.diffView.height = panelH
 	}
 
-	listW := fileListWidth
-	if m.width < 80 {
-		listW = m.width / 3
+	m.diffView.searchInput.Width = max(10, m.width-16) // room for "/" and the "  N/M" match count
+	if m.commentInputActive {
+		m.diffView.fitCommentInput()
 	}
-
-	m.fileList.width = listW
-	m.fileList.height = panelH
-	m.diffView.width = m.width - listW - 3 // file list right border (1) + gap (1) + diff left border (1)
-	m.diffView.height = panelH
+	if m.reviewInputActive {
+		m.fitReviewInput()
+	}
 }
 
 func (m Model) updateFileList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1104,6 +1111,7 @@ func (m *Model) startSearch() {
 // incrementally; Enter commits (matches stay highlighted, n/N navigate them);
 // Esc cancels and clears.
 func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	msg = asTyped(msg)
 	switch msg.String() {
 	case "enter":
 		m.searchActive = false
@@ -1134,6 +1142,7 @@ func (m Model) updateSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	msg = asTyped(msg)
 	switch msg.String() {
 	case "enter":
 		text := strings.TrimSpace(m.diffView.textInput.Value())
@@ -1156,6 +1165,10 @@ func (m Model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		var cmd tea.Cmd
 		m.diffView.textInput, cmd = m.diffView.textInput.Update(msg)
+		m.diffView.fitCommentInput()
+		if !m.diffView.fileCommentInput {
+			m.diffView.scrollForCommentInput()
+		}
 		return m, cmd
 	}
 	return m, nil
@@ -1213,6 +1226,7 @@ func (m *Model) startCommentInput() {
 	m.diffView.textInput.SetValue(m.comments[key])
 	m.diffView.textInput.CursorEnd()
 	m.diffView.textInput.Focus()
+	m.diffView.fitCommentInput()
 
 	// Scroll so there's room below the cursor for the input box.
 	m.diffView.scrollForCommentInput()
@@ -1232,6 +1246,7 @@ func (m *Model) startFileComment() {
 	m.diffView.textInput.SetValue(m.comments[key])
 	m.diffView.textInput.CursorEnd()
 	m.diffView.textInput.Focus()
+	m.diffView.fitCommentInput()
 
 	m.commentInputActive = true
 	m.diffView.commentInputActive = true
