@@ -66,6 +66,30 @@ Source is syntax-highlighted by file type. Markdown gets bold headings, inline `
 
 Comments are also output on exit in normal git diff mode.
 
+### Reviewing on behalf of a caller
+
+When a script or agent launches revise for someone else's review, two flags (both work in diff and file review mode, and must come before any file argument) give it more structure:
+
+```sh
+revise --brief pr-123.md --verdict --output review.md
+```
+
+- `--brief <file>` shows a markdown file in a panel above the review: what the change is, what decisions it makes, and what to look at. `b` collapses it to a one-line strip and expands it again.
+- `--verdict` makes `q` open a **Finish review** prompt: `a` approve, `r` request changes, `q` quit without a verdict, `Esc` keep reviewing. After approve or request changes you can type an optional review-level comment. `Ctrl+C` always quits right away with no verdict.
+
+With `--verdict`, the output is always written (even with no comments), and its first line is always `verdict: approve`, `verdict: request-changes`, or `verdict: none`. A review-level comment, if any, comes next as a `# Review` block, then the usual comments:
+
+```
+verdict: approve
+
+# Review
+
+> Looks good once the flag is renamed.
+
+# Code Review Comments
+...
+```
+
 ### Subcommands
 
 | Command | Description |
@@ -100,8 +124,10 @@ Press `?` inside revise to see the help overlay.
 | `,` / `.` | Move end of commit range back / forward (Branch mode) |
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list |
+| `b` | Toggle brief panel (`--brief`) |
 | `?` | Toggle help |
-| `q` | Quit |
+| `q` | Quit (with `--verdict`: finish review) |
+| `Ctrl+C` | Quit immediately (no verdict) |
 
 ### File List
 

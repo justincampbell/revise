@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/justincampbell/revise/internal/comments"
 	"github.com/justincampbell/revise/internal/devwatch"
 	"github.com/justincampbell/revise/internal/fswatch"
@@ -48,6 +48,8 @@ func main() {
 	devFlag := flag.Bool("dev", false, "Auto-restart when the binary is replaced (for local development)")
 	debugFlag := flag.Bool("debug", false, "Show a refresh-debug strip with live timings above the status bar")
 	noWatchFlag := flag.Bool("no-watch", false, "Disable fsnotify-based refresh; auto-refresh runs on a timer only")
+	briefFlag := flag.String("brief", "", "Show a markdown file as a context panel above the review")
+	verdictFlag := flag.Bool("verdict", false, "Ask for a verdict on quit; output starts with a `verdict:` line")
 	flag.Parse()
 
 	if *helpFlag {
@@ -78,6 +80,16 @@ func main() {
 	}
 	ui.SetTheme(theme, isDark)
 
+	opts := reviewOptions{verdict: *verdictFlag}
+	if *briefFlag != "" {
+		b, err := os.ReadFile(*briefFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: reading --brief: %v\n", err)
+			os.Exit(1)
+		}
+		opts.brief = string(b)
+	}
+
 	// Subcommands that don't require a git repo.
 	args := flag.Args()
 	if len(args) > 0 {
@@ -92,7 +104,7 @@ func main() {
 			// Handled below after git repo check.
 		default:
 			// Positional argument: file review mode.
-			runFileReview(args[0], *outputFlag, *devFlag)
+			runFileReview(args[0], *outputFlag, *devFlag, opts)
 			return
 		}
 	}
@@ -142,8 +154,8 @@ func main() {
 		storePath = comments.StorePath(repoRoot, branch)
 	}
 
-	m := ui.NewWithStorePath(diff, onDefaultBranch, storePath, version).
-		WithDebug(*debugFlag)
+	m := opts.apply(ui.NewWithStorePath(diff, onDefaultBranch, storePath, version).
+		WithDebug(*debugFlag))
 
 	// Attach an fsnotify-based watcher so file edits wake the refresh
 	// loop directly (instead of waiting for the next scheduled tick).
@@ -170,13 +182,28 @@ func main() {
 	}
 }
 
-func runFileReview(filePath string, outputPath string, devMode bool) {
+type reviewOptions struct {
+	brief   string
+	verdict bool
+}
+
+func (o reviewOptions) apply(m ui.Model) ui.Model {
+	if o.brief != "" {
+		m = m.WithBrief(o.brief)
+	}
+	if o.verdict {
+		m = m.WithVerdict()
+	}
+	return m
+}
+
+func runFileReview(filePath string, outputPath string, devMode bool, opts reviewOptions) {
 	diff, err := buildFileDiff(filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	m := ui.NewFileReview(diff, filePath)
+	m := opts.apply(ui.NewFileReview(diff, filePath))
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(ttyOut))
 	finalModel, err := runProgram(p, devMode)
 	if err != nil {
@@ -384,6 +411,10 @@ Flags:
                           github-dark, github-dark-daltonized
                           github-light, github-light-daltonized
   --output <file>       Write comments to file on exit
+  --brief <file>        Show a markdown file as a context panel above the review (b toggles)
+  --verdict             On quit, ask for a verdict (approve / request changes) and a
+                          review comment; output's first line is "verdict: <value>"
+                          (approve, request-changes, or none)
   --dev                 Auto-restart when the binary is replaced (development)
   --debug               Show a refresh-debug strip with live timings above the status bar
   --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)

@@ -144,6 +144,8 @@ internal/
     syntax_test.go             # highlight, fence detection, indent guide tests
     comment.go                 # comment types, serialization for persistence
     comment_test.go            # comment encode/decode tests
+    review.go                  # --brief panel and --verdict prompt / export header
+    review_test.go             # brief layout, verdict key flow, export format tests
     help.go                    # help overlay
     model_test.go              # model key routing tests
     filelist_test.go           # navigation and truncate tests
@@ -233,6 +235,14 @@ Markdown gets two extras (#194):
 Navigation note (applies to all modes, not just file review): `}`/`{` (`]`/`[`) jump to the next/previous blank line (Vim-style paragraph boundary) via `nextParagraph`/`prevParagraph`. There is no dedicated hunk-to-hunk navigation — in a diff the nearest blank line usually sits at the next change, so paragraph jumping doubles as change-to-change navigation and stays consistent across modes (#122). Blank lines are flagged at build time as `lineRef.isBlank`. (`hunkStarts`/`currentHunkIndex` remain, used by hunk stage/unstage/discard.)
 
 Comments are output to stdout on exit (both in file review and git diff modes), enabling integration with Claude Code: Claude launches `revise`, user reviews and comments, comments print on close.
+
+### Brief and Verdict (`--brief`, `--verdict`)
+
+For callers (e.g. a planning session) that launch revise for someone else's review. Both apply to diff and file review mode via `reviewOptions.apply` in `main.go`.
+
+- **Brief**: `WithBrief` stores the markdown lines; `renderBrief` draws a bordered panel (highlighted line by line as Markdown, word-wrapped, capped at `briefMaxLines` with a `… +N more lines` row) or, when collapsed with `b`, a one-row `▸ Brief: <title>` strip. `briefHeight()` is subtracted in `updateLayout` and from mouse click Y; a click inside the brief toggles it.
+- **Verdict**: `WithVerdict` makes `q` open a centered prompt (`verdictPrompt`). `a`/`r` set the verdict and open `reviewInput` for an optional review-level comment; Enter quits, Esc goes back to the prompt and resets the verdict. `Ctrl+C` always quits with `none`. These modal states are checked first in `Update`'s key handling.
+- **Output contract**: with `--verdict`, `ExportedComments` is never empty and its first line is exactly `verdict: <approve|request-changes|none>` (callers parse it with `head -1`), followed by an optional `# Review` block, then the unchanged `formatExport` output. Without `--verdict` the output is byte-for-byte the same as before.
 
 ### Keyboard Bindings
 

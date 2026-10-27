@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
@@ -194,6 +195,16 @@ type Model struct {
 
 	fileReviewMode bool   // true when reviewing a file (not a git diff)
 	fileReviewPath string // filename shown in status bar
+
+	brief         []string // --brief markdown lines, shown above the panes
+	briefExpanded bool
+
+	verdictEnabled    bool // --verdict: q opens the verdict prompt
+	verdictPrompt     bool
+	reviewInputActive bool
+	reviewInput       textinput.Model
+	verdict           Verdict
+	reviewComment     string
 }
 
 // NewFileReview creates a Model for reviewing a file (not a git diff).
@@ -354,6 +365,14 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.reviewInputActive {
+			return m.updateReviewInput(msg)
+		}
+
+		if m.verdictPrompt {
+			return m.updateVerdictPrompt(msg)
+		}
+
 		if m.commentInputActive {
 			return m.updateCommentInput(msg)
 		}
@@ -398,7 +417,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "q", "ctrl+c":
+			if msg.String() == "q" && m.verdictEnabled {
+				m.verdictPrompt = true
+				return m, nil
+			}
 			return m, tea.Quit
+
+		case "b":
+			m.toggleBrief()
+			return m, nil
 
 		case "?":
 			m.showHelp = !m.showHelp
@@ -656,6 +683,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Check for status bar slider click
+			if msg.Y < m.briefHeight() {
+				m.toggleBrief()
+				return m, nil
+			}
 			if msg.Y == m.height-1 {
 				if mode := m.sliderModeAt(msg.X); mode >= 0 && mode != m.mode && m.modeAvailable(mode) {
 					m.mode = mode
@@ -667,7 +698,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.mouseFocusDiff(msg) {
 				// border (1) = 1 line before file entries
 				if !m.commentInputActive {
-					idx := msg.Y - 1 + m.fileList.offset
+					idx := msg.Y - 1 - m.briefHeight() + m.fileList.offset
 					if idx >= 0 && idx < len(m.fileList.files) {
 						m.fileList.cursor = idx
 						m.syncSelectedFile()
@@ -676,7 +707,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.focus = focusDiffView
 				// Panel top border is 1 row; map click Y to lines[] index.
-				clickY := msg.Y - 1
+				clickY := msg.Y - 1 - m.briefHeight()
 				if clickY >= 0 {
 					absIdx := m.diffView.clickToAbsIdx(clickY)
 					// Close any open input box before navigating.
@@ -934,7 +965,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateLayout() {
-	panelH := m.height - 3 // leave 1 row for status bar
+	panelH := m.height - 3 - m.briefHeight() // leave 1 row for status bar
 	if m.debug {
 		panelH-- // debug strip sits directly above the status bar
 	}
@@ -2066,6 +2097,10 @@ func (m Model) View() string {
 		screen = lipgloss.JoinVertical(lipgloss.Left, append([]string{panels}, bottomChunks...)...)
 	}
 
+	if brief := m.renderBrief(); brief != "" {
+		screen = brief + "\n" + screen
+	}
+
 	if m.confirmDiscard || m.confirmClear {
 		screen = overlayCenter(screen, m.renderConfirmDialog(), m.width, m.height)
 	}
@@ -2078,11 +2113,20 @@ func (m Model) View() string {
 		screen = overlayCenter(screen, renderHelp(m.width, m.height, m.helpScroll, helpBindings), m.width, m.height)
 	}
 
+	if m.verdictPrompt || m.reviewInputActive {
+		screen = overlayCenter(screen, m.renderVerdictDialog(), m.width, m.height)
+	}
+
 	return screen
 }
 
 // ExportedComments returns the formatted comment text for printing on exit.
-// Returns "" if there are no comments.
+// Returns "" if there are no comments, unless --verdict is set, in which case
+// the first line is always `verdict: <value>`.
 func (m Model) ExportedComments() string {
-	return formatExport(m.diff.Files, m.comments, m.marks)
+	text := formatExport(m.diff.Files, m.comments, m.marks)
+	if !m.verdictEnabled {
+		return text
+	}
+	return formatReviewExport(m.verdict, m.reviewComment, text)
 }
