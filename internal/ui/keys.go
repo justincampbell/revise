@@ -27,6 +27,7 @@ var allBindings = []BindingGroup{
 		{Key: "Esc", Desc: "Back to file list", GitOnly: true},
 		{Key: "r", Desc: "Force refresh diff", GitOnly: true},
 		{Key: "b", Desc: "Toggle brief panel (--brief)"},
+		{Key: "B", Desc: "Read the full brief, scrollable (--brief)"},
 		{Key: "?", Desc: "Toggle help"},
 		{Key: "q", Desc: "Quit (--verdict: finish review)"},
 		{Key: "Ctrl+C", Desc: "Quit immediately (no verdict)"},

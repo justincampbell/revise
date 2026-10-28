@@ -74,7 +74,7 @@ When a script or agent launches revise for someone else's review, two flags (bot
 revise --brief pr-123.md --verdict --output review.md
 ```
 
-- `--brief <file>` shows a markdown file in a panel above the review: what the change is, what decisions it makes, and what to look at. `b` collapses it to a one-line strip and expands it again.
+- `--brief <file>` shows a markdown file in a panel above the review: what the change is, what decisions it makes, and what to look at. `b` collapses it to a one-line strip and expands it again. A long brief scrolls with the mouse wheel over the panel, and `B` opens the whole brief full-screen to read and scroll.
 - `--verdict` makes `q` open a **Finish review** prompt: `a` approve, `r` request changes, `q` quit without a verdict, `Esc` keep reviewing. After approve or request changes you can type an optional review-level comment. `Ctrl+C` always quits right away with no verdict.
 
 With `--verdict`, the output is always written (even with no comments), and its first line is always `verdict: approve`, `verdict: request-changes`, or `verdict: none`. A review-level comment, if any, comes next as a `# Review` block, then the usual comments:
@@ -129,6 +129,7 @@ Press `?` inside revise to see the help overlay.
 | `f` | Toggle fullscreen diff |
 | `Esc` | Back to file list |
 | `b` | Toggle brief panel (`--brief`) |
+| `B` | Read the full brief, scrollable (`--brief`) |
 | `?` | Toggle help |
 | `q` | Quit (with `--verdict`: finish review) |
 | `Ctrl+C` | Quit immediately (no verdict) |

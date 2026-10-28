@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Branch mode can now move the *end* of the commit range with `,` / `.`, alongside `<` / `>` for the start, so you can review a single commit or a range that ends before `HEAD`. With one commit selected, `,` / `.` step it back and forward through history. Working tree changes are only layered on top while the range ends at `HEAD`
-- `--brief <file>` shows a markdown file as a context panel above the review, so whoever launched revise can say what the change is and what to look at. `b` collapses and expands it
+- `--brief <file>` shows a markdown file as a context panel above the review, so whoever launched revise can say what the change is and what to look at. `b` collapses and expands it. A long brief scrolls with the mouse wheel over the panel, and `B` opens the whole brief full-screen, scrollable with `j`/`k`, `PgUp`/`PgDn`, `g`/`G`, or the wheel
 - `--verdict` makes `q` ask for a verdict (approve, request changes, or quit without one) plus an optional review-level comment. The output is then always written, and its first line is `verdict: <value>`, so a caller can tell "approved with no comments" from "closed by accident". Approving or requesting changes also clears the branch's saved comments, while quitting without a verdict keeps them for resuming
 - `--fresh` discards the branch's saved comments on start
 
