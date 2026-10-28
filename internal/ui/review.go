@@ -58,13 +58,24 @@ func (m Model) briefContentWidth() int {
 }
 
 func (m Model) briefLines() []string {
-	w := m.briefContentWidth()
+	return wrapBrief(m.brief, m.briefContentWidth())
+}
+
+func wrapBrief(brief []string, width int) []string {
 	var out []string
-	for _, line := range m.brief {
+	for _, line := range brief {
 		styled, _ := highlightLine(line, "brief.md", nil, 0, "")
-		out = append(out, strings.Split(ansi.Wrap(styled, w, ""), "\n")...)
+		out = append(out, strings.Split(ansi.Wrap(styled, width, ""), "\n")...)
 	}
 	return out
+}
+
+func (m Model) briefMaxScroll() int {
+	return max(0, len(m.briefLines())-briefMaxLines(m.height))
+}
+
+func (m *Model) scrollBrief(delta int) {
+	m.briefScroll = min(max(0, m.briefScroll+delta), m.briefMaxScroll())
 }
 
 func (m Model) briefHeight() int {
@@ -108,12 +119,80 @@ func (m Model) renderBrief() string {
 
 	lines := m.briefLines()
 	maxLines := briefMaxLines(m.height)
+	top := min(m.briefScroll, max(0, len(lines)-maxLines))
+	lines = lines[top:]
 	if len(lines) > maxLines {
 		hidden := len(lines) - maxLines + 1
-		lines = append(lines[:maxLines-1], statusBarStyle.Render(fmt.Sprintf("… +%d more lines", hidden)))
+		more := statusBarStyle.Render(fmt.Sprintf("… +%d more lines  ", hidden)) +
+			helpKeyStyle.Render("B") + statusBarStyle.Render(" read all")
+		lines = append(lines[:maxLines-1], more)
 	}
 	box := briefStyle.Width(m.width - 2).Render(strings.Join(lines, "\n"))
 	return overlayBorderTitle(box, " Brief · b collapse ")
+}
+
+func (m Model) briefReaderWidth() int {
+	return max(10, m.width-4) // border (2) + padding (2)
+}
+
+// briefReaderRows is how many brief lines fit in the full-screen reader: the screen minus its border and footer.
+func (m Model) briefReaderRows() int {
+	return max(1, m.height-3)
+}
+
+func (m Model) briefReaderMaxScroll() int {
+	return max(0, len(wrapBrief(m.brief, m.briefReaderWidth()))-m.briefReaderRows())
+}
+
+func (m *Model) scrollBriefReader(delta int) {
+	m.briefReadScroll = min(max(0, m.briefReadScroll+delta), m.briefReaderMaxScroll())
+}
+
+func (m *Model) openBriefReader() {
+	if len(m.brief) == 0 {
+		return
+	}
+	m.briefReading = true
+	m.briefReadScroll = 0
+}
+
+func (m Model) updateBriefReader(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	page := m.briefReaderRows()
+	switch msg.String() {
+	case "j", "down":
+		m.scrollBriefReader(1)
+	case "k", "up":
+		m.scrollBriefReader(-1)
+	case "pgdown", " ", "d", "ctrl+d":
+		m.scrollBriefReader(page)
+	case "pgup", "u", "ctrl+u":
+		m.scrollBriefReader(-page)
+	case "g", "home":
+		m.briefReadScroll = 0
+	case "G", "end":
+		m.briefReadScroll = m.briefReaderMaxScroll()
+	case "esc", "q", "B":
+		m.briefReading = false
+	case "ctrl+c":
+		m.verdict = VerdictNone
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m Model) renderBriefReader() string {
+	lines := wrapBrief(m.brief, m.briefReaderWidth())
+	rows := m.briefReaderRows()
+	top := min(m.briefReadScroll, max(0, len(lines)-rows))
+	end := min(len(lines), top+rows)
+	body := strings.Join(lines[top:end], "\n")
+	footer := helpKeyStyle.Render("j/k") + statusBarStyle.Render(" scroll  ") +
+		helpKeyStyle.Render("g/G") + statusBarStyle.Render(" top/bottom  ") +
+		helpKeyStyle.Render("Esc") + statusBarStyle.Render(" close  ") +
+		statusBarStyle.Render(fmt.Sprintf("%d–%d of %d", top+1, end, len(lines)))
+	box := verdictStyle.Padding(0, 1).Width(m.briefReaderWidth() + 2).
+		Render(body + strings.Repeat("\n", rows-(end-top)) + "\n" + footer)
+	return overlayBorderTitle(box, " Brief ")
 }
 
 // overlayBorderTitle writes title into the top border, two columns in.

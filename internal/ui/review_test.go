@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -316,4 +317,96 @@ func TestReviewInput_LongCommentWrapsInsideDialog(t *testing.T) {
 	assert.Contains(t, words, "box")
 	assert.Contains(t, words, "the")
 	assert.Equal(t, longComment+" "+longComment, m.reviewInput.Value())
+}
+
+func numberedBrief(n int) string {
+	var sb strings.Builder
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&sb, "row%02d\n", i)
+	}
+	return sb.String()
+}
+
+func wheel(m Model, y int, button tea.MouseButton) Model {
+	updated, _ := m.Update(tea.MouseMsg{X: 5, Y: y, Button: button, Action: tea.MouseActionPress})
+	return updated.(Model)
+}
+
+func TestBriefPanel_MoreRowPointsToReader(t *testing.T) {
+	m := makeBriefModel(numberedBrief(60), 30)
+	assert.Contains(t, ansi.Strip(m.renderBrief()), "B read all")
+}
+
+func TestBriefPanel_WheelScrollsOverflowingBrief(t *testing.T) {
+	m := makeBriefModel(numberedBrief(60), 30)
+	height := m.briefHeight()
+	diffOffset := m.diffView.offset
+
+	m = wheel(m, 1, tea.MouseButtonWheelDown)
+	panel := ansi.Strip(m.renderBrief())
+	assert.NotContains(t, panel, "row01")
+	assert.Contains(t, panel, "row04")
+	assert.Equal(t, height, m.briefHeight())
+	assert.Equal(t, diffOffset, m.diffView.offset, "wheel over the brief doesn't scroll the diff")
+
+	for i := 0; i < 50; i++ {
+		m = wheel(m, 1, tea.MouseButtonWheelDown)
+	}
+	panel = ansi.Strip(m.renderBrief())
+	assert.Contains(t, panel, "row60")
+	assert.NotContains(t, panel, "more lines")
+
+	for i := 0; i < 50; i++ {
+		m = wheel(m, 1, tea.MouseButtonWheelUp)
+	}
+	assert.Contains(t, ansi.Strip(m.renderBrief()), "row01")
+}
+
+func TestBriefReader_OpensScrollsAndCloses(t *testing.T) {
+	m := makeBriefModel(numberedBrief(60), 30)
+	m, _ = pressKey(m, "B")
+	require.True(t, m.briefReading)
+	reader := ansi.Strip(m.renderBriefReader())
+	assert.Contains(t, reader, "row01")
+	assert.Contains(t, ansi.Strip(m.View()), "j/k scroll")
+	assert.Equal(t, 30, len(strings.Split(m.View(), "\n")))
+
+	m, _ = pressKey(m, "G")
+	reader = ansi.Strip(m.renderBriefReader())
+	assert.Contains(t, reader, "row60")
+	assert.NotContains(t, reader, "row01")
+
+	m, _ = pressKey(m, "g")
+	assert.Contains(t, ansi.Strip(m.renderBriefReader()), "row01")
+
+	m, _ = pressKey(m, "j")
+	assert.Equal(t, 1, m.briefReadScroll)
+	assert.Equal(t, 0, m.diffView.cursor, "j scrolls the brief, not the diff")
+	m, _ = pressKey(m, "k")
+	assert.Equal(t, 0, m.briefReadScroll)
+	m, _ = pressKey(m, "k")
+	assert.Equal(t, 0, m.briefReadScroll)
+
+	m = wheel(m, 10, tea.MouseButtonWheelDown)
+	assert.Equal(t, 3, m.briefReadScroll)
+
+	m, _ = pressSpecial(m, tea.KeyEsc)
+	assert.False(t, m.briefReading)
+
+	m = m.WithVerdict()
+	for _, key := range []string{"B", "q"} {
+		m, _ = pressKey(m, "B")
+		require.True(t, m.briefReading)
+		var cmd tea.Cmd
+		m, cmd = pressKey(m, key)
+		assert.False(t, m.briefReading, key)
+		assert.False(t, isQuit(cmd), key)
+		assert.False(t, m.verdictPrompt, key)
+	}
+}
+
+func TestBriefReader_NoBriefIsNoop(t *testing.T) {
+	m := makeModel("a.go")
+	m, _ = pressKey(m, "B")
+	assert.False(t, m.briefReading)
 }

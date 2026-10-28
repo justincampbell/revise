@@ -198,8 +198,11 @@ type Model struct {
 	fileReviewMode bool   // true when reviewing a file (not a git diff)
 	fileReviewPath string // filename shown in status bar
 
-	brief         []string // --brief markdown lines, shown above the panes
-	briefExpanded bool
+	brief           []string // --brief markdown lines, shown above the panes
+	briefExpanded   bool
+	briefScroll     int  // first brief line shown in the panel
+	briefReading    bool // B: full-screen scrollable brief reader
+	briefReadScroll int
 
 	verdictEnabled    bool // --verdict: q opens the verdict prompt
 	verdictPrompt     bool
@@ -419,6 +422,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.briefReading {
+			return m.updateBriefReader(msg)
+		}
+
 		// Esc clears an active (committed) search before any other Esc
 		// behavior (back-to-file-list / exit-fullscreen) takes over.
 		if msg.String() == "esc" && m.diffView.searchQuery != "" {
@@ -436,6 +443,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "b":
 			m.toggleBrief()
+			return m, nil
+
+		case "B":
+			m.openBriefReader()
 			return m, nil
 
 		case "?":
@@ -663,6 +674,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		}
+
+		if m.briefReading {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.scrollBriefReader(-3)
+			case tea.MouseButtonWheelDown:
+				m.scrollBriefReader(3)
+			}
+			return m, nil
+		}
+
+		if m.briefExpanded && msg.Y < m.briefHeight() {
+			switch msg.Button {
+			case tea.MouseButtonWheelUp:
+				m.scrollBrief(-3)
+				return m, nil
+			case tea.MouseButtonWheelDown:
+				m.scrollBrief(3)
+				return m, nil
+			}
 		}
 
 		switch msg.Button {
@@ -2101,6 +2133,10 @@ func (m Model) branchDepthHint() string {
 func (m Model) View() string {
 	if !m.ready {
 		return "Loading..."
+	}
+
+	if m.briefReading {
+		return m.renderBriefReader()
 	}
 
 	statusBar := m.renderStatusBar()
