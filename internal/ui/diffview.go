@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
@@ -47,7 +48,7 @@ type diffViewModel struct {
 
 	commentInputActive bool
 	fileCommentInput   bool // true when editing a file-level comment (appears before first hunk)
-	textInput          textinput.Model
+	textInput          textarea.Model
 	fileReviewMode     bool // true when reviewing a file (suppresses git chrome in render)
 	wrapEnabled        bool // true when soft line wrap is on (long lines wrap to multiple rows)
 
@@ -237,7 +238,7 @@ func (m *diffViewModel) lastVisibleLine() int {
 func (m *diffViewModel) scrollForCommentInput() {
 	viewH := m.viewHeight()
 	avail := m.viewWidth()
-	needed := inputBoxHeight + 1 // box rows + at least one code row below
+	needed := m.inputBoxHeight() + 1 // box rows + at least one code row below
 	for m.offset < m.cursor && m.rowSpan(m.offset, m.cursor, avail)+needed > viewH {
 		m.offset++
 	}
@@ -257,10 +258,6 @@ func (m *diffViewModel) toggleWrap() {
 }
 
 func newDiffViewModel() diffViewModel {
-	ti := textinput.New()
-	ti.Placeholder = "Add a comment…"
-	ti.CharLimit = 500
-
 	si := textinput.New()
 	si.Prompt = "" // the "/" prompt is rendered by the status bar
 	si.Placeholder = ""
@@ -268,7 +265,7 @@ func newDiffViewModel() diffViewModel {
 
 	return diffViewModel{
 		comments:    make(comments),
-		textInput:   ti,
+		textInput:   newTextBox("Add a comment…", 500),
 		searchInput: si,
 		searchIdx:   -1,
 	}
@@ -955,16 +952,16 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	}
 	if m.fileCommentInput {
 		// File-level input box sits at the top; code lines render from line 0.
-		if clickY < inputBoxHeight {
+		if clickY < m.inputBoxHeight() {
 			return -1
 		}
-		return m.lineAtRow(0, clickY-inputBoxHeight, avail)
+		return m.lineAtRow(0, clickY-m.inputBoxHeight(), avail)
 	}
 	codeAbove := m.rowSpan(m.offset, m.cursor, avail)
 	if clickY < codeAbove {
 		return m.lineAtRow(m.offset, clickY, avail)
 	}
-	if clickY < codeAbove+inputBoxHeight {
+	if clickY < codeAbove+m.inputBoxHeight() {
 		return -1 // inside the input box
 	}
 	// Below the input box — map back to lines[], skipping the box rows.
@@ -972,7 +969,7 @@ func (m diffViewModel) clickToAbsIdx(clickY int) int {
 	if m.isCommentDisplayLine(nextIdx) {
 		nextIdx++ // this display line was skipped in the render
 	}
-	return m.lineAtRow(nextIdx, clickY-codeAbove-inputBoxHeight, avail)
+	return m.lineAtRow(nextIdx, clickY-codeAbove-m.inputBoxHeight(), avail)
 }
 
 func renderDiffLine(l git.Line, marked bool, fillWidth int, filePath string, p themeColors, indentSize int, query, langOverride string) string {
@@ -1157,8 +1154,19 @@ func (m *diffViewModel) currentHunkIndex() int {
 	return hunkIdx
 }
 
-// inputBoxHeight is the number of rows the inline comment input box occupies.
-const inputBoxHeight = 3 // border top + content + border bottom
+// inputBoxHeight is the number of rows the comment input box occupies: its wrapped text plus the border.
+func (m diffViewModel) inputBoxHeight() int {
+	return m.textInput.Height() + 2
+}
+
+func (m diffViewModel) commentBoxWidth() int {
+	return max(10, m.width-4)
+}
+
+// fitCommentInput sizes the comment box to the pane, leaving room for the cursor line and a row below it.
+func (m *diffViewModel) fitCommentInput() {
+	fitTextBox(&m.textInput, m.commentBoxWidth()-4, m.viewHeight()-4)
+}
 
 func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace bool, modeSlider ...string) string {
 	viewH := m.viewHeight()
@@ -1202,12 +1210,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	}
 
 	inputBoxView := func() string {
-		inputWidth := m.width - 4
-		if inputWidth < 10 {
-			inputWidth = 10
-		}
-		m.textInput.Width = inputWidth - 4
-		return commentInputStyle.Width(inputWidth).Render(m.textInput.View())
+		return commentInputStyle.Width(m.commentBoxWidth()).Render(m.textInput.View())
 	}
 
 	if len(m.lines) == 0 {
@@ -1215,7 +1218,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 	} else if m.commentInputActive && m.fileCommentInput {
 		// File-level comment: input box appears before any code lines.
 		renderedLines = append(renderedLines, inputBoxView())
-		appendRows(0, viewH-inputBoxHeight)
+		appendRows(0, viewH-m.inputBoxHeight())
 	} else if m.commentInputActive {
 		// Inline comment: render lines [offset..cursor], then the input box,
 		// then the lines after the cursor (skipping the existing comment
@@ -1232,7 +1235,7 @@ func (m diffViewModel) render(focused bool, contextLines int, hideWhitespace boo
 			nextIdx++
 		}
 		renderedLines = append(renderedLines, inputBoxView())
-		used += inputBoxHeight
+		used += m.inputBoxHeight()
 		appendRows(nextIdx, viewH-used)
 	} else {
 		appendRows(m.offset, viewH)

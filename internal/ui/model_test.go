@@ -2461,3 +2461,20 @@ func TestModelE_DeletedFileShowsStatus(t *testing.T) {
 	assert.Contains(t, m.statusMsg, "deleted")
 	assert.NotNil(t, cmd, "should return a clearStatusMsg tick")
 }
+
+func TestModelComment_LongCommentGrowsInputBox(t *testing.T) {
+	m := makeModelWithDiff("foo.go", []git.Line{
+		{Type: git.LineAdded, Content: "hello", NewNum: 1},
+	})
+	m = focusDiffAndMoveTo(m, 0)
+	m = sendKey(m, "c")
+	assert.Equal(t, 3, m.diffView.inputBoxHeight())
+
+	for i := 0; i < 3; i++ {
+		for _, r := range longComment + " " {
+			m = sendKey(m, string(r))
+		}
+	}
+	assert.Greater(t, m.diffView.inputBoxHeight(), 3)
+	assert.Contains(t, ansi.Strip(m.diffView.render(true, 3, false)), "end of the box")
+}

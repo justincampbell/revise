@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	commentstore "github.com/justincampbell/revise/internal/comments"
@@ -44,10 +43,7 @@ func (m Model) WithBrief(text string) Model {
 // WithVerdict makes q open a verdict prompt, and makes the export always start
 // with a `verdict: <value>` line so callers can tell an approval from a stray quit.
 func (m Model) WithVerdict() Model {
-	ti := textinput.New()
-	ti.Placeholder = "Review comment (optional)"
-	ti.CharLimit = 500
-	m.reviewInput = ti
+	m.reviewInput = newTextBox("Review comment (optional)", 500)
 	m.verdictEnabled = true
 	m.verdict = VerdictNone
 	return m
@@ -151,10 +147,16 @@ func (m Model) startReviewInput(v Verdict) (tea.Model, tea.Cmd) {
 	m.reviewInputActive = true
 	m.reviewInput.SetValue(m.reviewComment)
 	m.reviewInput.CursorEnd()
+	m.fitReviewInput()
 	return m, m.reviewInput.Focus()
 }
 
+func (m *Model) fitReviewInput() {
+	fitTextBox(&m.reviewInput, min(60, max(20, m.width-16)), max(1, min(10, m.height-10)))
+}
+
 func (m Model) updateReviewInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	msg = asTyped(msg)
 	switch msg.String() {
 	case "enter":
 		m.reviewComment = strings.TrimSpace(m.reviewInput.Value())
@@ -174,12 +176,12 @@ func (m Model) updateReviewInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.reviewInput, cmd = m.reviewInput.Update(msg)
+	m.fitReviewInput()
 	return m, cmd
 }
 
 func (m Model) renderVerdictDialog() string {
 	if m.reviewInputActive {
-		m.reviewInput.Width = min(60, max(20, m.width-16))
 		content := helpGroupStyle.Render(m.verdict.label()) + "\n\n" +
 			m.reviewInput.View() + "\n\n" +
 			helpKeyStyle.Render("Enter") + " finish    " + helpKeyStyle.Render("Esc") + " back"

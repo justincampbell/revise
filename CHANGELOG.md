@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Saved comments no longer land on the wrong line after the branch is rewritten between runs. revise now stores each comment's line content and re-anchors on load: the comment follows its line if it moved, and if the line is gone the comment is exported under `# Outdated Comments` instead of being attached to whatever now has that line number
+- Long comments now wrap inside the comment box and the `--verdict` review comment box, and the box grows as you type, so the whole comment stays visible. Before, the text ran off the edge of the screen. A long search query now scrolls inside the status bar instead of overflowing it
+- Pasting or typing quickly into a comment, review comment, or search box no longer drops the words "left", "right", "up", "down", "home", and "end". A burst of input arrived as one multi-letter key, which matched the box's cursor-movement keys
 
 ## [0.7.0] - 2026-09-16
 

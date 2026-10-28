@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/justincampbell/revise/internal/git"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -354,4 +355,13 @@ func TestSearch_GroupVisibleInFileReviewHelp(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Search group should appear in file review help")
+}
+
+func TestSearch_LongQueryStaysOnOneStatusRow(t *testing.T) {
+	m := makeSearchableFileReview()
+	m = sendKey(m, "/")
+	m = sendKey(m, strings.Repeat("x", m.width+20))
+	bar := m.renderStatusBar()
+	assert.NotContains(t, bar, "\n")
+	assert.LessOrEqual(t, ansi.StringWidth(bar), m.width)
 }
