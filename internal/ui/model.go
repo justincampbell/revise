@@ -157,7 +157,9 @@ type Model struct {
 
 	comments           comments
 	marks              marks
-	storePath          string // path to JSON file for comment persistence
+	anchors            map[commentKey]string // line content per comment/mark, for re-anchoring on load
+	outdated           []outdatedComment     // loaded comments whose line content is gone
+	storePath          string                // path to JSON file for comment persistence
 	commentInputActive bool
 	commentTarget      commentKey
 	searchActive       bool // true while the incremental-search input box is open
@@ -252,11 +254,18 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 
 	c := make(comments)
 	mk := make(marks)
+	anchors := make(map[commentKey]string)
+	var outdated []outdatedComment
 
 	// Load persisted comments and marks if a store path is configured.
 	if storePath != "" {
 		if loaded, err := commentstore.Load(storePath); err == nil {
 			c, mk = fromStringMap(loaded)
+			anchors, outdated = decodeAnchors(loaded)
+			if root, err := git.RepoRoot(); err == nil {
+				outdated = append(outdated, reanchor(c, mk, anchors, workingTreeSource(root, diff.Files))...)
+				sortOutdated(outdated)
+			}
 		}
 	}
 
@@ -286,6 +295,8 @@ func NewWithStorePath(diff *git.Diff, onDefaultBranch bool, storePath string, ve
 		comments:        c,
 		marks:           mk,
 		storePath:       storePath,
+		anchors:         anchors,
+		outdated:        outdated,
 		mode:            mode,
 		onDefaultBranch: onDefaultBranch,
 		noCommits:       !git.HasCommits(),
@@ -593,8 +604,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Clear all comments
 		case "C":
-			if len(m.comments) > 0 || len(m.marks) > 0 {
-				n := len(m.comments) + len(m.marks)
+			if n := len(m.comments) + len(m.marks) + len(m.outdated); n > 0 {
 				noun := "items"
 				if n == 1 {
 					noun = "item"
@@ -1162,6 +1172,7 @@ func (m Model) updateConfirmClear(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for k := range m.marks {
 			delete(m.marks, k)
 		}
+		m.outdated = nil
 		m.saveComments()
 		m.diffView.rebuildLinesPreservingCursor()
 	}
@@ -1185,7 +1196,10 @@ func (m *Model) saveComments() {
 	if m.storePath == "" {
 		return
 	}
-	_ = commentstore.Save(m.storePath, toStringMap(m.comments, m.marks))
+	captureAnchors(m.diff.Files, m.comments, m.marks, m.anchors)
+	entries := toStringMap(m.comments, m.marks)
+	encodeAnchors(entries, m.anchors, m.outdated)
+	_ = commentstore.Save(m.storePath, entries)
 }
 
 func (m *Model) startCommentInput() {
@@ -1443,7 +1457,7 @@ func fileHasSource(f *git.FileDiff, source git.HunkSource) bool {
 // exportComments copies comments to the clipboard or writes to a file.
 // Returns a status string describing what happened, or "" if there's nothing to export.
 func (m *Model) exportComments() string {
-	text := formatExport(m.diff.Files, m.comments, m.marks)
+	text := m.exportText()
 	if text == "" {
 		return ""
 	}
@@ -2038,10 +2052,14 @@ func (m Model) renderStatusBar() string {
 	}
 
 	count := len(m.comments)
-	if count > 0 {
-		hint := prefix + pluralize(count, "comment", "comments") +
+	if count > 0 || len(m.outdated) > 0 {
+		hint := prefix + pluralize(count, "comment", "comments")
+		if n := len(m.outdated); n > 0 {
+			hint += fmt.Sprintf(" (+%d outdated)", n)
+		}
+		hint +=
 			"  " + helpKeyStyle.Render("e") + statusBarStyle.Render(" export") +
-			"  " + helpHint
+				"  " + helpHint
 		return statusBarStyle.Width(m.width).Render(hint)
 	}
 	return statusBarStyle.Width(m.width).Render(prefix + helpHint)
@@ -2120,11 +2138,20 @@ func (m Model) View() string {
 	return screen
 }
 
+func (m Model) exportText() string {
+	current := formatExport(m.diff.Files, m.comments, m.marks)
+	outdated := formatOutdated(m.outdated)
+	if current != "" && outdated != "" {
+		return current + "\n\n" + outdated
+	}
+	return current + outdated
+}
+
 // ExportedComments returns the formatted comment text for printing on exit.
 // Returns "" if there are no comments, unless --verdict is set, in which case
 // the first line is always `verdict: <value>`.
 func (m Model) ExportedComments() string {
-	text := formatExport(m.diff.Files, m.comments, m.marks)
+	text := m.exportText()
 	if !m.verdictEnabled {
 		return text
 	}

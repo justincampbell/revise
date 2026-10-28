@@ -99,3 +99,16 @@ func TestLoad_CorruptedFile_ReturnsError(t *testing.T) {
 	_, err = Load(path)
 	assert.Error(t, err)
 }
+
+func TestDelete_RemovesStore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "c.json")
+	require.NoError(t, Save(path, map[string]string{"a:1:false": "x"}))
+	require.NoError(t, Delete(path))
+	_, err := os.Stat(path)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestDelete_MissingIsNotAnError(t *testing.T) {
+	assert.NoError(t, Delete(filepath.Join(t.TempDir(), "nope.json")))
+	assert.NoError(t, Delete(""))
+}

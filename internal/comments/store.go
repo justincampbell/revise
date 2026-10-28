@@ -34,6 +34,17 @@ func Save(path string, entries map[string]string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// Delete removes the store at path. A missing file or empty path is not an error.
+func Delete(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // Load reads the comments map from the given path.
 // Returns an empty map (not an error) if the file does not exist.
 func Load(path string) (map[string]string, error) {

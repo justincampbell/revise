@@ -54,6 +54,7 @@ When revise exits, read `$outfile`.
   - `<n>: ` `` `<source line>` `` followed by `> <comment>` is a comment anchored to line `<n>`. (`<n> (removed):` marks a deleted line.)
   - A bare `> <comment>` under a `##` header (no line number) is a **file-level** comment.
   - `> [flagged]` is a line the user flagged with no text — treat it as "look at this line," and if the intent isn't obvious, ask.
+  - A trailing `# Outdated Comments` section (it may also be the only section) holds comments from an earlier session whose line has since changed or been removed. Each one is written as `<n> (outdated): ` `` `<line it was written on>` ``. Often the change already addressed it; check before acting, and don't treat line `<n>` as its current location.
 
 Then work through the feedback exactly as if the user had pasted it:
 
