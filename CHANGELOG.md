@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `--base <ref>` chooses the branch that Branch mode diffs against, instead of the default branch revise detects. This helps with stacked PRs, where a branch is based on another PR's branch rather than `main`. It works for the TUI and `revise diff`, and revise exits with an error if the ref doesn't resolve (#95)
+
 ## [0.7.0] - 2026-09-16
 
 ### Added
