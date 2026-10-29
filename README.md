@@ -35,6 +35,15 @@ revise
 - On a **feature branch**, revise shows all changes compared to the merge base (as if opening a PR).
 - On the **default branch**, it shows staged, unstaged, and untracked changes.
 
+By default, revise compares against the repository's default branch. Use `--base <ref>` to compare against a different branch instead. This is useful for stacked PRs, where your branch is based on another PR's branch rather than `main`:
+
+```sh
+revise --base my-first-pr
+revise --base origin/my-first-pr diff
+```
+
+revise uses the ref exactly as you type it. If git can't resolve it, revise exits with an error.
+
 ### Diff Modes
 
 Cycle through modes with `Tab` / `Shift+Tab`:

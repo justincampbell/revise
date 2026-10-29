@@ -30,6 +30,24 @@ func RemoteName() string {
 	return ""
 }
 
+// baseRef is the ref that Branch mode compares against when the user passes
+// --base. When it is empty, revise guesses the default branch instead.
+var baseRef string
+
+// SetBaseRef makes Branch mode compare against ref instead of the guessed
+// default branch. We use the ref exactly as given, with no remote prefix and
+// no fallback, so a ref that git can't resolve to a commit is an error. An
+// empty ref restores the default behavior.
+func SetBaseRef(ref string) error {
+	if ref != "" {
+		if err := exec.Command("git", "rev-parse", "--verify", "--quiet", ref+"^{commit}").Run(); err != nil {
+			return fmt.Errorf("base ref %q does not resolve to a commit", ref)
+		}
+	}
+	baseRef = ref
+	return nil
+}
+
 // DefaultBranch detects the default branch of the repository.
 func DefaultBranch() (string, error) {
 	remote := RemoteName()
@@ -246,6 +264,20 @@ func CurrentBranchName() string {
 // the default branch but the remote has diverged (useful for reviewing
 // incoming/outgoing changes via branch mode).
 func IsOnDefaultBranch() (bool, error) {
+	// With --base, HEAD counts as the default branch when it is at the merge
+	// base with that ref.
+	if baseRef != "" {
+		mergeBase, err := MergeBase(baseRef)
+		if err != nil {
+			return false, err
+		}
+		head, err := CurrentRef()
+		if err != nil {
+			return false, err
+		}
+		return mergeBase == head, nil
+	}
+
 	branch, err := DefaultBranch()
 	if err != nil {
 		return false, err
@@ -296,6 +328,10 @@ func IsOnDefaultBranch() (bool, error) {
 
 // resolveMergeBase finds the merge-base for the current branch.
 func resolveMergeBase() (string, error) {
+	if baseRef != "" {
+		return MergeBase(baseRef)
+	}
+
 	branch, err := DefaultBranch()
 	if err != nil {
 		return "", err
@@ -372,17 +408,22 @@ func branchDiff(contextLines int, hideWhitespace bool, depth int) (*Diff, int, e
 		// merge-base == HEAD: we're on the default branch but the remote
 		// has different commits. Diff HEAD against the remote ref. There are
 		// no local commits ahead, so depth does not apply (commitsAhead == 0).
-		branch, err := DefaultBranch()
-		if err != nil {
-			_ = g.Wait()
-			return nil, 0, err
+		// With --base, we diff against that ref instead.
+		target := baseRef
+		if target == "" {
+			branch, err := DefaultBranch()
+			if err != nil {
+				_ = g.Wait()
+				return nil, 0, err
+			}
+			remote := RemoteName()
+			if remote == "" {
+				_ = g.Wait()
+				return nil, 0, fmt.Errorf("no remote configured")
+			}
+			target = remote + "/" + branch
 		}
-		remote := RemoteName()
-		if remote == "" {
-			_ = g.Wait()
-			return nil, 0, fmt.Errorf("no remote configured")
-		}
-		raw, err = rawDiffBetween(head, remote+"/"+branch, contextLines, hideWhitespace)
+		raw, err = rawDiffBetween(head, target, contextLines, hideWhitespace)
 		if err != nil {
 			_ = g.Wait()
 			return nil, 0, err

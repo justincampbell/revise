@@ -1040,3 +1040,81 @@ func TestBranchDiffDepth_IncludesWorkingTree(t *testing.T) {
 	assert.Contains(t, paths, "two.go")
 	assert.Contains(t, paths, "wip.go")
 }
+
+// ============================================================================
+// SetBaseRef (--base)
+// ============================================================================
+
+// stackedRepo builds a stacked-PR layout. Branch a comes off main with one
+// commit, and branch b comes off a with one commit. It leaves b checked out.
+// It also resets the base ref when the test ends, because the base ref is
+// package-level state.
+func stackedRepo(t *testing.T) *TestRepo {
+	t.Helper()
+	r := NewTestRepo(t)
+	r.WriteFile("base.go", "package main\n")
+	r.Add("base.go")
+	r.Commit("initial")
+	r.CheckoutNewBranch("a")
+	r.WriteFile("a.go", "package main\n")
+	r.Add("a.go")
+	r.Commit("add a")
+	r.CheckoutNewBranch("b")
+	r.WriteFile("b.go", "package main\n")
+	r.Add("b.go")
+	r.Commit("add b")
+	r.Chdir()
+	t.Cleanup(func() { _ = SetBaseRef("") })
+	return r
+}
+
+func TestBaseRef_BranchDiffShowsOnlyCommitsSinceBase(t *testing.T) {
+	_ = stackedRepo(t)
+	require.NoError(t, SetBaseRef("a"))
+
+	diff, err := BranchDiff(DefaultContextLines)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"b.go"}, filePaths(diff))
+
+	commits, err := BranchCommits()
+	require.NoError(t, err)
+	require.Len(t, commits, 1)
+	assert.Equal(t, "add b", commits[0].Subject)
+}
+
+func TestBaseRef_NoBaseShowsAllCommits(t *testing.T) {
+	_ = stackedRepo(t)
+
+	diff, err := BranchDiff(DefaultContextLines)
+	require.NoError(t, err)
+	paths := filePaths(diff)
+	assert.Contains(t, paths, "a.go")
+	assert.Contains(t, paths, "b.go")
+
+	commits, err := BranchCommits()
+	require.NoError(t, err)
+	assert.Len(t, commits, 2)
+}
+
+func TestBaseRef_MissingRefReturnsError(t *testing.T) {
+	_ = stackedRepo(t)
+	err := SetBaseRef("does-not-exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does-not-exist")
+}
+
+func TestBaseRef_IsOnDefaultBranchUsesBase(t *testing.T) {
+	r := stackedRepo(t)
+	require.NoError(t, SetBaseRef("a"))
+
+	onDefault, err := IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.False(t, onDefault, "b has a commit that a does not")
+
+	// On a itself, HEAD is the merge base, so revise treats it as the
+	// default branch.
+	r.mustGit("checkout", "a")
+	onDefault, err = IsOnDefaultBranch()
+	require.NoError(t, err)
+	assert.True(t, onDefault)
+}

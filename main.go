@@ -48,6 +48,7 @@ func main() {
 	devFlag := flag.Bool("dev", false, "Auto-restart when the binary is replaced (for local development)")
 	debugFlag := flag.Bool("debug", false, "Show a refresh-debug strip with live timings above the status bar")
 	noWatchFlag := flag.Bool("no-watch", false, "Disable fsnotify-based refresh; auto-refresh runs on a timer only")
+	baseFlag := flag.String("base", "", "Ref that Branch mode diffs against (default: auto-detect the default branch)")
 	flag.Parse()
 
 	if *helpFlag {
@@ -102,6 +103,11 @@ func main() {
 	// hint that no commits exist yet.
 	if !git.IsGitRepo() {
 		fmt.Fprintln(os.Stderr, "Error: not a git repository")
+		os.Exit(1)
+	}
+
+	if err := git.SetBaseRef(*baseFlag); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -384,6 +390,8 @@ Flags:
                           github-dark, github-dark-daltonized
                           github-light, github-light-daltonized
   --output <file>       Write comments to file on exit
+  --base <ref>          Ref that Branch mode diffs against, such as a branch
+                          name or origin/<branch> (default: auto-detect)
   --dev                 Auto-restart when the binary is replaced (development)
   --debug               Show a refresh-debug strip with live timings above the status bar
   --no-watch            Disable fsnotify-based refresh (timer-only auto-refresh)
