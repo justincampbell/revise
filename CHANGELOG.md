@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-10
+
 ### Added
 
 - Branch mode can now move the *end* of the commit range with `,` / `.`, alongside `<` / `>` for the start, so you can review a single commit or a range that ends before `HEAD`. With one commit selected, `,` / `.` step it back and forward through history. Working tree changes are only layered on top while the range ends at `HEAD`
