@@ -410,3 +410,26 @@ func TestBriefReader_NoBriefIsNoop(t *testing.T) {
 	m, _ = pressKey(m, "B")
 	assert.False(t, m.briefReading)
 }
+
+func TestBrief_WrappedLinesFitTheScreen(t *testing.T) {
+	brief := "# Title\n\n" + strings.Repeat("lorem ipsum dolor sit amet ", 12) + "\n\n```go\n\tif x {\n\t\treturn \"" +
+		strings.Repeat("y", 300) + "\"\n\t}\n```\n" + strings.Repeat("日本", 100)
+	assertFits := func(t *testing.T, view string, width, height int) {
+		t.Helper()
+		lines := strings.Split(view, "\n")
+		assert.Equal(t, height, len(lines))
+		for i, l := range lines {
+			assert.LessOrEqual(t, ansi.StringWidth(l), width, "line %d", i)
+		}
+	}
+
+	for _, height := range []int{20, 40, 80} {
+		m := makeBriefModel(brief, height)
+		assertFits(t, m.View(), m.width, height)
+		assert.Contains(t, ansi.Strip(m.View()), "# Title")
+
+		m, _ = pressKey(m, "B")
+		assertFits(t, m.View(), m.width, height)
+		assert.Contains(t, ansi.Strip(m.View()), "# Title")
+	}
+}

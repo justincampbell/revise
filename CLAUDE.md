@@ -221,7 +221,7 @@ While filtering (Branch mode, `branchDepth != 0 || branchSkip != 0`), a "Commits
 - Respects `NO_COLOR` env var — strips all colors when set
 - Focused panel gets cyan border; unfocused gets dim border
 - Help overlay uses yellow border to distinguish from panels
-- Lipgloss `Width(n)`/`Height(n)` include padding but exclude borders — when setting explicit dimensions, add padding to the content size
+- Lipgloss v2 `Width(n)`/`Height(n)` are the total size, including padding **and borders** — content area is `n - border - padding`. Pre-wrapped text wider than that gets re-wrapped by lipgloss, so the box grows taller than computed (this hid the top of the `--brief` panel).
 - `theme.go` resolves a `themeColors` palette per theme. The `auto`/`auto-daltonized` themes consult `isDark` (detected via `lipgloss.HasDarkBackground`): on a dark terminal they use ANSI named colors to adopt the terminal's palette, but on a light terminal those (notably white/yellow) are illegible, so `autoPalette`/`autoDaltonizedPalette` mirror the curated `github-light` palettes. Diff-line backgrounds are baked into syntax-highlight tokens, so a dark `addedBg`/`removedBg` on a light terminal makes the dark highlight text unreadable — this is why the palette must follow `isDark` (#198). `ThemeAutoDaltonized` therefore also appears in `chromaStyleEntries` (it only reaches there on a light terminal; dark selects the `native` chroma style first in `highlightLine`).
 
 ### Syntax Highlighting

@@ -127,7 +127,7 @@ func (m Model) renderBrief() string {
 			helpKeyStyle.Render("B") + statusBarStyle.Render(" read all")
 		lines = append(lines[:maxLines-1], more)
 	}
-	box := briefStyle.Width(m.width - 2).Render(strings.Join(lines, "\n"))
+	box := briefStyle.Width(m.width).Render(strings.Join(lines, "\n"))
 	return overlayBorderTitle(box, " Brief · b collapse ")
 }
 
@@ -190,7 +190,7 @@ func (m Model) renderBriefReader() string {
 		helpKeyStyle.Render("g/G") + statusBarStyle.Render(" top/bottom  ") +
 		helpKeyStyle.Render("Esc") + statusBarStyle.Render(" close  ") +
 		statusBarStyle.Render(fmt.Sprintf("%d–%d of %d", top+1, end, len(lines)))
-	box := verdictStyle.Padding(0, 1).Width(m.briefReaderWidth() + 2).
+	box := verdictStyle.Padding(0, 1).Width(m.width).
 		Render(body + strings.Repeat("\n", rows-(end-top)) + "\n" + footer)
 	return overlayBorderTitle(box, " Brief ")
 }
