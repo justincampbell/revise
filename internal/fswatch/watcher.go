@@ -188,10 +188,11 @@ func (w *Watcher) run() {
 				// consumed yet. Dropping is fine: the consumer's next
 				// read still triggers a refresh that covers our event.
 			}
-		case <-w.fsn.Errors:
-			// fsnotify error channel — we don't surface these. A real
-			// failure (watcher closed) is observed via the Events
-			// channel close above.
+		case _, ok := <-w.fsn.Errors:
+			// Errors aren't surfaced; a closed channel means the watcher is gone.
+			if !ok {
+				return
+			}
 		}
 	}
 }

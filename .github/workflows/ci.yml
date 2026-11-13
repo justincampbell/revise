@@ -25,6 +25,8 @@ jobs:
 
       - name: Lint
         uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.15.0 # keep in sync with GOLANGCI_LINT_VERSION in Makefile
 
   test:
     runs-on: ubuntu-latest
