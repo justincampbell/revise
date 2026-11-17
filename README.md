@@ -64,6 +64,8 @@ Opens the file in a read-only review mode — all lines shown as context, git-sp
 
 Source is syntax-highlighted by file type. Markdown gets bold headings, inline `**bold**`/`` `code` ``, and fenced code blocks highlighted by their declared language (e.g. ` ```go `).
 
+Prose files (Markdown, plain text, reStructuredText, AsciiDoc, Org, Textile) open with soft wrap on. Press `W` to turn it off.
+
 Comments are also output on exit in normal git diff mode.
 
 ### Reviewing on behalf of a caller

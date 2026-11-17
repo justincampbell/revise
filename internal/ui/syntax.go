@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -93,6 +94,16 @@ func lexerByName(name string) chroma.Lexer {
 func isMarkdownFile(filePath string) bool {
 	l := lexerFor(filePath)
 	return l != nil && l.Config().Name == "markdown"
+}
+
+// proseExtensions follows GitHub Linguist's "prose" language type.
+var proseExtensions = map[string]bool{
+	".md": true, ".markdown": true, ".mdx": true, ".txt": true, ".text": true,
+	".rst": true, ".adoc": true, ".asciidoc": true, ".org": true, ".textile": true,
+}
+
+func isProseFile(filePath string) bool {
+	return proseExtensions[strings.ToLower(filepath.Ext(filePath))]
 }
 
 // highlightLine applies chroma syntax highlighting to a single line of content,

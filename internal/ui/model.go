@@ -228,6 +228,7 @@ func NewFileReview(diff *git.Diff, filePath string) Model {
 
 	if len(diff.Files) > 0 {
 		dv.setFile(&diff.Files[0])
+		dv.wrapEnabled = isProseFile(diff.Files[0].Path)
 	}
 
 	return Model{
