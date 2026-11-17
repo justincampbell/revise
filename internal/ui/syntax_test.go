@@ -471,3 +471,12 @@ func TestBuildLines_MarkdownFenceStateMachine(t *testing.T) {
 	wantGo := renderDiffLine(goLine, false, dv.width-3, "doc.md", p, 0, "", "go")
 	assert.Equal(t, wantGo, rendered[0], "fenced line should use the go override")
 }
+
+func TestIsProseFile(t *testing.T) {
+	for _, p := range []string{"README.md", "docs/guide.markdown", "page.mdx", "notes.txt", "index.rst", "book.adoc", "todo.org", "NOTES.MD"} {
+		assert.True(t, isProseFile(p), p)
+	}
+	for _, p := range []string{"main.go", "config.yaml", "index.html", "Makefile", "file.xyzunknown"} {
+		assert.False(t, isProseFile(p), p)
+	}
+}

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `revise <file>` opens prose files (Markdown, plain text, reStructuredText, AsciiDoc, Org, Textile) with soft wrap on, so long paragraphs don't run off the edge. `W` still toggles it off
+
 ## [0.8.0] - 2026-11-10
 
 ### Added

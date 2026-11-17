@@ -234,7 +234,7 @@ Markdown gets two extras (#194):
 
 ### File Review Mode
 
-`revise <file>` opens any file in a read-only review mode with full comment support. All lines are shown as context (no diff coloring). Starts fullscreen with diff view focused. Git-specific keys (stage/unstage/discard, mode cycling, context lines, whitespace toggle) are disabled — guarded by a single `fileReviewMode` check per key group in the Update handlers. The help overlay filters bindings via `FileReviewBindingGroups()` which uses the `GitOnly` flag on `Binding`.
+`revise <file>` opens any file in a read-only review mode with full comment support. All lines are shown as context (no diff coloring). Starts fullscreen with diff view focused. Prose files (`isProseFile`, an extension list following GitHub Linguist's `prose` language type) start with soft wrap on; diff mode keeps one wrap setting for every file. Git-specific keys (stage/unstage/discard, mode cycling, context lines, whitespace toggle) are disabled — guarded by a single `fileReviewMode` check per key group in the Update handlers. The help overlay filters bindings via `FileReviewBindingGroups()` which uses the `GitOnly` flag on `Binding`.
 
 Navigation note (applies to all modes, not just file review): `}`/`{` (`]`/`[`) jump to the next/previous blank line (Vim-style paragraph boundary) via `nextParagraph`/`prevParagraph`. There is no dedicated hunk-to-hunk navigation — in a diff the nearest blank line usually sits at the next change, so paragraph jumping doubles as change-to-change navigation and stays consistent across modes (#122). Blank lines are flagged at build time as `lineRef.isBlank`. (`hunkStarts`/`currentHunkIndex` remain, used by hunk stage/unstage/discard.)
 

@@ -2478,3 +2478,12 @@ func TestModelComment_LongCommentGrowsInputBox(t *testing.T) {
 	assert.Greater(t, m.diffView.inputBoxHeight(), 3)
 	assert.Contains(t, ansi.Strip(m.diffView.render(true, 3, false)), "end of the box")
 }
+
+func TestFileReviewMode_ProseStartsWrapped(t *testing.T) {
+	newReview := func(path string) Model {
+		diff := &git.Diff{Files: []git.FileDiff{{Path: path, Status: git.StatusModified}}}
+		return NewFileReview(diff, path)
+	}
+	assert.True(t, newReview("README.md").diffView.wrapEnabled)
+	assert.False(t, newReview("main.go").diffView.wrapEnabled)
+}
